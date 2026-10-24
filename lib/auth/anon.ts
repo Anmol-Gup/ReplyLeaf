@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { REALTIME_STUB } from "../supabase-options";
 
 // Supabase Auth with plain supabase-js (no extra package): the login action
 // stores the session in httpOnly cookies, proxy.ts refreshes it, and every
@@ -16,6 +17,7 @@ export function anonClient(accessToken?: string) {
   if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set");
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    realtime: REALTIME_STUB,
     global: accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined,
   });
 }
