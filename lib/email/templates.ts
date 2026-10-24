@@ -6,6 +6,7 @@ import { oneLine, type MailMessage } from "./mailer";
 export type OwnerEvent =
   | { type: "new_lead"; contactName: string | null; phone: string; firstMessage: string }
   | { type: "new_booking"; contactName: string | null; phone: string; service: string; preferredTime: string; bookingName: string }
+  | { type: "onboarded"; businessName: string }
   | { type: "needs_human"; contactName: string | null; phone: string; reason: "customer_request_or_upset" | "failed_answers"; lastMessage: string };
 
 const who = (name: string | null, phone: string) => (name ? `${name} (+${phone})` : `+${phone}`);
@@ -27,6 +28,12 @@ export function ownerEmail(
         to: o.to,
         subject: oneLine(`New booking request: ${event.service}`),
         text: `${o.businessName} has a new booking REQUEST (not confirmed yet).\n\nCustomer: ${who(event.contactName, event.phone)}\nName for booking: ${event.bookingName}\nService: ${event.service}\nPreferred time: ${event.preferredTime}\n\nThe customer was told the team will confirm shortly. Please confirm or decline it.${link}`,
+      };
+    case "onboarded":
+      return {
+        to: o.to,
+        subject: oneLine(`Your WhatsApp number is connected: ${event.businessName}`),
+        text: `Your WhatsApp number is now connected to the assistant for ${event.businessName}.\n\nNext steps: add your business knowledge, then send a test message to your number.\nWhatsApp may take a few minutes to confirm the connection; the dashboard shows the status.${link}`,
       };
     case "needs_human":
       return {

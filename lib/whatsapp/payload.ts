@@ -23,10 +23,19 @@ const valueSchema = z.object({
   statuses: z.array(statusSchema).optional(),
 });
 
+// account_update: Meta's confirmation that a customer finished Embedded Signup.
+// For PARTNER_ADDED the WABA id is in value.waba_info.waba_id (entry.id is then the
+// customer's business portfolio); for other events entry.id is the WABA id.
+const accountUpdateSchema = z.object({
+  event: z.string().max(100),
+  waba_info: z.object({ waba_id: z.string() }).optional(),
+});
+
 const payloadSchema = z.object({
   object: z.string(),
   entry: z.array(
     z.object({
+      id: z.string().optional(),
       changes: z.array(z.object({ field: z.string(), value: z.unknown() })),
     }),
   ),
@@ -48,15 +57,23 @@ export type StatusUpdate = {
   error: string | null;
 };
 
-export type ParsedEvents = { messages: InboundMessage[]; statuses: StatusUpdate[] };
+export type AccountEvent = { wabaId: string; event: string };
+
+export type ParsedEvents = { messages: InboundMessage[]; statuses: StatusUpdate[]; accountEvents: AccountEvent[] };
 
 export function parseWebhookPayload(json: unknown): ParsedEvents {
-  const out: ParsedEvents = { messages: [], statuses: [] };
+  const out: ParsedEvents = { messages: [], statuses: [], accountEvents: [] };
   const payload = payloadSchema.safeParse(json);
   if (!payload.success || payload.data.object !== "whatsapp_business_account") return out;
 
   for (const entry of payload.data.entry) {
     for (const change of entry.changes) {
+      if (change.field === "account_update") {
+        const u = accountUpdateSchema.safeParse(change.value);
+        const wabaId = u.success ? (u.data.waba_info?.waba_id ?? entry.id) : undefined;
+        if (u.success && wabaId && /^\d{5,30}$/.test(wabaId)) out.accountEvents.push({ wabaId, event: u.data.event });
+        continue;
+      }
       if (change.field !== "messages") continue;
       const value = valueSchema.safeParse(change.value);
       if (!value.success) continue;

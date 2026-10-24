@@ -129,6 +129,14 @@ export function supabaseInboundDeps(): InboundDeps {
       if (dbErr) throw new Error(`status update failed: ${dbErr.message}`);
     },
 
+    async applyAccountEvent(wabaId, event) {
+      const { data, error } = await db.rpc("apply_account_event", { p_waba_id: wabaId, p_event: event });
+      if (error) throw new Error(`apply_account_event failed: ${error.message}`);
+      const row = (Array.isArray(data) ? data[0] : data) as { out_client_id: string | null } | null;
+      // The customer removed our app from their WhatsApp account: the admin should know.
+      if (event === "PARTNER_REMOVED") await raiseAlert(row?.out_client_id ?? null, "partner_removed", `WABA ${wabaId}`);
+    },
+
     raiseAlert,
   };
 }

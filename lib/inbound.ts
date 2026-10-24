@@ -1,4 +1,4 @@
-import type { InboundMessage, ParsedEvents } from "./whatsapp/payload";
+import type { AccountEvent, InboundMessage, ParsedEvents } from "./whatsapp/payload";
 
 // Recording phase of the webhook: fast, DB-only, runs BEFORE we answer Meta.
 // It stores each message (deduped) and says which conversations need a batch.
@@ -19,6 +19,8 @@ export interface InboundDeps {
   /** Atomically upserts contact + conversation, inserts the message and queues it for batching. Dedupes on wamid. */
   recordInbound(clientId: string, msg: InboundMessage): Promise<RecordResult>;
   updateMessageStatus(waMessageId: string, status: string, error: string | null): Promise<void>;
+  /** account_update from Meta: records it and updates the matching client's onboarding status. */
+  applyAccountEvent(wabaId: string, event: string): Promise<void>;
   raiseAlert(clientId: string | null, kind: string, detail: string): Promise<void>;
 }
 
@@ -29,7 +31,10 @@ export type RecordOutcome = {
   failed: number;
 };
 
-export async function recordEvents(events: ParsedEvents, deps: InboundDeps): Promise<RecordOutcome> {
+export async function recordEvents(
+  events: Omit<ParsedEvents, "accountEvents"> & { accountEvents?: AccountEvent[] },
+  deps: InboundDeps,
+): Promise<RecordOutcome> {
   for (const s of events.statuses) {
     try {
       await deps.updateMessageStatus(s.waMessageId, s.status, s.error);
@@ -40,6 +45,17 @@ export async function recordEvents(events: ParsedEvents, deps: InboundDeps): Pro
 
   const conversationIds = new Set<string>();
   let failed = 0;
+
+  // Onboarding confirmations. A failure counts as failed so Meta retries the webhook.
+  for (const a of events.accountEvents ?? []) {
+    try {
+      await deps.applyAccountEvent(a.wabaId, a.event);
+    } catch (e) {
+      failed++;
+      console.error("account_update failed", errorText(e));
+    }
+  }
+
   // Sequential on purpose: keeps per-customer ordering and is simple.
   for (const msg of events.messages) {
     try {

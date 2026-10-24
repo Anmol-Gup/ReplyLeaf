@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { requireClient } from "../../lib/auth/session";
+import OnboardingBanner from "./OnboardingBanner";
 
 export default async function Overview() {
-  const { db } = await requireClient(); // RLS limits every count to this owner's client
+  const { db, clientId } = await requireClient(); // RLS limits every count to this owner's client
+  const { data: conn } = await db.from("clients").select("onboarding_status, onboarding_step").eq("id", clientId).single();
   const count = async (table: string, col?: string, val?: string) => {
     let q = db.from(table).select("id", { count: "exact", head: true });
     if (col && val) q = q.eq(col, val);
@@ -17,6 +19,7 @@ export default async function Overview() {
   return (
     <section className="card">
       <h1>Overview</h1>
+      <OnboardingBanner status={conn?.onboarding_status} step={conn?.onboarding_step} />
       <div className="grid">
         <Link className="stat" href="/dashboard/conversations"><b>{human}</b>conversations waiting for you</Link>
         <Link className="stat" href="/dashboard/bookings"><b>{pending}</b>booking requests to confirm</Link>

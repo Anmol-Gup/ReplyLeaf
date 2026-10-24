@@ -1,12 +1,13 @@
 import { requireClient } from "../../../lib/auth/session";
 import Notice from "../Notice";
+import OnboardingBanner from "../OnboardingBanner";
 import { updateSettings } from "../actions";
 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
   const { notice } = await searchParams;
   const { db, clientId } = await requireClient();
   const { data: c } = await db.from("clients")
-    .select("name, business_info, business_hours, booking_link, ai_provider, owner_email, monthly_message_cap, wa_phone_number_id").eq("id", clientId).single();
+    .select("name, business_info, business_hours, booking_link, ai_provider, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step").eq("id", clientId).single();
   return (
     <section className="card">
       <h1>Settings</h1>
@@ -26,6 +27,8 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         </label>
         <div><button type="submit">Save</button></div>
       </form>
+      <h2>WhatsApp connection</h2>
+      <OnboardingBanner status={c?.onboarding_status} step={c?.onboarding_step} />
       <h2>Account</h2>
       <p className="muted">WhatsApp phone number ID: {c?.wa_phone_number_id ?? "not connected"} · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</p>
     </section>

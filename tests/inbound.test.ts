@@ -14,6 +14,7 @@ function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boole
   const stored: string[] = [];
   const alerts: string[] = [];
   const statuses: string[] = [];
+  const accountEvents: string[] = [];
   const deps: InboundDeps = {
     findClientByPhoneNumberId: async () => (opts.knownClient === false ? null : { id: "c1", name: "Biz" }),
     recordInbound: async (_c, m): Promise<RecordResult> => {
@@ -23,9 +24,10 @@ function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boole
       return { duplicate, conversationId: "conv1", handling: opts.handling ?? "bot", lastCustomerMessageAt: m.sentAt };
     },
     updateMessageStatus: async (id, s) => void statuses.push(`${id}:${s}`),
+    applyAccountEvent: async (waba, event) => { if (opts.dbFails) throw new Error("db down"); accountEvents.push(`${waba}:${event}`); },
     raiseAlert: async (_c, kind) => void alerts.push(kind),
   };
-  return { deps, stored, alerts, statuses };
+  return { deps, stored, alerts, statuses, accountEvents };
 }
 
 test("stores each message once and schedules its conversation once", async () => {
@@ -70,4 +72,14 @@ test("delivery statuses are recorded", async () => {
   const f = fakeDeps();
   await recordEvents({ statuses: [{ waMessageId: "out.1", status: "delivered", error: null }], messages: [] }, f.deps);
   assert.deepEqual(f.statuses, ["out.1:delivered"]);
+});
+
+test("account_update events are applied; a failure asks Meta to retry", async () => {
+  const f = fakeDeps();
+  const ok = await recordEvents({ statuses: [], messages: [], accountEvents: [{ wabaId: "12345", event: "PARTNER_ADDED" }] }, f.deps);
+  assert.deepEqual(f.accountEvents, ["12345:PARTNER_ADDED"]);
+  assert.equal(ok.failed, 0);
+  const bad = fakeDeps({ dbFails: true });
+  const out = await recordEvents({ statuses: [], messages: [], accountEvents: [{ wabaId: "12345", event: "PARTNER_ADDED" }] }, bad.deps);
+  assert.equal(out.failed, 1);
 });
