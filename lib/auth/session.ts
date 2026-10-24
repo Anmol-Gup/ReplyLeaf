@@ -39,3 +39,11 @@ export async function requireClient() {
   const { data: client } = await db.from("clients").select("name").eq("id", clientId).single();
   return { user, db, clientId, clientName: (client?.name as string | undefined) ?? "Your business" };
 }
+
+/** For route handlers (no redirects): the verified user, or null. */
+export async function getUserOrNull() {
+  const token = (await cookies()).get(ACCESS_COOKIE)?.value;
+  if (!token) return null;
+  const { data, error } = await anonClient().auth.getUser(token);
+  return error || !data.user ? null : data.user;
+}

@@ -15,7 +15,8 @@
     "create-client": "npm run build:node && node --env-file=.env .build/scripts/create-client.js",
     "eval": "npm run build:node && node --env-file=.env .build/scripts/run-eval.js",
     "set-kb": "npm run build:node && node --env-file=.env .build/scripts/set-kb.js",
-    "create-owner": "npm run build:node && node --env-file=.env .build/scripts/create-owner.js"
+    "create-owner": "npm run build:node && node --env-file=.env .build/scripts/create-owner.js",
+    "offboard-client": "npm run build:node && node --env-file=.env .build/scripts/offboard-client.js"
   },
   "dependencies": {
     "@google/genai": "^2.31.0",
