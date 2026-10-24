@@ -2,7 +2,8 @@ import nodemailer, { type Transporter } from "nodemailer";
 
 // Email goes through this tiny interface so the provider can be swapped later
 // (Resend, SES, ...) by writing another implementation and changing getMailer().
-export type MailMessage = { to: string; subject: string; text: string };
+// `html` is optional; when present the email is sent as multipart with `text` as the plain-text version.
+export type MailMessage = { to: string; subject: string; text: string; html?: string };
 
 export interface Mailer {
   send(msg: MailMessage): Promise<void>;
@@ -33,7 +34,7 @@ function gmailMailer(user: string, pass: string, from: string): Mailer {
         secure: true,
         auth: { user, pass },
       });
-      await transport.sendMail({ from, to: msg.to, subject: oneLine(msg.subject), text: msg.text });
+      await transport.sendMail({ from, to: msg.to, subject: oneLine(msg.subject), text: msg.text, html: msg.html });
     },
   };
 }

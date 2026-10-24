@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { hasApprovedFlag, isApproved, signupMode } from "../signup";
 import { ACCESS_COOKIE, REFRESH_COOKIE, REFRESH_MAX_AGE, anonClient, cookieOptions } from "./anon";
 
@@ -37,6 +37,17 @@ export async function requireUser() {
   const session = await requireVerifiedUser();
   if (!(await userIsApproved(session.user, session.token))) redirect("/pending");
   return session;
+}
+
+/**
+ * The platform admin (you). `is_admin` lives in app_metadata, which users cannot edit;
+ * grant it with `npm run make-admin -- you@example.com`. Everyone else gets a 404, so the
+ * admin pages don't even reveal that they exist.
+ */
+export async function requireAdmin() {
+  const { user } = await requireVerifiedUser();
+  if (user.app_metadata?.is_admin !== true) notFound();
+  return user;
 }
 
 /**

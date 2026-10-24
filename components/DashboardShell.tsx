@@ -19,10 +19,11 @@ const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard/usage", label: "Usage", icon: "chart" },
 ];
 
-function Nav({ pathname }: { pathname: string }) {
+function Nav({ pathname, isAdmin }: { pathname: string; isAdmin: boolean }) {
+  const items = isAdmin ? [...ITEMS, { href: "/admin/signups", label: "Admin: sign-ups", icon: "shield" as IconName }] : ITEMS;
   return (
     <nav className="nav" aria-label="Main">
-      {ITEMS.map((i) => {
+      {items.map((i) => {
         const active = i.href === "/dashboard" ? pathname === i.href : pathname === i.href || pathname.startsWith(`${i.href}/`);
         return (
           <Link key={i.href} href={i.href} aria-current={active ? "page" : undefined}>
@@ -35,8 +36,8 @@ function Nav({ pathname }: { pathname: string }) {
 }
 
 export default function DashboardShell({
-  businessName, signOut, children,
-}: { businessName: string; signOut: () => Promise<void>; children: React.ReactNode }) {
+  businessName, signOut, isAdmin = false, children,
+}: { businessName: string; signOut: () => Promise<void>; isAdmin?: boolean; children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [pathname]); // close the phone menu after navigating
@@ -46,7 +47,7 @@ export default function DashboardShell({
       <a className="skip-link" href="#main">Skip to content</a>
       <aside className="sidebar">
         <Link href="/dashboard" className="brand"><Logo size={34} /> AG Enterprises<br />and Technologies</Link>
-        <Nav pathname={pathname} />
+        <Nav pathname={pathname} isAdmin={isAdmin} />
       </aside>
 
       <div className="main">
@@ -64,7 +65,7 @@ export default function DashboardShell({
             <SubmitButton variant="secondary" small pendingText="Signing out..."><Icon name="logout" size={16} /> Sign out</SubmitButton>
           </form>
         </header>
-        <div id="mobile-nav" className="mobile-nav" hidden={!open}><Nav pathname={pathname} /></div>
+        <div id="mobile-nav" className="mobile-nav" hidden={!open}><Nav pathname={pathname} isAdmin={isAdmin} /></div>
         <main id="main" className="content" tabIndex={-1}>{children}</main>
       </div>
     </div>

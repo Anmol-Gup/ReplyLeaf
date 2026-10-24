@@ -16,5 +16,5 @@ export async function login(formData: FormData) {
   if (error || !data.session) redirect("/login?error=invalid");
 
   await setSessionCookies(data.session);
-  redirect("/dashboard");
+  redirect(data.user?.app_metadata?.is_admin === true ? "/admin/signups" : "/dashboard");
 }

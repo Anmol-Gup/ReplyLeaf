@@ -18,7 +18,10 @@
     "create-owner": "npm run build:node && node --env-file=.env .build/scripts/create-owner.js",
     "offboard-client": "npm run build:node && node --env-file=.env .build/scripts/offboard-client.js",
     "approve-user": "npm run build:node && node --env-file=.env .build/scripts/approve-user.js",
-    "list-signups": "npm run build:node && node --env-file=.env .build/scripts/list-signups.js"
+    "list-signups": "npm run build:node && node --env-file=.env .build/scripts/list-signups.js",
+    "make-admin": "npm run build:node && node --env-file=.env .build/scripts/make-admin.js",
+    "email-templates": "npm run build:node && node --env-file=.env .build/scripts/email-templates.js",
+    "push-email-template": "npm run build:node && node --env-file=.env .build/scripts/push-email-template.js"
   },
   "dependencies": {
     "@google/genai": "^2.31.0",

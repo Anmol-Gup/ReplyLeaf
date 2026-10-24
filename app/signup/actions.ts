@@ -2,8 +2,6 @@
 
 import { redirect } from "next/navigation";
 import { anonClient } from "../../lib/auth/anon";
-import { getMailer } from "../../lib/email/mailer";
-import { signupNotificationEmail } from "../../lib/email/templates";
 import { signupMode, signupSchema } from "../../lib/signup";
 
 export async function signUp(formData: FormData) {
@@ -12,7 +10,7 @@ export async function signUp(formData: FormData) {
 
   const raw = Object.fromEntries(formData);
   // Honeypot: only bots fill the hidden field. Pretend it worked and do nothing.
-  if (String(raw.website ?? "") !== "") redirect("/signup/check-email");
+  if (String(raw.website ?? "") !== "") redirect("/signup?sent=1");
 
   const parsed = signupSchema.safeParse({ email: raw.email, password: raw.password, business: raw.business });
   if (!parsed.success) {
@@ -31,17 +29,11 @@ export async function signUp(formData: FormData) {
     redirect(`/signup?error=${error.status === 429 ? "busy" : "failed"}`);
   }
 
-  // Tell the admin about a genuinely NEW account. For an address that already exists Supabase
-  // returns an empty identities list, and we say nothing either way, so the form cannot be
-  // used to discover which emails are registered.
-  if (data.user?.identities?.length) {
-    try {
-      const to = process.env.ADMIN_ALERT_EMAIL;
-      const mailer = getMailer();
-      if (to && mailer) await mailer.send(signupNotificationEmail({ to, email, business, mode }));
-    } catch (e) {
-      console.error("sign-up notification failed", e instanceof Error ? e.message : e);
-    }
-  }
-  redirect("/signup/check-email");
+  // Supabase has now emailed the verification link (styled by the template you push with
+  // `npm run push-email-template`). The admin is told later, once the address is VERIFIED,
+  // so unverified or mistyped addresses never reach your inbox, and nobody can make us email
+  // an arbitrary third party. The same answer is shown for new and already-registered
+  // addresses, so this form cannot be used to find out who has an account.
+  void data;
+  redirect("/signup?sent=1");
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import Logo from "../../components/Logo";
+import SignupSentDialog from "../../components/SignupSentDialog";
 import SubmitButton from "../../components/SubmitButton";
 import { Alert } from "../../components/ui";
 import { COMPANY_NAME, privacyUrl, termsUrl } from "../../lib/brand";
@@ -14,15 +15,16 @@ const ERRORS: Record<string, string> = {
   failed: "We couldn't create your account. Please try again.",
 };
 
-export default async function SignupPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function SignupPage({ searchParams }: { searchParams: Promise<{ error?: string; sent?: string }> }) {
   const mode = signupMode();
   if (mode === "off") redirect("/login");
-  const { error } = await searchParams;
+  const { error, sent } = await searchParams;
   const privacy = privacyUrl();
   const terms = termsUrl();
 
   return (
     <main className="auth" id="main">
+      {sent === "1" && <SignupSentDialog approval={mode === "approval"} />}
       <div className="card">
         <div className="auth-brand">
           <Logo size={48} />

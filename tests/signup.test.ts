@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { approvedEmail, signupNotificationEmail } from "../lib/email/templates";
+import { approvedEmail, pendingUserEmail, signupNotificationEmail } from "../lib/email/templates";
 import { hasApprovedFlag, isApproved, signupMode, signupSchema } from "../lib/signup";
 
 test("signup mode defaults to approval and never falls back to open by accident", () => {
@@ -60,15 +60,33 @@ test("the honeypot field must stay empty", () => {
   assert.ok(!signupSchema.safeParse({ ...valid, website: "http://spam.example" }).success);
 });
 
-test("admin sign-up email tells the admin how to approve, and keeps header text on one line", () => {
-  const m = signupNotificationEmail({ to: "admin@x.co", email: "owner@example.com", business: "Bright Smile\nBcc: evil@x.co", mode: "approval" });
+test("admin sign-up email links to the approval page and keeps header text on one line", () => {
+  const m = signupNotificationEmail({ to: "admin@x.co", email: "owner@example.com", business: "Bright Smile\nBcc: evil@x.co", appUrl: "https://app.example.com/" });
   assert.ok(!m.subject.includes("\n"));
+  assert.match(m.text, /https:\/\/app\.example\.com\/admin\/signups/);
   assert.match(m.text, /npm run approve-user -- owner@example\.com/);
-  const open = signupNotificationEmail({ to: "a@x.co", email: "o@e.com", business: "B", mode: "open" });
-  assert.doesNotMatch(open.text, /approve-user/);
+  assert.match(m.html ?? "", /href="https:\/\/app\.example\.com\/admin\/signups"/);
+  assert.match(m.html ?? "", /Review and approve/);
 });
 
-test("approval email links to the sign-in page", () => {
-  assert.match(approvedEmail({ to: "o@e.com", appUrl: "https://app.example.com/" }).text, /https:\/\/app\.example\.com\/login/);
+test("without APP_URL the admin email falls back to the terminal command", () => {
+  const m = signupNotificationEmail({ to: "a@x.co", email: "o@e.com", business: "B" });
+  assert.doesNotMatch(m.html ?? "", /<a href=/);
+  assert.match(m.html ?? "", /npm run approve-user -- o@e\.com/);
+});
+
+test("the waiting-list email to the user is a separate, friendly HTML email", () => {
+  const m = pendingUserEmail({ to: "o@e.com", business: "Bright Smile" });
+  assert.equal(m.to, "o@e.com");
+  assert.match(m.subject, /on the list/i);
+  assert.match(m.html ?? "", /You&#39;re on the list/);
+  assert.match(m.html ?? "", /Bright Smile/);
+  assert.match(m.text, /waiting list/);
+});
+
+test("approval email links to the sign-in page, in HTML and text", () => {
+  const m = approvedEmail({ to: "o@e.com", appUrl: "https://app.example.com/" });
+  assert.match(m.text, /https:\/\/app\.example\.com\/login/);
+  assert.match(m.html ?? "", /href="https:\/\/app\.example\.com\/login"/);
   assert.doesNotMatch(approvedEmail({ to: "o@e.com" }).text, /Sign in:/);
 });
