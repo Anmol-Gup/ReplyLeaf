@@ -36,6 +36,12 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
     });
 
   async function start() {
+    // Meta's SDK refuses to open the popup from any http:// page (even localhost).
+    if (window.location.protocol !== "https:") {
+      setStatus("error");
+      setMessage("WhatsApp only allows this connection from a secure address. Open this page using an https:// address (your deployed site, or an https tunnel such as ngrok), not http://.");
+      return;
+    }
     if (!name.trim()) { setStatus("error"); setMessage("Please enter your business name first."); return; }
     setStatus("working"); setMessage("Waiting for the WhatsApp window...");
     assets.current = null;

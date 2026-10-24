@@ -110,6 +110,12 @@ Replace `YOUR-APP.vercel.app` with your production domain. Menu names come from 
    - **Webhook fields to subscribe:** `messages` **and `account_update`**
 5. **Going live with real customers:** App Review with **advanced access** to both permissions, Business Verification, and the app switched to Live mode. **Real clients can only complete onboarding after your Tech Provider approval.** Until then only people with a role (admin, developer, tester) on your app can finish the flow (Development Mode).
 
+### Testing Embedded Signup from your own computer
+Meta's popup refuses to open from any `http://` page, including `http://localhost:3000` (you will see "The method FB.login can no longer be called from http pages"). Use an **https** address instead:
+- **Easiest:** test on your deployed Vercel URL. It is stable, so the Meta settings above only need entering once.
+- **Locally:** run `npm run dev` and `ngrok http 3000`, then open **the https ngrok address** (not localhost) for `/onboarding`. Free ngrok addresses change every time, so each new address must be added to **Allowed Domains for the JavaScript SDK** and **Valid OAuth Redirect URIs** in Meta, and `APP_URL` should be set to it. The dev server already accepts ngrok and Cloudflare tunnel hosts.
+The app also shows a plain message on the Connect page if you open it over http, instead of failing silently.
+
 ## Manual test checklist: Embedded Signup in Development Mode
 
 Needs a deployed app with all env vars set, migrations 0001 to 0008 applied, and a Facebook account that has a role on your Meta app.
