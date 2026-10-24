@@ -1,4 +1,5 @@
 import "./globals.css";
+import AuthHashHandler from "../components/AuthHashHandler";
 import { COMPANY_NAME, PRODUCT_NAME } from "../lib/brand";
 
 export const metadata = {
@@ -9,7 +10,10 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AuthHashHandler />
+        {children}
+      </body>
     </html>
   );
 }

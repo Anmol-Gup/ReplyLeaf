@@ -12,7 +12,9 @@ export async function login(formData: FormData) {
   if (!parsed.success) redirect("/login?error=invalid");
 
   const { data, error } = await anonClient().auth.signInWithPassword(parsed.data);
-  // One generic message: never reveal whether the account exists.
+  // Supabase only reports "email not confirmed" after the password was right, so saying so
+  // reveals nothing to a stranger. Every other failure gets one generic message.
+  if (error?.code === "email_not_confirmed") redirect("/login?error=unverified");
   if (error || !data.session) redirect("/login?error=invalid");
 
   await setSessionCookies(data.session);

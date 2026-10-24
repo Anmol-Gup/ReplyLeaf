@@ -31,11 +31,13 @@ test("layout without a button or footer still renders", () => {
 test("Supabase confirmation template keeps Supabase's placeholders intact", () => {
   const { subject, html } = confirmSignupTemplate();
   assert.match(subject, /Confirm your email/);
-  assert.match(html, /href="\{\{ \.ConfirmationURL \}\}"/); // the button
+  // the button goes through OUR confirm page, using Supabase's token hash
+  assert.match(html, /href="\{\{ \.SiteURL \}\}\/auth\/confirm\?token_hash=\{\{ \.TokenHash \}\}&amp;type=email"/);
+  assert.doesNotMatch(html, /ConfirmationURL/);
   assert.match(html, /\{\{ \.Email \}\}/);
   assert.match(html, /Confirm my email/);
   assert.match(html, /AG Enterprises and Technologies/);
-  assert.equal((html.match(/\{\{ \.ConfirmationURL \}\}/g) ?? []).length, 3); // button href, fallback href, fallback text
+  assert.equal((html.match(/\{\{ \.TokenHash \}\}/g) ?? []).length, 3); // button href, fallback href, fallback text
 });
 
 // ---- admin sign-up list ----

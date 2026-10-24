@@ -18,7 +18,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <p className="muted">{COMPANY_NAME}</p>
           </div>
         </div>
-        {error && <div style={{ marginBottom: 16 }}><Alert kind="error">Email or password is incorrect. Please try again.</Alert></div>}
+        {error === "unverified" ? (
+          <div style={{ marginBottom: 16 }}>
+            <Alert kind="warn">Please verify your email first. Open the link we sent you, or <Link href="/verified?error=expired">request a new one</Link>.</Alert>
+          </div>
+        ) : error && <div style={{ marginBottom: 16 }}><Alert kind="error">Email or password is incorrect. Please try again.</Alert></div>}
         <form action={login} className="stack">
           <label className="field">Email<input name="email" type="email" required autoComplete="username" autoFocus /></label>
           <label className="field">Password<input name="password" type="password" required autoComplete="current-password" /></label>

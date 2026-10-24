@@ -82,7 +82,9 @@ export function confirmSignupTemplate(): { subject: string; html: string } {
       paragraphs: [
         "Thanks for signing up. Please confirm that {{ .Email }} is your email address to finish creating your account.",
       ],
-      button: { label: "Confirm my email", url: "{{ .ConfirmationURL }}" },
+      // Through our own /auth/confirm page (token_hash flow): verified on the server, only when the
+      // person presses the button there. Needs Supabase's Site URL to be this app's URL.
+      button: { label: "Confirm my email", url: "{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email" },
       footer: "If you didn't create an account, you can safely ignore this email. The link only works once.",
     }),
   };
