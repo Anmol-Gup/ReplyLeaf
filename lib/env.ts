@@ -9,6 +9,9 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   ENCRYPTION_KEY: z.string().min(1),
+  // Public "anon"/publishable key, used by the dashboard. Optional here because the
+  // webhook does not need it; lib/auth/anon.ts requires it.
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof schema>;

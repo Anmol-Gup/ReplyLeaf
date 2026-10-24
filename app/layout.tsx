@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = { title: "WhatsApp AI Assistant" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

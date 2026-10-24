@@ -2,7 +2,7 @@
 
 Next.js (App Router, TypeScript) on Vercel + Supabase (Postgres, pgvector, Auth). Small businesses connect a WhatsApp number; an AI assistant answers customers using only that business's knowledge base.
 
-**Status: Stage 3 of 6 (in progress, see git log).** Webhook, dedupe, message batching, AI replies from a pasted knowledge base (Gemini or OpenAI), sample-question eval. CRM, booking requests, email alerts and the dashboard come in later stages.
+**Status: Stage 4 of 6 (in progress, see git log).** Webhook, dedupe, message batching, AI replies from a pasted knowledge base (Gemini or OpenAI), sample-question eval. CRM, booking requests, email alerts and the dashboard come in later stages.
 
 ## How it works
 1. `POST /api/webhooks/whatsapp` verifies `X-Hub-Signature-256` (HMAC-SHA256 of the **raw** body, constant-time compare). Invalid signature: 401.
@@ -21,6 +21,14 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 - Owner emails (new lead, new booking request, conversation needs a human) go to `clients.owner_email`; failures go to `ADMIN_ALERT_EMAIL` (first alert of a kind per client per 10 minutes is emailed, the rest stay in `admin_alerts`). Email uses nodemailer + Gmail SMTP behind the `Mailer` interface in `lib/email/mailer.ts`; to swap providers write another implementation there. Emails are plain text and subjects are forced to one line.
 - Bookkeeping that fails *after* the customer already got their reply is alerted but never triggers the "something went wrong" fallback message.
 - **Gmail setup:** turn on 2-step verification, create an app password at myaccount.google.com/apppasswords, then set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_ALERT_EMAIL`, and `APP_URL`. With these unset, emails are skipped (a warning is logged) and everything else still works. Set the owner address with `OWNER_EMAIL=... npm run create-client`.
+
+**Owner dashboard (Stage 4)** at `/dashboard`: conversations (takeover / hand back / reply from the dashboard), contacts (edit, confirm or dismiss model suggestions, delete a person's data), booking requests (confirm / decline), knowledge base editor, settings (business info, hours, booking link, AI provider, alert email), usage (tokens, monthly cap).
+- **Login:** Supabase Auth email + password, no social login. There is no public sign-up: create owners with `CLIENT_ID=<uuid> OWNER_LOGIN_EMAIL=... OWNER_PASSWORD='12+ chars' npm run create-owner`. Needs `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env`.
+- **Sessions** use plain supabase-js (no extra package): the login action stores the tokens in httpOnly cookies, `proxy.ts` refreshes them, and every page re-verifies the user with Supabase (`requireClient()` in `lib/auth/session.ts`).
+- **Tenant isolation, two layers:** page reads use a client carrying the owner's own JWT, so RLS applies. Writes (server actions) use the service role but always filter by the `client_id` derived from the verified membership, never from form input. `supabase/tests/rls_isolation.test.sql` is a pgTAP test of the isolation rules (`npx supabase test db`, needs Docker; not yet run).
+- **Human reply:** you must take over a conversation first (the assistant stays silent while you handle it). Replies outside the 24-hour window are blocked, recorded as "NOT SENT", and shown with a clear warning.
+- A confirmed or declined booking request does not message the customer; reply to them yourself from the conversation.
+- A user with a login but no linked business is sent to `/onboarding` (Stage 6).
 
 **Prompt-injection stance:** the system prompt holds only our rules and the owner's knowledge. Customer text goes only inside `<customer_messages>` tags in a user turn (our closing tag is stripped from it), is labelled untrusted, and the model has no tools, so it cannot read other customers' data or change settings.
 
@@ -94,5 +102,5 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 ## Known limits (planned)
 - Knowledge base is plain pasted text with no search (Stage 5 adds chunking and vector search).
 - Each webhook invocation sleeps ~5s for the batch window; fine at small scale.
-- Dashboard, retention and deletion jobs, daily check and Embedded Signup come in later stages.
+- Knowledge base documents, retention and deletion jobs, the daily check and Embedded Signup come in later stages.
 - **Real clients can only onboard after Tech Provider approval** (Stage 6, Embedded Signup). Until then only Meta's test number, or numbers in your own WABA, work.
