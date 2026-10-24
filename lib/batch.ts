@@ -1,8 +1,11 @@
+import { z } from "zod";
 import { errorText } from "./inbound";
+import type { OwnerEvent } from "./email/templates";
 import type { PromptClient } from "./ai/prompt";
 import type { ChatTurn, Provider } from "./ai/providers";
 import type { GenerateReplyOutput, Usage } from "./ai/generate-reply";
 import { InvalidModelOutputError } from "./ai/generate-reply";
+import type { ReplyResult } from "./ai/schema";
 import { isWithinWindow } from "./whatsapp/window";
 
 // Batch worker: turns the pending messages of one conversation into ONE reply.
@@ -35,6 +38,7 @@ export type BatchContext = {
     failedAnswerCount: number;
     lastCustomerMessageAt: Date | null;
   };
+  contact: { id: string; name: string | null };
   phone: string;
   pending: PendingItem[]; // oldest first
   history: ChatTurn[]; // earlier turns, customer turns already wrapped
@@ -65,6 +69,12 @@ export interface BatchDeps {
   updateConversation(clientId: string, conversationId: string, patch: { handling?: "human_active"; failedAnswerCount?: number }): Promise<void>;
   recordFailedUsage(clientId: string, usage: Usage, provider: Provider, model: string): Promise<void>;
   raiseAlert(clientId: string | null, kind: string, detail: string, opts?: { oncePerMonth?: boolean }): Promise<void>;
+  /** Fills empty contact fields; differing values go to contacts.suggested for the owner to confirm. */
+  applyContactDetails(clientId: string, contactId: string, details: { name: string | null; email: string | null }): Promise<void>;
+  saveBookingRequest(clientId: string, contactId: string, conversationId: string, b: { service: string; preferredTime: string; name: string }): Promise<{ created: boolean }>;
+  /** True only for the call that flipped the contact from 'new' to 'lead'. */
+  markLead(clientId: string, contactId: string): Promise<boolean>;
+  notifyOwner(clientId: string, event: OwnerEvent): Promise<void>;
   findDueBatches(limit: number): Promise<string[]>;
   sleep(ms: number): Promise<void>;
 }
@@ -156,13 +166,87 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
   const gen = await deps.generate(ctx, lines, hasMedia);
   await sendGuarded(ctx, deps, now, gen.result.reply, { usage: gen.usage, provider: gen.provider, model: gen.model });
 
-  // Handoff rules: customer asked for a person / is upset (model intent), or two failed answers in a row.
-  const failed = gen.result.answered ? 0 : conversation.failedAnswerCount + 1;
-  const handoff = gen.result.intent === "human_needed" || failed >= HANDOFF_AFTER_FAILED_ANSWERS;
-  await deps.updateConversation(client.id, conversation.id, {
-    failedAnswerCount: failed,
-    ...(handoff ? { handling: "human_active" as const } : {}),
+  // The customer has their reply. Everything below is bookkeeping: a failure
+  // here is alerted but must NOT trigger the "something went wrong" fallback.
+  await afterReply(ctx, deps, gen.result, lines);
+}
+
+async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResult, lines: string[]): Promise<void> {
+  const { client, conversation, contact } = ctx;
+  const lastMessage = lines.join(" / ");
+
+  // CRM: model-extracted details are guesses; validate, then store as suggestions.
+  const details = cleanContactDetails(result.contact);
+  if (details.name || details.email) {
+    await safely(deps, client.id, "crm", () => deps.applyContactDetails(client.id, contact.id, details));
+  }
+
+  // First time we hear from this contact: they become a lead (owner emailed once).
+  await safely(deps, client.id, "lead", async () => {
+    if (await deps.markLead(client.id, contact.id)) {
+      await deps.notifyOwner(client.id, { type: "new_lead", contactName: contact.name, phone: ctx.phone, firstMessage: lastMessage });
+    }
   });
+
+  // Booking: with a booking link the model just shares it. Without one we save a
+  // request once the model has all three details, and email the owner.
+  const b = result.booking;
+  if (result.intent === "booking" && !client.bookingLink && b.service && b.preferred_time && b.name) {
+    await safely(deps, client.id, "booking", async () => {
+      const saved = await deps.saveBookingRequest(client.id, contact.id, conversation.id, {
+        service: b.service as string, preferredTime: b.preferred_time as string, name: b.name as string,
+      });
+      if (saved.created) {
+        await deps.notifyOwner(client.id, {
+          type: "new_booking", contactName: contact.name, phone: ctx.phone,
+          service: b.service as string, preferredTime: b.preferred_time as string, bookingName: b.name as string,
+        });
+      }
+    });
+  }
+
+  // Handoff rules: customer asked for a person / is upset (model intent), or two failed answers in a row.
+  const failed = result.answered ? 0 : conversation.failedAnswerCount + 1;
+  const askedForHuman = result.intent === "human_needed";
+  const handoff = askedForHuman || failed >= HANDOFF_AFTER_FAILED_ANSWERS;
+  await safely(deps, client.id, "conversation", async () => {
+    await deps.updateConversation(client.id, conversation.id, {
+      failedAnswerCount: failed,
+      ...(handoff ? { handling: "human_active" as const } : {}),
+    });
+    if (handoff) {
+      await deps.notifyOwner(client.id, {
+        type: "needs_human", contactName: contact.name, phone: ctx.phone, lastMessage,
+        reason: askedForHuman ? "customer_request_or_upset" : "failed_answers",
+      });
+    }
+  });
+}
+
+const emailSchema = z.string().email().max(200);
+
+/** Trim, drop junk like "n/a", and require a real email address before anything is stored. */
+export function cleanContactDetails(c: ReplyResult["contact"]): { name: string | null; email: string | null } {
+  const name = c.name?.trim();
+  const email = emailSchema.safeParse(c.email?.trim());
+  return {
+    name: name && name.length >= 2 && !/^(n\/a|none|unknown|null)$/i.test(name) ? name : null,
+    email: email.success ? email.data : null,
+  };
+}
+
+// Runs a bookkeeping step; on failure logs and alerts instead of throwing.
+async function safely(deps: BatchDeps, clientId: string, step: string, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    console.error(`post-reply step failed: ${step}`, errorText(e));
+    try {
+      await deps.raiseAlert(clientId, "post_reply_step_failed", `${step}: ${errorText(e)}`);
+    } catch {
+      /* alerting must never throw here */
+    }
+  }
 }
 
 // Every outbound free-form message goes through here: 24h window check first.

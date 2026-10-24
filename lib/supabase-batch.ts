@@ -3,7 +3,7 @@ import { generateReply } from "./ai/generate-reply";
 import { buildSystemPrompt, wrapCustomerMessages } from "./ai/prompt";
 import type { ChatTurn, Provider } from "./ai/providers";
 import type { BatchContext, BatchDeps } from "./batch";
-import { raiseAlert, sendClientText } from "./supabase-deps";
+import { notifyOwner, raiseAlert, sendClientText } from "./supabase-deps";
 import { supabaseAdmin } from "./supabase-admin";
 
 const HISTORY_TURNS = 12;
@@ -38,7 +38,7 @@ export function supabaseBatchDeps(): BatchDeps {
         db.from("clients")
           .select("id, name, wa_phone_number_id, ai_provider, business_info, business_hours, booking_link, kb_text, monthly_message_cap")
           .eq("id", clientId).single(),
-        db.from("contacts").select("phone").eq("client_id", clientId).eq("id", conv.contact_id).single(),
+        db.from("contacts").select("id, phone, name").eq("client_id", clientId).eq("id", conv.contact_id).single(),
         db.from("pending_messages").select("id, message_id, created_at")
           .eq("client_id", clientId).eq("conversation_id", conversationId).order("created_at"),
         db.from("messages").select("id, direction, type, body, status, created_at")
@@ -90,6 +90,7 @@ export function supabaseBatchDeps(): BatchDeps {
           id: conv.id, handling: conv.handling, failedAnswerCount: conv.failed_answer_count,
           lastCustomerMessageAt: conv.last_customer_message_at ? new Date(conv.last_customer_message_at) : null,
         },
+        contact: { id: contact.data!.id, name: contact.data!.name },
         phone: contact.data!.phone,
         pending,
         history,
@@ -162,6 +163,31 @@ export function supabaseBatchDeps(): BatchDeps {
         input_tokens: usage.inputTokens, output_tokens: usage.outputTokens,
       });
     },
+
+    async applyContactDetails(clientId, contactId, details) {
+      const { error } = await db.rpc("apply_contact_details", {
+        p_client_id: clientId, p_contact_id: contactId, p_name: details.name, p_email: details.email,
+      });
+      if (error) throw new Error(`apply_contact_details failed: ${error.message}`);
+    },
+
+    async saveBookingRequest(clientId, contactId, conversationId, b) {
+      const { data, error } = await db.rpc("save_booking_request", {
+        p_client_id: clientId, p_contact_id: contactId, p_conversation_id: conversationId,
+        p_service: b.service, p_preferred_time: b.preferredTime, p_name: b.name,
+      });
+      if (error) throw new Error(`save_booking_request failed: ${error.message}`);
+      const row = Array.isArray(data) ? data[0] : data;
+      return { created: row.out_created === true };
+    },
+
+    async markLead(clientId, contactId) {
+      const { data, error } = await db.rpc("mark_contact_lead", { p_client_id: clientId, p_contact_id: contactId });
+      if (error) throw new Error(`mark_contact_lead failed: ${error.message}`);
+      return data === true;
+    },
+
+    notifyOwner,
 
     raiseAlert,
 

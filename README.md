@@ -2,7 +2,7 @@
 
 Next.js (App Router, TypeScript) on Vercel + Supabase (Postgres, pgvector, Auth). Small businesses connect a WhatsApp number; an AI assistant answers customers using only that business's knowledge base.
 
-**Status: Stage 2 of 6.** Webhook, dedupe, message batching, AI replies from a pasted knowledge base (Gemini or OpenAI), sample-question eval. CRM, booking requests, email alerts and the dashboard come in later stages.
+**Status: Stage 3 of 6 (in progress, see git log).** Webhook, dedupe, message batching, AI replies from a pasted knowledge base (Gemini or OpenAI), sample-question eval. CRM, booking requests, email alerts and the dashboard come in later stages.
 
 ## How it works
 1. `POST /api/webhooks/whatsapp` verifies `X-Hub-Signature-256` (HMAC-SHA256 of the **raw** body, constant-time compare). Invalid signature: 401.
@@ -13,6 +13,14 @@ Next.js (App Router, TypeScript) on Vercel + Supabase (Postgres, pgvector, Auth)
 6. `generateReply()` (`lib/ai/generate-reply.ts`) calls the client's provider (Gemini or OpenAI adapter in `lib/ai/providers.ts`) and asks for JSON. The output is parsed and validated with Zod; on failure it retries once, then throws. Nothing downstream sees unvalidated output. Input/output tokens are stored on the message and in `usage_events`.
 
 Rules enforced in code: human takeover (`human_active`) keeps the bot silent; auto-handoff on `intent = human_needed` or two failed answers in a row; free-form sends only inside the 24-hour window (otherwise recorded as `blocked`); media-only messages get a "please send text" reply with no AI call; per-customer limit of 30 messages/hour; per-client monthly reply cap (`clients.monthly_message_cap`) checked before each model call; any failure writes an `admin_alerts` row and sends the customer a safe fallback (admin **email** arrives in Stage 3).
+
+**CRM, booking and owner alerts (Stage 3):**
+- Every person who messages becomes a contact. A contact's first reply flips it from `new` to `lead` and emails the owner (once, guarded by an atomic SQL update).
+- Names/emails the model extracts are guesses. `apply_contact_details` fills **empty** fields only; a different value is stored in `contacts.suggested` for the owner to confirm (dashboard, Stage 4). Emails must pass Zod validation first; junk like "n/a" is dropped.
+- Booking: if the client has a `booking_link`, the model shares it and never says "booked". If not, once the model has service + preferred time + name, a `booking_requests` row is saved (one open request per conversation, later messages refine it) and the owner is emailed.
+- Owner emails (new lead, new booking request, conversation needs a human) go to `clients.owner_email`; failures go to `ADMIN_ALERT_EMAIL` (first alert of a kind per client per 10 minutes is emailed, the rest stay in `admin_alerts`). Email uses nodemailer + Gmail SMTP behind the `Mailer` interface in `lib/email/mailer.ts`; to swap providers write another implementation there. Emails are plain text and subjects are forced to one line.
+- Bookkeeping that fails *after* the customer already got their reply is alerted but never triggers the "something went wrong" fallback message.
+- **Gmail setup:** turn on 2-step verification, create an app password at myaccount.google.com/apppasswords, then set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_ALERT_EMAIL`, and `APP_URL`. With these unset, emails are skipped (a warning is logged) and everything else still works. Set the owner address with `OWNER_EMAIL=... npm run create-client`.
 
 **Prompt-injection stance:** the system prompt holds only our rules and the owner's knowledge. Customer text goes only inside `<customer_messages>` tags in a user turn (our closing tag is stripped from it), is labelled untrusted, and the model has no tools, so it cannot read other customers' data or change settings.
 
@@ -84,8 +92,6 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 - Tokens are never logged or returned to the browser.
 
 ## Known limits (planned)
-- **Not for real customers yet:** booking requests are not saved and no emails are sent (Stage 3), so the no-link booking flow only collects details in chat.
-- Model-extracted contact and booking details are validated but not stored yet (Stage 3).
 - Knowledge base is plain pasted text with no search (Stage 5 adds chunking and vector search).
 - Each webhook invocation sleeps ~5s for the batch window; fine at small scale.
 - Dashboard, retention and deletion jobs, daily check and Embedded Signup come in later stages.

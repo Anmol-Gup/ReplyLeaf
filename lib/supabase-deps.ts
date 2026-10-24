@@ -1,4 +1,6 @@
 import { decryptSecret } from "./crypto";
+import { getMailer } from "./email/mailer";
+import { adminAlertEmail, ownerEmail, type OwnerEvent } from "./email/templates";
 import { env } from "./env";
 import type { InboundDeps } from "./inbound";
 import { supabaseAdmin } from "./supabase-admin";
@@ -20,9 +22,52 @@ export async function raiseAlert(
       .eq("client_id", clientId).eq("kind", kind).gte("created_at", monthStart);
     if (count) return; // already alerted this month
   }
-  // Stage 3 adds the admin email; for now alerts are recorded in the table.
-  const { error } = await db.from("admin_alerts").insert({ client_id: clientId, kind, detail });
+  const { data, error } = await db.from("admin_alerts").insert({ client_id: clientId, kind, detail }).select("id").single();
   if (error) throw new Error(`could not save alert: ${error.message}`);
+  await emailAdmin(data.id, clientId, kind, detail);
+}
+
+// Email the admin about an alert. Never throws: alerting must not cause more failures.
+async function emailAdmin(alertId: string, clientId: string | null, kind: string, detail: string): Promise<void> {
+  try {
+    const to = process.env.ADMIN_ALERT_EMAIL;
+    const mailer = getMailer();
+    if (!to || !mailer) {
+      console.warn("admin alert not emailed (set ADMIN_ALERT_EMAIL and GMAIL_* to enable)", kind);
+      return;
+    }
+    const db = supabaseAdmin();
+    // Storm guard: during an outage every message fails the same way. Email the
+    // first alert of a kind per client in a 10-minute window; the rest stay in the table.
+    const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    let q = db.from("admin_alerts").select("id", { count: "exact", head: true }).eq("kind", kind).gte("created_at", since);
+    q = clientId ? q.eq("client_id", clientId) : q.is("client_id", null);
+    const { count } = await q;
+    if ((count ?? 0) > 1) return;
+
+    let clientName: string | null = null;
+    if (clientId) {
+      const { data } = await db.from("clients").select("name").eq("id", clientId).maybeSingle();
+      clientName = data?.name ?? null;
+    }
+    await mailer.send(adminAlertEmail({ to, kind, detail, clientName }));
+    await db.from("admin_alerts").update({ emailed_at: new Date().toISOString() }).eq("id", alertId);
+  } catch (e) {
+    console.error("admin alert email failed", e instanceof Error ? e.message : e);
+  }
+}
+
+// Owner alerts (new lead, new booking request, needs a human) go to clients.owner_email.
+export async function notifyOwner(clientId: string, event: OwnerEvent): Promise<void> {
+  const { data, error } = await supabaseAdmin()
+    .from("clients").select("name, owner_email").eq("id", clientId).single();
+  if (error) throw new Error(`owner lookup failed: ${error.message}`);
+  const mailer = getMailer();
+  if (!data.owner_email || !mailer) {
+    console.warn("owner alert not emailed (no owner_email or GMAIL_* not set)", event.type);
+    return;
+  }
+  await mailer.send(ownerEmail(event, { to: data.owner_email, businessName: data.name, appUrl: process.env.APP_URL }));
 }
 
 // Looks up and decrypts this client's token, then calls the Cloud API.

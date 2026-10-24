@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CAP_REPLY, CUSTOMER_MESSAGES_PER_HOUR, FALLBACK_REPLY, NON_TEXT_REPLY,
+  CAP_REPLY, cleanContactDetails, CUSTOMER_MESSAGES_PER_HOUR, FALLBACK_REPLY, NON_TEXT_REPLY,
   processConversationBatch, runBatches, sweepDueBatches,
   type BatchContext, type BatchDeps, type SaveReply,
 } from "../lib/batch";
 import { InvalidModelOutputError } from "../lib/ai/generate-reply";
 import type { ReplyResult } from "../lib/ai/schema";
+import type { OwnerEvent } from "../lib/email/templates";
 import { WINDOW_MS } from "../lib/whatsapp/window";
 
 const NOW = new Date("2026-01-02T12:00:00Z");
@@ -23,6 +24,7 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
       businessInfo: null, businessHours: null, bookingLink: null, kbText: "Open 9-5",
     },
     conversation: { id: "conv1", handling: "bot", failedAnswerCount: 0, lastCustomerMessageAt: NOW, ...conv },
+    contact: { id: "contact1", name: "Asha" },
     phone: "911",
     pending: [{ id: "p1", type: "text", body: "hi" }],
     history: [], repliesThisMonth: 0, recentInboundCount: 1, ...over,
@@ -31,9 +33,11 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
 
 function fakeDeps(ctx: BatchContext | null, opts: {
   gen?: () => Promise<{ result: ReplyResult }>; claimResults?: boolean[]; moreAfter?: boolean[]; sendFails?: boolean;
+  newLead?: boolean; bookingCreated?: boolean; crmFails?: boolean;
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
-    generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0 };
+    generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
+    crm: [] as object[], bookings: [] as object[], owner: [] as OwnerEvent[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -53,6 +57,10 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     updateConversation: async (_c, _v, patch) => void log.conv.push(patch),
     recordFailedUsage: async () => void log.failedUsage++,
     raiseAlert: async (_c, kind) => void log.alerts.push(kind),
+    applyContactDetails: async (_c, _id, d) => { if (opts.crmFails) throw new Error("crm down"); log.crm.push(d); },
+    saveBookingRequest: async (_c, _id, _conv, b) => { log.bookings.push(b); return { created: opts.bookingCreated ?? true }; },
+    markLead: async () => opts.newLead ?? false,
+    notifyOwner: async (_c, e) => void log.owner.push(e),
     findDueBatches: async () => ["convA", "convB"],
     sleep: async () => void log.sleeps++,
   };
@@ -176,4 +184,82 @@ test("sweep processes every overdue batch; runBatches waits then sweeps", async 
   const g = fakeDeps(makeCtx(), { claimResults: [true, true, true] });
   await runBatches(["conv1"], g.deps);
   assert.ok(g.log.sleeps >= 1);
+});
+
+// ---- Stage 3: CRM, leads, booking requests, owner alerts ----
+
+const booking = { service: "cleaning", preferred_time: "tomorrow 10am", name: "Asha K" };
+
+test("new contact becomes a lead and the owner is emailed once", async () => {
+  const f = fakeDeps(makeCtx(), { newLead: true });
+  await run(f.deps);
+  assert.deepEqual(f.log.owner.map((e) => e.type), ["new_lead"]);
+  const again = fakeDeps(makeCtx(), { newLead: false });
+  await run(again.deps);
+  assert.equal(again.log.owner.length, 0); // markLead is false after the first flip
+});
+
+test("model-extracted contact details are cleaned before being stored as suggestions", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ contact: { name: " Ravi Kumar ", email: "ravi@example.com" } }) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.crm, [{ name: "Ravi Kumar", email: "ravi@example.com" }]);
+});
+
+test("junk contact details are dropped and never stored", () => {
+  assert.deepEqual(cleanContactDetails({ name: "n/a", email: "not-an-email" }), { name: null, email: null });
+  assert.deepEqual(cleanContactDetails({ name: "A", email: "" }), { name: null, email: null });
+  assert.deepEqual(cleanContactDetails({ name: null, email: "x@y.co" }), { name: null, email: "x@y.co" });
+});
+
+test("no contact details from the model: nothing is written to the CRM", async () => {
+  const f = fakeDeps(makeCtx());
+  await run(f.deps);
+  assert.equal(f.log.crm.length, 0);
+});
+
+test("booking without a link: request saved and owner emailed once all 3 details are known", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "booking", booking }) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.bookings, [{ service: "cleaning", preferredTime: "tomorrow 10am", name: "Asha K" }]);
+  assert.deepEqual(f.log.owner.map((e) => e.type), ["new_booking"]);
+});
+
+test("refining an existing booking request updates it without a second email", async () => {
+  const f = fakeDeps(makeCtx(), { bookingCreated: false, gen: async () => ({ result: reply({ intent: "booking", booking }) }) });
+  await run(f.deps);
+  assert.equal(f.log.bookings.length, 1);
+  assert.equal(f.log.owner.length, 0);
+});
+
+test("booking details incomplete, or a booking link exists: no request is saved", async () => {
+  const partial = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "booking", booking: { ...booking, name: null } }) }) });
+  await run(partial.deps);
+  assert.equal(partial.log.bookings.length, 0);
+
+  const ctx = makeCtx();
+  ctx.client.bookingLink = "https://cal.example/x";
+  const linked = fakeDeps(ctx, { gen: async () => ({ result: reply({ intent: "booking", booking }) }) });
+  await run(linked.deps);
+  assert.equal(linked.log.bookings.length, 0);
+});
+
+test("handoff emails the owner with the right reason", async () => {
+  const asked = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "human_needed" }) }) });
+  await run(asked.deps);
+  assert.deepEqual(asked.log.owner.map((e) => e.type === "needs_human" && e.reason), ["customer_request_or_upset"]);
+
+  const failed = fakeDeps(makeCtx({}, { failedAnswerCount: 1 }), { gen: async () => ({ result: reply({ answered: false }) }) });
+  await run(failed.deps);
+  assert.deepEqual(failed.log.owner.map((e) => e.type === "needs_human" && e.reason), ["failed_answers"]);
+});
+
+test("a bookkeeping failure after the reply is alerted but does NOT send the fallback", async () => {
+  const f = fakeDeps(makeCtx(), {
+    crmFails: true,
+    gen: async () => ({ result: reply({ contact: { name: "Ravi Kumar", email: null } }) }),
+  });
+  await run(f.deps);
+  assert.deepEqual(f.log.sent, ["We open at 9."]); // only the real reply
+  assert.deepEqual(f.log.alerts, ["post_reply_step_failed"]);
+  assert.equal(f.log.completed.length, 1);
 });

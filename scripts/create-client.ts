@@ -4,6 +4,8 @@
 //   CLIENT_NAME="Test Biz" WA_PHONE_NUMBER_ID=123 WA_ACCESS_TOKEN=EAAG... \
 //     npm run create-client
 //
+//   (optional) OWNER_EMAIL=owner@example.com   # where lead/booking/handoff alerts go
+//
 // The token comes from an env var (not a CLI flag) so it stays out of shell history.
 import { encryptSecret } from "../lib/crypto";
 import { env } from "../lib/env";
@@ -20,7 +22,7 @@ async function main() {
   const db = supabaseAdmin();
   const { data: client, error } = await db
     .from("clients")
-    .insert({ name, wa_phone_number_id: phoneNumberId, wa_waba_id: process.env.WA_WABA_ID ?? null })
+    .insert({ name, wa_phone_number_id: phoneNumberId, wa_waba_id: process.env.WA_WABA_ID ?? null, owner_email: process.env.OWNER_EMAIL ?? null })
     .select("id")
     .single();
   if (error) throw new Error(`creating client failed: ${error.message}`);
