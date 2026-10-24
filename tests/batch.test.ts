@@ -37,7 +37,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
     generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
-    crm: [] as object[], bookings: [] as object[], owner: [] as OwnerEvent[] };
+    crm: [] as object[], bookings: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -61,6 +61,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     saveBookingRequest: async (_c, _id, _conv, b) => { log.bookings.push(b); return { created: opts.bookingCreated ?? true }; },
     markLead: async () => opts.newLead ?? false,
     notifyOwner: async (_c, e) => void log.owner.push(e),
+    logUnanswered: async (_c, _v, q) => void log.unanswered.push(q),
     findDueBatches: async () => ["convA", "convB"],
     sleep: async () => void log.sleeps++,
   };
@@ -262,4 +263,19 @@ test("a bookkeeping failure after the reply is alerted but does NOT send the fal
   assert.deepEqual(f.log.sent, ["We open at 9."]); // only the real reply
   assert.deepEqual(f.log.alerts, ["post_reply_step_failed"]);
   assert.equal(f.log.completed.length, 1);
+});
+
+test("unanswered questions are logged; answered ones and handoffs are not", async () => {
+  const f = fakeDeps(makeCtx({ pending: [{ id: "p1", type: "text", body: "do you do implants" }, { id: "p2", type: "text", body: "and the price?" }] }),
+    { gen: async () => ({ result: reply({ answered: false }) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.unanswered, ["do you do implants / and the price?"]);
+
+  const ok = fakeDeps(makeCtx());
+  await run(ok.deps);
+  assert.equal(ok.log.unanswered.length, 0);
+
+  const human = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ answered: false, intent: "human_needed" }) }) });
+  await run(human.deps);
+  assert.equal(human.log.unanswered.length, 0);
 });

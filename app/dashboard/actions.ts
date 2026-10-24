@@ -7,6 +7,8 @@ import { clearSessionCookies, requireClient } from "../../lib/auth/session";
 import { deleteContactData } from "../../lib/privacy";
 import { supabaseAdmin } from "../../lib/supabase-admin";
 import { sendClientText } from "../../lib/supabase-deps";
+import { ExtractError, extractText, MAX_UPLOAD_BYTES } from "../../lib/kb/extract";
+import { publishDocument, reindexDocument } from "../../lib/kb/publish";
 import { isWithinWindow } from "../../lib/whatsapp/window";
 
 // SECURITY MODEL: every action starts with requireClient(), which verifies the
@@ -171,8 +173,115 @@ export async function updateSettings(formData: FormData) {
 // --------------------------------------------------------------- knowledge
 export async function updateKnowledge(formData: FormData) {
   const { clientId } = await requireClient();
-  const text = z.string().max(30000).safeParse(formData.get("kb_text"));
+  const text = z.string().max(8000).safeParse(formData.get("kb_text"));
   if (!text.success) return flash("/dashboard/knowledge", "invalid");
   await supabaseAdmin().from("clients").update({ kb_text: text.data || null }).eq("id", clientId);
   flash("/dashboard/knowledge", "saved");
+}
+
+// --------------------------------------------------- knowledge: documents
+const KB = "/dashboard/knowledge";
+const titleSchema = z.string().trim().min(1).max(200);
+const contentSchema = z.string().trim().min(1).max(200_000);
+
+// Step 1: paste text or upload a file. Creates a DRAFT only; nothing is searchable
+// until the owner reviews the extracted text and confirms (publishDocumentAction).
+export async function createDocument(formData: FormData) {
+  const { clientId } = await requireClient();
+  const file = formData.get("file");
+  let text = String(formData.get("text") ?? "");
+  let title = String(formData.get("title") ?? "").trim();
+  let source = "paste";
+  let filename: string | null = null;
+
+  if (file instanceof File && file.size > 0) {
+    if (file.size > MAX_UPLOAD_BYTES) return redirect(`${KB}?notice=extract_failed&why=too_large`);
+    try {
+      const out = extractText(file.name, Buffer.from(await file.arrayBuffer()));
+      text = out.text; source = out.source; filename = file.name.slice(0, 200);
+      title ||= file.name.replace(/\.[^.]+$/, "");
+    } catch (e) {
+      const why = e instanceof ExtractError ? e.code : "unreadable";
+      return redirect(`${KB}?notice=extract_failed&why=${why}`);
+    }
+  }
+
+  title ||= text.trim().split("\n")[0]?.slice(0, 80) ?? "";
+  const t = titleSchema.safeParse(title);
+  const c = contentSchema.safeParse(text);
+  if (!t.success || !c.success) return flash(KB, "invalid");
+
+  const { data, error } = await supabaseAdmin().from("kb_documents")
+    .insert({ client_id: clientId, title: t.data, content: c.data, status: "draft", source, filename })
+    .select("id").single();
+  if (error) throw new Error(`creating document failed: ${error.message}`);
+  redirect(`${KB}/documents/${data.id}`);
+}
+
+// Step 2: the owner confirmed the (possibly edited) text. Chunk, embed, publish a new version.
+export async function publishDocumentAction(formData: FormData) {
+  const { clientId, user } = await requireClient();
+  const id = uuid.parse(formData.get("id"));
+  const back = `${KB}/documents/${id}`;
+  const t = titleSchema.safeParse(formData.get("title"));
+  const c = contentSchema.safeParse(formData.get("content"));
+  if (!t.success || !c.success) return flash(back, "invalid");
+  let result;
+  try {
+    result = await publishDocument(clientId, id, t.data, c.data, user.id);
+  } catch (e) {
+    console.error("publish failed", e instanceof Error ? e.message : e);
+    return flash(back, "invalid");
+  }
+  flash(back, result.embedded ? "published" : "published_no_vectors");
+}
+
+export async function discardDraft(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = uuid.parse(formData.get("id"));
+  await supabaseAdmin().from("kb_documents").delete().eq("id", id).eq("client_id", clientId).eq("status", "draft");
+  flash(KB, "discarded");
+}
+
+export async function setDocumentStatus(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = uuid.parse(formData.get("id"));
+  const status = z.enum(["active", "archived"]).parse(formData.get("status"));
+  await supabaseAdmin().from("kb_documents").update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id).eq("client_id", clientId).gt("version", 0);
+  revalidatePath(`${KB}/documents/${id}`);
+}
+
+// Restoring creates a NEW version with the old text, so history is never rewritten.
+export async function restoreVersion(formData: FormData) {
+  const { clientId, user } = await requireClient();
+  const id = uuid.parse(formData.get("id"));
+  const version = z.coerce.number().int().positive().parse(formData.get("version"));
+  const { data: v } = await supabaseAdmin().from("kb_document_versions").select("title, content")
+    .eq("client_id", clientId).eq("document_id", id).eq("version", version).maybeSingle();
+  if (!v) return flash(KB, "not_found");
+  const result = await publishDocument(clientId, id, v.title, v.content, user.id);
+  flash(`${KB}/documents/${id}`, result.embedded ? "published" : "published_no_vectors");
+}
+
+export async function reindexDocumentAction(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = uuid.parse(formData.get("id"));
+  const back = `${KB}/documents/${id}`;
+  try {
+    const r = await reindexDocument(clientId, id);
+    flash(back, r.embedded ? "reindexed" : "published_no_vectors");
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("NEXT_REDIRECT")) throw e;
+    console.error("reindex failed", e instanceof Error ? e.message : e);
+    flash(back, "invalid");
+  }
+}
+
+export async function resolveQuestion(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = uuid.parse(formData.get("id"));
+  const status = z.enum(["resolved", "dismissed"]).parse(formData.get("status"));
+  await supabaseAdmin().from("unanswered_questions").update({ status }).eq("id", id).eq("client_id", clientId);
+  revalidatePath(KB);
 }

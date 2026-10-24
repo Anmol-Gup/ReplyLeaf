@@ -9,5 +9,10 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   send_failed: { kind: "error", text: "WhatsApp rejected the message. Nothing was sent. The admin has the details." },
   invalid: { kind: "error", text: "Some values were invalid. Please check and try again." },
   deleted: { kind: "ok", text: "The contact and all their messages were deleted." },
+  published: { kind: "ok", text: "Published. The assistant can use this document now." },
+  published_no_vectors: { kind: "warn", text: "Published, but the semantic-search index could not be built right now. Keyword search works; use Re-index later to add it." },
+  reindexed: { kind: "ok", text: "Re-indexed." },
+  discarded: { kind: "ok", text: "Draft discarded." },
+  extract_failed: { kind: "error", text: "That file could not be used." },
   not_found: { kind: "error", text: "Not found." },
 };

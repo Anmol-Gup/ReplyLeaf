@@ -75,6 +75,8 @@ export interface BatchDeps {
   /** True only for the call that flipped the contact from 'new' to 'lead'. */
   markLead(clientId: string, contactId: string): Promise<boolean>;
   notifyOwner(clientId: string, event: OwnerEvent): Promise<void>;
+  /** Records a question the assistant could not answer, so the owner can add it to the knowledge base. */
+  logUnanswered(clientId: string, conversationId: string, question: string): Promise<void>;
   findDueBatches(limit: number): Promise<string[]>;
   sleep(ms: number): Promise<void>;
 }
@@ -179,6 +181,12 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
   const details = cleanContactDetails(result.contact);
   if (details.name || details.email) {
     await safely(deps, client.id, "crm", () => deps.applyContactDetails(client.id, contact.id, details));
+  }
+
+  // Questions we could not answer go to a list the owner can turn into knowledge.
+  // (Handoff requests are not knowledge gaps.)
+  if (!result.answered && result.intent !== "human_needed") {
+    await safely(deps, client.id, "unanswered", () => deps.logUnanswered(client.id, conversation.id, lastMessage.slice(0, 500)));
   }
 
   // First time we hear from this contact: they become a lead (owner emailed once).

@@ -1,6 +1,7 @@
 import { aiConfig } from "./ai/config";
 import { generateReply } from "./ai/generate-reply";
 import { buildSystemPrompt, wrapCustomerMessages } from "./ai/prompt";
+import { retrieveKnowledge } from "./kb/retrieve";
 import type { ChatTurn, Provider } from "./ai/providers";
 import type { BatchContext, BatchDeps } from "./batch";
 import { notifyOwner, raiseAlert, sendClientText } from "./supabase-deps";
@@ -109,10 +110,12 @@ export function supabaseBatchDeps(): BatchDeps {
     },
 
     async generate(ctx, customerLines, hasUnreadableMedia) {
+      // Hybrid search over THIS client's documents for what the customer just wrote.
+      const retrieved = await retrieveKnowledge(ctx.client.id, customerLines.join(" "));
       return generateReply({
         provider: ctx.client.aiProvider,
         config: aiConfig(),
-        system: buildSystemPrompt(ctx.client),
+        system: buildSystemPrompt(ctx.client, retrieved),
         history: ctx.history,
         userTurn: wrapCustomerMessages(customerLines, { hasUnreadableMedia }),
       });
@@ -188,6 +191,11 @@ export function supabaseBatchDeps(): BatchDeps {
     },
 
     notifyOwner,
+
+    async logUnanswered(clientId, conversationId, question) {
+      const { error } = await db.from("unanswered_questions").insert({ client_id: clientId, conversation_id: conversationId, question });
+      if (error) throw new Error(`logging unanswered question failed: ${error.message}`);
+    },
 
     raiseAlert,
 

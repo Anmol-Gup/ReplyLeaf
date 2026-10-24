@@ -2,7 +2,7 @@
 
 Next.js (App Router, TypeScript) on Vercel + Supabase (Postgres, pgvector, Auth). Small businesses connect a WhatsApp number; an AI assistant answers customers using only that business's knowledge base.
 
-**Status: Stage 4 of 6 (in progress, see git log).** Webhook, dedupe, message batching, AI replies from a pasted knowledge base (Gemini or OpenAI), sample-question eval. CRM, booking requests, email alerts and the dashboard come in later stages.
+**Status: Stage 5 of 6 (in progress, see git log).** Webhook, dedupe, message batching, AI replies from a pasted knowledge base (Gemini or OpenAI), sample-question eval. CRM, booking requests, email alerts and the dashboard come in later stages.
 
 ## How it works
 1. `POST /api/webhooks/whatsapp` verifies `X-Hub-Signature-256` (HMAC-SHA256 of the **raw** body, constant-time compare). Invalid signature: 401.
@@ -29,6 +29,16 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 - **Human reply:** you must take over a conversation first (the assistant stays silent while you handle it). Replies outside the 24-hour window are blocked, recorded as "NOT SENT", and shown with a clear warning.
 - A confirmed or declined booking request does not message the customer; reply to them yourself from the conversation.
 - A user with a login but no linked business is sent to `/onboarding` (Stage 6).
+
+**Knowledge base at scale (Stage 5):**
+- **Two layers.** *Core knowledge* (`clients.kb_text`, max 8,000 chars) is always in the prompt: hours, headline prices. *Documents* hold everything else; for each customer message only the most relevant chunks are added (`<retrieved_knowledge>`).
+- **Adding documents** (dashboard > Knowledge base): paste text or upload **.pdf, .docx, .txt** (also .md), up to 2 MB. The text is extracted, shown to the owner for editing, and **nothing is searchable until the owner confirms**. Drafts can be discarded.
+- **Chunking** is by markdown headings (`# Policies > ## Cancellations` keeps its path in the chunk), with long sections split at paragraph/sentence boundaries (`lib/kb/chunk.ts`). Word headings become `#` headings on import.
+- **Hybrid search** (`search_kb` SQL function): full-text rank and vector rank merged by reciprocal rank fusion, active documents of one client only. Embeddings: Gemini `gemini-embedding-2`, 768 dimensions, one model for every client regardless of their chat provider (so `GEMINI_API_KEY` is needed for search). If embedding fails, chunks are stored without vectors and keyword search still works; the owner can press *Re-index* later.
+- **Version history:** every publish keeps the full text (`kb_document_versions`); restoring creates a new version, so history is never rewritten. Archived documents stop being searched.
+- **Unanswered questions:** when the model says it could not answer (`answered: false`), the customer's question is logged and listed in the dashboard so the owner can add the answer.
+- **File parsing uses no extra packages** (`lib/kb/extract.ts`, built on `node:zlib`). `.txt`/`.md`/`.docx` are reliable. **PDF is best effort:** it reads simple text PDFs, and refuses (with a clear message, storing nothing) scanned PDFs and PDFs whose fonts use custom encodings, which includes many PDFs exported from Word or Google Docs. For robust PDF support, add a parsing package such as `unpdf` and replace `extractPdf`; I did not add one because your rules say to ask before adding dependencies.
+- Embedding token usage is not tracked (the embeddings API does not report it).
 
 **Prompt-injection stance:** the system prompt holds only our rules and the owner's knowledge. Customer text goes only inside `<customer_messages>` tags in a user turn (our closing tag is stripped from it), is labelled untrusted, and the model has no tools, so it cannot read other customers' data or change settings.
 
@@ -100,7 +110,6 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 - Tokens are never logged or returned to the browser.
 
 ## Known limits (planned)
-- Knowledge base is plain pasted text with no search (Stage 5 adds chunking and vector search).
 - Each webhook invocation sleeps ~5s for the batch window; fine at small scale.
-- Knowledge base documents, retention and deletion jobs, the daily check and Embedded Signup come in later stages.
+- Retention and deletion jobs, the daily check and Embedded Signup come in Stage 6.
 - **Real clients can only onboard after Tech Provider approval** (Stage 6, Embedded Signup). Until then only Meta's test number, or numbers in your own WABA, work.
