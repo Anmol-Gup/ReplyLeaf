@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["esnext"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "outDir": ".build",
+    "rootDir": "."
+  },
+  "include": ["lib/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
+}
