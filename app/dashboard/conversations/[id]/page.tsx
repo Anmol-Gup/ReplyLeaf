@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import ChatLog from "../../../../components/ChatLog";
+import Icon from "../../../../components/Icon";
+import SubmitButton from "../../../../components/SubmitButton";
+import { Alert, Badge, EmptyState } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
-import { fmt } from "../../../../lib/dashboard";
-import { WINDOW_CLOSED_WARNING, isWithinWindow } from "../../../../lib/whatsapp/window";
-import AutoRefresh from "../../AutoRefresh";
+import { fmtDay, fmtTime, windowStatus } from "../../../../lib/dashboard";
+import { WINDOW_CLOSED_WARNING } from "../../../../lib/whatsapp/window";
 import Notice from "../../Notice";
 import { handBack, sendHumanMessage, takeOver } from "../../actions";
 
@@ -24,43 +27,70 @@ export default async function ConversationPage({
   ]);
   const chat = [...(messages ?? [])].reverse();
   const human = conv.handling === "human_active";
-  const windowOpen = isWithinWindow(conv.last_customer_message_at ? new Date(conv.last_customer_message_at) : null);
+  const w = windowStatus(conv.last_customer_message_at);
+  const canReply = human && w.open;
 
   return (
-    <section className="card">
-      <AutoRefresh />
-      <p><Link href="/dashboard/conversations">&larr; All conversations</Link></p>
-      <h1>{contact?.name || "Unknown"} <span className="muted">+{contact?.phone}</span></h1>
-      <Notice code={notice} />
-      <div className="row" style={{ marginBottom: 12 }}>
-        <span className={`badge ${human ? "human" : "ok"}`}>{human ? "You are handling this chat; the assistant is silent" : "The assistant is handling this chat"}</span>
-        {human
-          ? <form action={handBack}><input type="hidden" name="id" value={id} /><button className="secondary" type="submit">Hand back to assistant</button></form>
-          : <form action={takeOver}><input type="hidden" name="id" value={id} /><button type="submit">Take over</button></form>}
-        <Link href={`/dashboard/contacts/${contact?.id}`}>Contact details</Link>
-      </div>
-
-      <div className="chat">
-        {chat.map((m) => (
-          <div key={m.id} className={`msg ${m.sender}`}>
-            {m.body ?? (m.type !== "text" ? `[${m.type} message]` : "[deleted by retention policy]")}
-            <small>
-              {m.sender === "customer" ? "Customer" : m.sender === "bot" ? "Assistant" : "You"} · {fmt(m.created_at)}
-              {m.status === "blocked" && " · NOT SENT: 24h window closed"}
-              {m.status === "failed" && " · NOT SENT: failed"}
-            </small>
+    <section className="chat-panel" aria-label="Conversation">
+      <div className="chat-head">
+        <div className="spread">
+          <div className="row" style={{ flexWrap: "nowrap", minWidth: 0 }}>
+            <Link href="/dashboard/conversations" className="btn btn-ghost btn-sm back-link" aria-label="Back to all conversations">
+              <Icon name="back" />
+            </Link>
+            <div style={{ minWidth: 0 }}>
+              <h1>{contact?.name || "Unknown"}</h1>
+              <p className="muted">+{contact?.phone} · <Link href={`/dashboard/contacts/${contact?.id}`}>Contact details</Link></p>
+            </div>
           </div>
-        ))}
+          {human ? (
+            <form action={handBack}>
+              <input type="hidden" name="id" value={id} />
+              <SubmitButton variant="secondary" pendingText="Handing back...">Hand back to bot</SubmitButton>
+            </form>
+          ) : (
+            <form action={takeOver}>
+              <input type="hidden" name="id" value={id} />
+              <SubmitButton pendingText="Taking over...">Take over</SubmitButton>
+            </form>
+          )}
+        </div>
+        <div className="row">
+          {human ? <Badge tone="warn">You are handling this chat. The assistant is silent.</Badge> : <Badge tone="brand">The assistant is handling this chat</Badge>}
+          <span className="window"><span className={`dot${w.open ? " on" : ""}`} aria-hidden="true" /> <span><b>24-hour window:</b> {w.label}</span></span>
+        </div>
+        <Notice code={notice} />
       </div>
 
-      <h2>Reply</h2>
-      {!windowOpen && <p className="notice warn">{WINDOW_CLOSED_WARNING}</p>}
-      {!human && <p className="muted">Take over the conversation to reply yourself.</p>}
-      <form action={sendHumanMessage} className="stack">
-        <input type="hidden" name="id" value={id} />
-        <textarea name="text" maxLength={1500} required disabled={!human || !windowOpen} placeholder="Type your message" />
-        <div><button type="submit" disabled={!human || !windowOpen}>Send on WhatsApp</button></div>
-      </form>
+      <ChatLog>
+        {chat.length === 0 && <EmptyState icon="chat" title="No messages yet" />}
+        {chat.map((m, i) => {
+          const showDay = i === 0 || fmtDay(chat[i - 1].created_at) !== fmtDay(m.created_at);
+          const flag = m.status === "blocked" ? "Not sent: 24-hour window closed" : m.status === "failed" ? "Not sent: failed" : null;
+          return (
+            <div key={m.id} style={{ display: "contents" }}>
+              {showDay && <span className="day">{fmtDay(m.created_at)}</span>}
+              <div className={`bubble ${m.sender}${flag ? " failed" : ""}`}>
+                {m.sender !== "customer" && <span className="tag">{m.sender === "bot" ? "Assistant" : "You"}</span>}
+                {m.body ?? (m.type !== "text" ? `[${m.type} message]` : "[deleted by retention policy]")}
+                {flag && <span className="flag">{flag}</span>}
+                <time dateTime={m.created_at}>{fmtTime(m.created_at)} UTC</time>
+              </div>
+            </div>
+          );
+        })}
+      </ChatLog>
+
+      <div className="reply">
+        {!w.open && <div style={{ marginBottom: 12 }}><Alert kind="warn">{WINDOW_CLOSED_WARNING}</Alert></div>}
+        {!human && w.open && <p className="muted" style={{ marginBottom: 10 }}>Take over the conversation to reply yourself.</p>}
+        <form action={sendHumanMessage} className="stack-sm">
+          <input type="hidden" name="id" value={id} />
+          <label className="sr-only" htmlFor="reply-text">Your message</label>
+          <textarea id="reply-text" name="text" maxLength={1500} required disabled={!canReply} placeholder={canReply ? "Type your message" : human ? "The 24-hour window is closed" : "Take over to reply"} style={{ minHeight: 80 }} />
+          <div><SubmitButton disabled={!canReply} pendingText="Sending..."><Icon name="send" size={16} /> Send on WhatsApp</SubmitButton></div>
+        </form>
+      </div>
     </section>
   );
 }

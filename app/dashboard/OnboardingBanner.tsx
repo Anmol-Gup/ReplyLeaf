@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Alert } from "../../components/ui";
 import { STEP_REASONS } from "../../lib/onboarding-plan";
 
 // The REAL state of the WhatsApp connection, from clients.onboarding_status.
@@ -8,20 +9,20 @@ import { STEP_REASONS } from "../../lib/onboarding-plan";
 //   failed    = a step failed or the token expired: reason + a way to retry
 export default function OnboardingBanner({ status, step }: { status?: string | null; step?: string | null }) {
   if (!status || status === "manual") return null;
-  if (status === "connected") return <p className="notice ok">WhatsApp is connected and confirmed.</p>;
+  if (status === "connected") return <Alert kind="ok">WhatsApp is connected and confirmed.</Alert>;
   if (status === "failed") {
     return (
-      <p className="notice error">
+      <Alert kind="error">
         WhatsApp is not connected. {STEP_REASONS[step ?? ""] ?? "The last attempt did not finish."}{" "}
         <Link href="/onboarding">Reconnect WhatsApp</Link>
-      </p>
+      </Alert>
     );
   }
   return (
-    <p className="notice warn">
+    <Alert kind="warn">
       {step === "complete"
         ? "WhatsApp is connected on our side. Waiting for WhatsApp to confirm; this can take a few minutes."
         : "Connecting your WhatsApp number..."}
-    </p>
+    </Alert>
   );
 }

@@ -1,3 +1,4 @@
+import { Badge, Card, EmptyState, ErrorState, PageHeader, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 
@@ -21,22 +22,35 @@ export default async function Usage() {
   const sum = (k: "out_input_tokens" | "out_output_tokens") => month.reduce((a, r) => a + Number(r[k]), 0);
 
   return (
-    <section className="card">
-      <h1>Usage</h1>
-      <h2>This month</h2>
-      <p>{used} of {cap} AI replies used</p>
-      <div className="bar"><div style={{ width: `${pct}%` }} /></div>
-      <p className="muted">When the cap is reached the assistant stops using AI and tells customers the team will reply personally. Tokens this month: {sum("out_input_tokens").toLocaleString()} in / {sum("out_output_tokens").toLocaleString()} out.</p>
-      <h2>Last 30 days</h2>
-      <table>
-        <thead><tr><th>Day</th><th>Type</th><th>Provider / model</th><th>Events</th><th>Input tokens</th><th>Output tokens</th></tr></thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}><td>{r.out_day}</td><td>{r.out_kind}</td><td>{r.out_provider ?? "-"} / {r.out_model ?? "-"}</td><td>{Number(r.out_events)}</td><td>{Number(r.out_input_tokens).toLocaleString()}</td><td>{Number(r.out_output_tokens).toLocaleString()}</td></tr>
-          ))}
-          {rows.length === 0 && <tr><td colSpan={6} className="muted">No usage yet.</td></tr>}
-        </tbody>
-      </table>
-    </section>
+    <>
+      <PageHeader title="Usage" description="What your assistant has used this month." />
+      <div className="stat-grid">
+        <Stat value={`${used.toLocaleString()} / ${cap.toLocaleString()}`} label="AI replies this month" />
+        <Stat value={sum("out_input_tokens").toLocaleString()} label="Input tokens this month" />
+        <Stat value={sum("out_output_tokens").toLocaleString()} label="Output tokens this month" />
+      </div>
+      <Card title="Monthly cap" description="When the cap is reached the assistant stops using AI and tells customers your team will reply personally.">
+        <div className="stack-sm">
+          <div className="spread"><span>{pct}% used</span>{pct >= 90 && <Badge tone="warn">Close to the cap</Badge>}</div>
+          <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Monthly reply cap used"><div style={{ width: `${pct}%` }} /></div>
+        </div>
+      </Card>
+      <Card title="Last 30 days">
+        {summary.error ? <ErrorState>Usage could not be loaded.</ErrorState> : rows.length === 0 ? (
+          <EmptyState icon="chart" title="No usage yet">Numbers appear after the assistant sends its first reply.</EmptyState>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Day</th><th>Type</th><th>Provider / model</th><th>Events</th><th>Input tokens</th><th>Output tokens</th></tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}><td>{r.out_day}</td><td>{r.out_kind}</td><td>{r.out_provider ?? "-"} / {r.out_model ?? "-"}</td><td>{Number(r.out_events)}</td><td>{Number(r.out_input_tokens).toLocaleString()}</td><td>{Number(r.out_output_tokens).toLocaleString()}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </>
   );
 }

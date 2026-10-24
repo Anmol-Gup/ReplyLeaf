@@ -1,3 +1,5 @@
+import SubmitButton from "../../../components/SubmitButton";
+import { Card, PageHeader } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import Notice from "../Notice";
 import OnboardingBanner from "../OnboardingBanner";
@@ -9,28 +11,41 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const { data: c } = await db.from("clients")
     .select("name, business_info, business_hours, booking_link, ai_provider, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step").eq("id", clientId).single();
   return (
-    <section className="card">
-      <h1>Settings</h1>
+    <>
+      <PageHeader title="Settings" description="How your business appears to the assistant and where alerts go." />
       <Notice code={notice} />
       <form action={updateSettings} className="stack">
-        <label>Business name<input name="name" required maxLength={100} defaultValue={c?.name ?? ""} /></label>
-        <label>About the business<textarea name="business_info" maxLength={4000} defaultValue={c?.business_info ?? ""} /></label>
-        <label>Opening hours<textarea name="business_hours" maxLength={1000} defaultValue={c?.business_hours ?? ""} /></label>
-        <label>Booking link (optional, e.g. Calendly). If set, the assistant shares it instead of collecting booking requests.
-          <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
-        </label>
-        <label>AI provider
-          <select name="ai_provider" defaultValue={c?.ai_provider}><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select>
-        </label>
-        <label>Email for alerts (new leads, booking requests, chats needing you)
-          <input name="owner_email" type="email" maxLength={200} defaultValue={c?.owner_email ?? ""} />
-        </label>
-        <div><button type="submit">Save</button></div>
+        <Card title="Business">
+          <div className="stack">
+            <label className="field">Business name<input name="name" required maxLength={100} defaultValue={c?.name ?? ""} /></label>
+            <label className="field">About the business<textarea name="business_info" maxLength={4000} defaultValue={c?.business_info ?? ""} /></label>
+            <label className="field">Opening hours<textarea name="business_hours" maxLength={1000} defaultValue={c?.business_hours ?? ""} /></label>
+          </div>
+        </Card>
+        <Card title="Bookings and AI">
+          <div className="stack">
+            <label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it instead of collecting booking requests.</span>
+              <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
+            </label>
+            <label className="field">AI provider
+              <select name="ai_provider" defaultValue={c?.ai_provider}><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select>
+            </label>
+          </div>
+        </Card>
+        <Card title="Alerts">
+          <label className="field">Email for alerts <span className="hint">New leads, booking requests and chats that need you.</span>
+            <input name="owner_email" type="email" maxLength={200} defaultValue={c?.owner_email ?? ""} />
+          </label>
+        </Card>
+        <div><SubmitButton pendingText="Saving...">Save settings</SubmitButton></div>
       </form>
-      <h2>WhatsApp connection</h2>
-      <OnboardingBanner status={c?.onboarding_status} step={c?.onboarding_step} />
-      <h2>Account</h2>
-      <p className="muted">WhatsApp phone number ID: {c?.wa_phone_number_id ?? "not connected"} · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</p>
-    </section>
+
+      <Card title="WhatsApp connection">
+        <div className="stack">
+          <OnboardingBanner status={c?.onboarding_status} step={c?.onboarding_step} />
+          <p className="muted">Phone number ID: {c?.wa_phone_number_id ?? "not connected"} · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</p>
+        </div>
+      </Card>
+    </>
   );
 }

@@ -1,34 +1,56 @@
 import Link from "next/link";
+import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
-import { fmt } from "../../../lib/dashboard";
+import { fmtDay, matches } from "../../../lib/dashboard";
 import Notice from "../Notice";
 
-export default async function Contacts({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
-  const { notice } = await searchParams;
+const STATUS_TONE: Record<string, Tone> = { new: "muted", lead: "brand", customer: "success", lost: "danger" };
+
+export default async function Contacts({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string }> }) {
+  const { notice, q } = await searchParams;
   const { db } = await requireClient();
-  const { data } = await db.from("contacts")
+  const { data, error } = await db.from("contacts")
     .select("id, name, phone, email, status, tags, suggested, created_at")
     .order("created_at", { ascending: false }).limit(500);
+  const rows = (data ?? []).filter((c) => matches(q, c.name, c.phone, c.email, c.status, (c.tags as string[]).join(" ")));
+
   return (
-    <section className="card">
-      <h1>Contacts</h1>
+    <>
+      <PageHeader title="Contacts" description="Everyone who has messaged your WhatsApp number." />
       <Notice code={notice} />
-      <table>
-        <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Tags</th><th>Added</th></tr></thead>
-        <tbody>
-          {(data ?? []).map((c) => {
-            const pending = Object.keys((c.suggested as object) ?? {}).length;
-            return (
-              <tr key={c.id}>
-                <td><Link href={`/dashboard/contacts/${c.id}`}>{c.name || "(no name)"}</Link>{pending > 0 && <> <span className="badge human">{pending} suggestion{pending > 1 ? "s" : ""}</span></>}</td>
-                <td>+{c.phone}</td><td>{c.email ?? "-"}</td><td><span className="badge">{c.status}</span></td>
-                <td>{(c.tags as string[]).join(", ") || "-"}</td><td>{fmt(c.created_at)}</td>
-              </tr>
-            );
-          })}
-          {(data ?? []).length === 0 && <tr><td colSpan={6} className="muted">No contacts yet.</td></tr>}
-        </tbody>
-      </table>
-    </section>
+      <SearchBox q={q} placeholder="Search by name, phone, email, status or tag" />
+      {error ? <ErrorState>Your contacts could not be loaded.</ErrorState> : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Tags</th><th>Added</th></tr></thead>
+            <tbody>
+              {rows.map((c) => {
+                const pending = Object.keys((c.suggested as object) ?? {}).length;
+                return (
+                  <tr key={c.id}>
+                    <td>
+                      <Link href={`/dashboard/contacts/${c.id}`}>{c.name || "(no name)"}</Link>
+                      {pending > 0 && <> <Badge tone="warn">{pending} suggestion{pending > 1 ? "s" : ""}</Badge></>}
+                    </td>
+                    <td>+{c.phone}</td>
+                    <td>{c.email ?? "-"}</td>
+                    <td><Badge tone={STATUS_TONE[c.status] ?? "muted"}>{c.status}</Badge></td>
+                    <td>{(c.tags as string[]).join(", ") || "-"}</td>
+                    <td>{fmtDay(c.created_at)}</td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr><td colSpan={6}>
+                  {q
+                    ? <EmptyState icon="search" title="No matching contacts" action={{ href: "/dashboard/contacts", label: "Clear search" }}>Nothing matches &quot;{q}&quot;.</EmptyState>
+                    : <EmptyState icon="users" title="No contacts yet">People are added automatically when they message you.</EmptyState>}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }

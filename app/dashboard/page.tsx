@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { requireClient } from "../../lib/auth/session";
+import { PageHeader, Stat } from "../../components/ui";
 import OnboardingBanner from "./OnboardingBanner";
 
 export default async function Overview() {
@@ -17,15 +17,15 @@ export default async function Overview() {
     count("contacts"),
   ]);
   return (
-    <section className="card">
-      <h1>Overview</h1>
+    <>
+      <PageHeader title="Overview" description="What needs your attention right now." />
       <OnboardingBanner status={conn?.onboarding_status} step={conn?.onboarding_step} />
-      <div className="grid">
-        <Link className="stat" href="/dashboard/conversations"><b>{human}</b>conversations waiting for you</Link>
-        <Link className="stat" href="/dashboard/bookings"><b>{pending}</b>booking requests to confirm</Link>
-        <Link className="stat" href="/dashboard/contacts"><b>{leads}</b>new leads</Link>
-        <Link className="stat" href="/dashboard/contacts"><b>{contacts}</b>contacts in total</Link>
+      <div className="stat-grid">
+        <Stat href="/dashboard/conversations" value={human} label="Conversations waiting for you" />
+        <Stat href="/dashboard/bookings" value={pending} label="Booking requests to confirm" />
+        <Stat href="/dashboard/contacts" value={leads} label="New leads" />
+        <Stat href="/dashboard/contacts" value={contacts} label="Contacts in total" />
       </div>
-    </section>
+    </>
   );
 }

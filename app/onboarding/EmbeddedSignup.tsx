@@ -91,9 +91,14 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
   return (
     <div className="stack">
       <p className="muted">Connect the WhatsApp Business number your customers will message. You will sign in to WhatsApp in a pop-up; we never see your password.</p>
-      <label>Business name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></label>
-      {message && <p className={`notice ${status === "error" ? "error" : status === "done" ? "ok" : ""}`}>{message}</p>}
-      <div><button type="button" onClick={start} disabled={status === "working" || status === "done"}>Connect WhatsApp</button></div>
+      <label className="field">Business name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></label>
+      {message && <p className={`notice ${status === "error" ? "error" : status === "done" ? "ok" : ""}`} role={status === "error" ? "alert" : "status"}>{message}</p>}
+      <div>
+        <button type="button" className="btn btn-primary" onClick={start} disabled={status === "working" || status === "done"} aria-busy={status === "working"}>
+          {status === "working" && <span className="spinner" aria-hidden="true" />}
+          {status === "working" ? "Connecting..." : "Connect WhatsApp"}
+        </button>
+      </div>
     </div>
   );
 }

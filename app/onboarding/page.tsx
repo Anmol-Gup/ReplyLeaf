@@ -3,6 +3,8 @@ import { requireUser } from "../../lib/auth/session";
 import { anonClient } from "../../lib/auth/anon";
 import { env } from "../../lib/env";
 import { makeState } from "../../lib/onboarding-state";
+import { Alert } from "../../components/ui";
+import Logo from "../../components/Logo";
 import { STEP_REASONS } from "../../lib/onboarding-plan";
 import EmbeddedSignup from "./EmbeddedSignup";
 
@@ -26,17 +28,26 @@ export default async function Onboarding() {
   const ready = Boolean(appId && configId);
 
   return (
-    <main className="card narrow">
-      <h1>{failedStep ? "Reconnect your WhatsApp number" : "Connect your WhatsApp number"}</h1>
-      {failedStep && <p className="notice error">{STEP_REASONS[failedStep] ?? "The last attempt did not finish."} You can try again below; nothing is duplicated.</p>}
-      {ready ? (
-        <EmbeddedSignup
-          appId={appId!} configId={configId!} graphVersion={env().GRAPH_API_VERSION}
-          state={makeState(user.id, env().WHATSAPP_APP_SECRET)} defaultName=""
-        />
-      ) : (
-        <p className="notice warn">Self-service connection is not switched on yet. Please contact the platform admin to connect your number.</p>
-      )}
+    <main className="auth" id="main">
+      <div className="card" style={{ maxWidth: 480 }}>
+        <div className="auth-brand">
+          <Logo size={48} />
+          <h1>{failedStep ? "Reconnect your WhatsApp number" : "Connect your WhatsApp number"}</h1>
+        </div>
+        {failedStep && (
+          <div style={{ marginBottom: 16 }}>
+            <Alert kind="error">{STEP_REASONS[failedStep] ?? "The last attempt did not finish."} You can try again below; nothing is duplicated.</Alert>
+          </div>
+        )}
+        {ready ? (
+          <EmbeddedSignup
+            appId={appId!} configId={configId!} graphVersion={env().GRAPH_API_VERSION}
+            state={makeState(user.id, env().WHATSAPP_APP_SECRET)} defaultName=""
+          />
+        ) : (
+          <Alert kind="warn">Self-service connection is not switched on yet. Please contact the platform admin to connect your number.</Alert>
+        )}
+      </div>
     </main>
   );
 }
