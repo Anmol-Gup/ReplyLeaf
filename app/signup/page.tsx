@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import Logo from "../../components/Logo";
+import PasswordField from "../../components/PasswordField";
 import SignupSentDialog from "../../components/SignupSentDialog";
 import SubmitButton from "../../components/SubmitButton";
 import { Alert } from "../../components/ui";
@@ -50,9 +51,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         <form action={signUp} className="stack">
           <label className="field">Business name<input name="business" required maxLength={100} autoComplete="organization" /></label>
           <label className="field">Email<input name="email" type="email" required maxLength={200} autoComplete="username" /></label>
-          <label className="field">Password <span className="hint">At least 10 characters</span>
-            <input name="password" type="password" required minLength={10} maxLength={72} autoComplete="new-password" />
-          </label>
+          <PasswordField autoComplete="new-password" hint="At least 10 characters" minLength={10} maxLength={72} />
           {/* Honeypot: invisible to people and screen readers; bots fill it in. */}
           <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", height: 0, overflow: "hidden" }}>
             <label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label>

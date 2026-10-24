@@ -1,9 +1,9 @@
 import Link from "next/link";
-import Logo from "../../components/Logo";
-import SubmitButton from "../../components/SubmitButton";
-import { requireAdmin } from "../../lib/auth/session";
-import { COMPANY_NAME } from "../../lib/brand";
-import { logout } from "../dashboard/actions";
+import Logo from "../../../components/Logo";
+import SubmitButton from "../../../components/SubmitButton";
+import { requireAdmin } from "../../../lib/auth/session";
+import { COMPANY_NAME } from "../../../lib/brand";
+import { logoutAdmin } from "../actions";
 
 // Platform admin area. 404 for everyone who is not an admin (see requireAdmin).
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
         <div className="row">
           <Link className="btn btn-ghost btn-sm" href="/dashboard">Dashboard</Link>
-          <form action={logout}><SubmitButton variant="secondary" small pendingText="Signing out...">Sign out</SubmitButton></form>
+          <form action={logoutAdmin}><SubmitButton variant="secondary" small pendingText="Signing out...">Sign out</SubmitButton></form>
         </div>
       </header>
       <main id="main" className="content">{children}</main>

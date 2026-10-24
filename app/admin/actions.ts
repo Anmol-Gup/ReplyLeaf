@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireAdmin } from "../../lib/auth/session";
+import { clearSessionCookies, requireAdmin } from "../../lib/auth/session";
 import { getMailer } from "../../lib/email/mailer";
 import { approvedEmail } from "../../lib/email/templates";
 import { supabaseAdmin } from "../../lib/supabase-admin";
@@ -53,4 +53,9 @@ export async function rejectSignup(formData: FormData) {
 
   const { error } = await db.auth.admin.deleteUser(id);
   return back(error ? "failed" : "rejected");
+}
+
+export async function logoutAdmin() {
+  await clearSessionCookies();
+  redirect("/admin/login");
 }

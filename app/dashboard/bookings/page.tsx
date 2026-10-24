@@ -1,15 +1,17 @@
 import Link from "next/link";
+import Pagination from "../../../components/Pagination";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { fmtDay, fmtTime, matches } from "../../../lib/dashboard";
+import { buildQuery, paginate } from "../../../lib/paginate";
 import { setBookingStatus } from "../actions";
 
 const TONE: Record<string, Tone> = { pending: "warn", confirmed: "success", declined: "muted" };
 const FILTERS = ["all", "pending", "confirmed", "declined"] as const;
 
-export default async function Bookings({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
-  const { q, status } = await searchParams;
+export default async function Bookings({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string }> }) {
+  const { q, status, page: pageRaw } = await searchParams;
   const { db } = await requireClient();
   const { data: all, error } = await db.from("booking_requests")
     .select("id, contact_id, service, preferred_time, name, status, created_at")
@@ -18,10 +20,12 @@ export default async function Bookings({ searchParams }: { searchParams: Promise
   const byId = new Map((contacts ?? []).map((c) => [c.id, c]));
 
   const active = FILTERS.includes(status as (typeof FILTERS)[number]) ? (status as string) : "all";
-  const rows = (all ?? [])
+  const matching = (all ?? [])
     .filter((r) => active === "all" || r.status === active)
     .filter((r) => { const c = byId.get(r.contact_id); return matches(q, r.service, r.name, r.preferred_time, c?.name, c?.phone); })
     .sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending"));
+  const paged = paginate(matching, pageRaw, 20);
+  const rows = paged.items;
   const link = (s: string) => `/dashboard/bookings?${new URLSearchParams({ ...(q ? { q } : {}), ...(s !== "all" ? { status: s } : {}) })}`;
 
   return (
@@ -75,6 +79,7 @@ export default async function Bookings({ searchParams }: { searchParams: Promise
           </table>
         </div>
       )}
+      {!error && <Pagination p={paged} label="Booking requests" hrefFor={(n) => `/dashboard/bookings${buildQuery({ q, status: active !== "all" ? active : null, page: n > 1 ? n : null })}`} />}
     </>
   );
 }

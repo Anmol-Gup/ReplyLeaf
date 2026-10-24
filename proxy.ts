@@ -5,6 +5,8 @@ import { ACCESS_COOKIE, REFRESH_COOKIE, REFRESH_MAX_AGE, anonClient, cookieOptio
 // the refresh happens here, before the page renders. This is NOT the security
 // check: pages and server actions verify the user themselves (requireUser).
 export async function proxy(request: NextRequest) {
+  const inAdmin = request.nextUrl.pathname.startsWith("/admin");
+  if (request.nextUrl.pathname === "/admin/login") return NextResponse.next(); // the admin sign-in page itself
   const access = request.cookies.get(ACCESS_COOKIE)?.value;
   const refresh = request.cookies.get(REFRESH_COOKIE)?.value;
   const secondsLeft = access ? jwtExp(access) - Date.now() / 1000 : 0;
@@ -12,7 +14,7 @@ export async function proxy(request: NextRequest) {
 
   const toLogin = () => {
     // Remember where they were going, so signing in brings them straight back (e.g. the link in an email).
-    const login = new URL("/login", request.url);
+    const login = new URL(inAdmin ? "/admin/login" : "/login", request.url);
     if (request.method === "GET") login.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
     const res = NextResponse.redirect(login);
     res.cookies.delete(ACCESS_COOKIE);

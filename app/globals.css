@@ -95,8 +95,8 @@ small { font-size: 0.8rem; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---- forms ---- */
-label.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; font-weight: 600; color: var(--text); }
-label.field > .hint, .hint { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.field > .hint, .hint { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
 input:not([type=checkbox]):not([type=file]), select, textarea {
   font: inherit; font-weight: 400; color: var(--text); background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; width: 100%; min-height: 42px;
@@ -112,7 +112,6 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--brand); }
 
 /* ---- cards, notices, badges ---- */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow); }
-.card + .card, .stack > .card { margin-top: 0; }
 .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .card-head .muted { margin-top: 2px; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -254,3 +253,14 @@ a.stat:hover { border-color: var(--brand); }
 /* ---- dialog (native <dialog>) ---- */
 .dialog { border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: calc(100% - 32px); max-width: 440px; background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgb(0 0 0 / .28); }
 .dialog::backdrop { background: rgb(16 14 26 / .6); }
+
+/* ---- pagination ---- */
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; font-size: 0.88rem; color: var(--muted); }
+.pagination .row { gap: 8px; }
+.btn.is-disabled { opacity: .5; pointer-events: none; }
+
+/* ---- password field with show/hide toggle ---- */
+.pw { position: relative; display: block; }
+.pw input { padding-right: 48px; }
+.pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); border-radius: 8px; cursor: pointer; }
+.pw-toggle:hover { background: var(--surface-2); color: var(--text); }

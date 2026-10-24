@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "../../components/Logo";
+import PasswordField from "../../components/PasswordField";
 import SubmitButton from "../../components/SubmitButton";
 import { Alert } from "../../components/ui";
 import { COMPANY_NAME } from "../../lib/brand";
@@ -28,7 +29,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <form action={login} className="stack">
           {target && <input type="hidden" name="next" value={target} />}
           <label className="field">Email<input name="email" type="email" required autoComplete="username" autoFocus /></label>
-          <label className="field">Password<input name="password" type="password" required autoComplete="current-password" /></label>
+          <PasswordField autoComplete="current-password" />
           <SubmitButton pendingText="Signing in...">Sign in</SubmitButton>
         </form>
         <p className="muted" style={{ marginTop: 18, textAlign: "center" }}>

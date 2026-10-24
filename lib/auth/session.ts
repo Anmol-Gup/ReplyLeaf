@@ -45,9 +45,12 @@ export async function requireUser() {
  * admin pages don't even reveal that they exist.
  */
 export async function requireAdmin() {
-  const { user } = await requireVerifiedUser();
-  if (user.app_metadata?.is_admin !== true) notFound();
-  return user;
+  const token = (await cookies()).get(ACCESS_COOKIE)?.value;
+  if (!token) redirect("/admin/login");
+  const { data, error } = await anonClient().auth.getUser(token);
+  if (error || !data.user) redirect("/admin/login");
+  if (data.user.app_metadata?.is_admin !== true) notFound();
+  return data.user;
 }
 
 /**

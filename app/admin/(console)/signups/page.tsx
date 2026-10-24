@@ -1,10 +1,12 @@
-import { Alert, Badge, Card, EmptyState, ErrorState, PageHeader } from "../../../components/ui";
-import SubmitButton from "../../../components/SubmitButton";
-import { classifySignups, type AuthUserRow } from "../../../lib/admin-signups";
-import { requireAdmin } from "../../../lib/auth/session";
-import { fmtDay, fmtTime } from "../../../lib/dashboard";
-import { supabaseAdmin } from "../../../lib/supabase-admin";
-import { approveSignup, rejectSignup } from "../actions";
+import { Alert, Badge, Card, EmptyState, ErrorState, PageHeader } from "../../../../components/ui";
+import Pagination from "../../../../components/Pagination";
+import SubmitButton from "../../../../components/SubmitButton";
+import { classifySignups, type AuthUserRow } from "../../../../lib/admin-signups";
+import { requireAdmin } from "../../../../lib/auth/session";
+import { fmtDay, fmtTime } from "../../../../lib/dashboard";
+import { buildQuery, paginate } from "../../../../lib/paginate";
+import { supabaseAdmin } from "../../../../lib/supabase-admin";
+import { approveSignup, rejectSignup } from "../../actions";
 
 const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: string }> = {
   approved: { kind: "ok", text: "Approved. We emailed them to let them know." },
@@ -30,18 +32,23 @@ async function loadUsers(): Promise<{ users: AuthUserRow[]; linked: string[] }> 
   return { users, linked: (links ?? []).map((l) => l.user_id as string) };
 }
 
-export default async function AdminSignups({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
+export default async function AdminSignups({ searchParams }: { searchParams: Promise<{ notice?: string; wp?: string; ap?: string }> }) {
   await requireAdmin(); // layouts do not re-run on every navigation, so check again here
-  const { notice } = await searchParams;
+  const { notice, wp: wpRaw, ap: apRaw } = await searchParams;
   const n = notice ? NOTICES[notice] : undefined;
 
   let data: ReturnType<typeof classifySignups> | null = null;
   try {
     const { users, linked } = await loadUsers();
-    data = classifySignups(users, linked);
+    data = classifySignups(users, linked, Number.MAX_SAFE_INTEGER); // every approved sign-up; the page paginates
   } catch (e) {
     console.error("admin sign-up list failed", e instanceof Error ? e.message : e);
   }
+
+  const waiting = paginate(data?.waiting ?? [], wpRaw, 10);
+  const approved = paginate(data?.approved ?? [], apRaw, 10);
+  // Moving through one list keeps the other list on its current page.
+  const href = (w: number, a: number) => `/admin/signups${buildQuery({ wp: w > 1 ? w : null, ap: a > 1 ? a : null })}`;
 
   return (
     <>
@@ -57,7 +64,7 @@ export default async function AdminSignups({ searchParams }: { searchParams: Pro
                 <table>
                   <thead><tr><th>Business</th><th>Email</th><th>Signed up</th><th>Email</th><th><span className="sr-only">Actions</span></th></tr></thead>
                   <tbody>
-                    {data.waiting.map((u) => (
+                    {waiting.items.map((u) => (
                       <tr key={u.id}>
                         <td>{u.business}</td>
                         <td>{u.email}</td>
@@ -82,15 +89,16 @@ export default async function AdminSignups({ searchParams }: { searchParams: Pro
                 </table>
               </div>
             )}
+            <Pagination p={waiting} label="Waiting for approval" hrefFor={(n) => href(n, approved.page)} />
           </Card>
 
-          <Card title="Recently approved" description="Rejecting deletes the account permanently, so it is only offered for people still waiting.">
+          <Card title="Approved sign-ups" description="Rejecting deletes the account permanently, so it is only offered for people still waiting.">
             {data.approved.length === 0 ? <EmptyState icon="users" title="No approved sign-ups yet" /> : (
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Business</th><th>Email</th><th>Signed up</th><th>Status</th></tr></thead>
                   <tbody>
-                    {data.approved.map((u) => (
+                    {approved.items.map((u) => (
                       <tr key={u.id}>
                         <td>{u.business}</td><td>{u.email}</td><td>{fmtDay(u.createdAt)}</td>
                         <td>{u.hasBusiness ? <Badge tone="success">Has a business</Badge> : <Badge tone="brand">Approved, not connected yet</Badge>}</td>
@@ -100,6 +108,7 @@ export default async function AdminSignups({ searchParams }: { searchParams: Pro
                 </table>
               </div>
             )}
+            <Pagination p={approved} label="Approved sign-ups" hrefFor={(n) => href(waiting.page, n)} />
           </Card>
         </>
       )}
