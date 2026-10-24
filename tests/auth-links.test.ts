@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isEmailOtpType, isValidTokenHash, parseAuthHash } from "../lib/auth-links";
+import { isEmailOtpType, isValidTokenHash, parseAuthHash, safeNext } from "../lib/auth-links";
 
 test("a successful old-style confirmation link is recognised (the token is never used)", () => {
   assert.equal(parseAuthHash("#access_token=abc.def.ghi&expires_in=3600&refresh_token=x&token_type=bearer&type=signup"), "verified");
@@ -64,4 +64,20 @@ test("inline head script agrees with parseAuthHash for every kind of fragment", 
 test("inline head script never navigates for an ordinary page load", () => {
   assert.equal(runInlineScript(""), null);
   assert.equal(runInlineScript("#top"), null);
+});
+
+test("safeNext allows our own signed-in pages only", () => {
+  for (const ok of ["/admin/signups", "/admin", "/dashboard", "/dashboard/conversations/abc-123", "/dashboard/contacts?q=asha", "/onboarding", "/pending"]) {
+    assert.equal(safeNext(ok), ok, ok);
+  }
+});
+
+test("safeNext refuses anything that could leave the site or reach other pages (no open redirect)", () => {
+  for (const bad of [
+    "//evil.com", "//evil.com/admin", "/\\evil.com", "https://evil.com", "http://localhost:3000/admin", "javascript:alert(1)",
+    "evil.com", "admin/signups", "/login", "/signup", "/api/privacy/delete", "/admin@evil.com", "/adminx", "/dashboard\nSet-Cookie:x=1",
+    "/dashboard/<script>", "/dashboard//evil.com", "", null, undefined, 123, "/dashboard/" + "a".repeat(400),
+  ]) {
+    assert.equal(safeNext(bad), null, String(bad));
+  }
 });

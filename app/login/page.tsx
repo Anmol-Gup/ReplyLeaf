@@ -3,11 +3,13 @@ import Logo from "../../components/Logo";
 import SubmitButton from "../../components/SubmitButton";
 import { Alert } from "../../components/ui";
 import { COMPANY_NAME } from "../../lib/brand";
+import { safeNext } from "../../lib/auth-links";
 import { signupMode } from "../../lib/signup";
 import { login } from "./actions";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; next?: string }> }) {
+  const { error, next } = await searchParams;
+  const target = safeNext(next);
   return (
     <main className="auth" id="main">
       <div className="card">
@@ -24,6 +26,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </div>
         ) : error && <div style={{ marginBottom: 16 }}><Alert kind="error">Email or password is incorrect. Please try again.</Alert></div>}
         <form action={login} className="stack">
+          {target && <input type="hidden" name="next" value={target} />}
           <label className="field">Email<input name="email" type="email" required autoComplete="username" autoFocus /></label>
           <label className="field">Password<input name="password" type="password" required autoComplete="current-password" /></label>
           <SubmitButton pendingText="Signing in...">Sign in</SubmitButton>

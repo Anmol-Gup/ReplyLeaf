@@ -34,3 +34,14 @@ export const isValidTokenHash = (v: unknown): v is string => typeof v === "strin
  * the fragment is dropped). Plain JavaScript on purpose; a test keeps it in step with parseAuthHash.
  */
 export const AUTH_HASH_SCRIPT = `(function(){var h=location.hash;if(h.length<2)return;var p=new URLSearchParams(h.slice(1));var t=p.get("type");var to=null;if(p.get("error")||p.get("error_code")){to="/verified?error="+(p.get("error_code")==="otp_expired"?"expired":"invalid")}else if(p.get("access_token")&&(t==="signup"||t==="email")){to="/verified"}if(to)location.replace(to)})();`;
+
+/**
+ * Where to send someone after they sign in, taken from ?next=. Only our own signed-in areas are
+ * allowed, and anything that could leave this site (other hosts, //, \\, schemes) is refused, so
+ * a crafted login link can never become an open redirect.
+ */
+export function safeNext(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > 300) return null;
+  if (!/^\/(admin|dashboard|onboarding|pending)(\/[A-Za-z0-9._~%!$&'()*+,;=:@-]+)*(\?[A-Za-z0-9._~%!$&'()*+,;=:@/?-]*)?$/.test(raw)) return null;
+  return raw;
+}

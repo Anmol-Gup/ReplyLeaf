@@ -11,7 +11,10 @@ export async function proxy(request: NextRequest) {
   if (access && secondsLeft > 60) return NextResponse.next();
 
   const toLogin = () => {
-    const res = NextResponse.redirect(new URL("/login", request.url));
+    // Remember where they were going, so signing in brings them straight back (e.g. the link in an email).
+    const login = new URL("/login", request.url);
+    if (request.method === "GET") login.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
+    const res = NextResponse.redirect(login);
     res.cookies.delete(ACCESS_COOKIE);
     res.cookies.delete(REFRESH_COOKIE);
     return res;
