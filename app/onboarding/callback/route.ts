@@ -4,6 +4,7 @@ import { decryptSecret, encryptSecret } from "../../../lib/crypto";
 import { env } from "../../../lib/env";
 import { getUserOrNull } from "../../../lib/auth/session";
 import { planOnboarding, STEP_REASONS, type ClientRow } from "../../../lib/onboarding-plan";
+import { isApproved, signupMode } from "../../../lib/signup";
 import { verifyState } from "../../../lib/onboarding-state";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { notifyOwner, raiseAlert } from "../../../lib/supabase-deps";
@@ -69,6 +70,8 @@ export async function POST(req: Request) {
 
   // ---- 1. Decide what to do (create, resume, or refuse) BEFORE talking to Meta.
   const { data: link } = await db.from("client_users").select("client_id").eq("user_id", user.id).limit(1);
+  // The page hides this for unapproved sign-ups, but the endpoint can be called directly.
+  if (!isApproved(user, { mode: signupMode(), hasMembership: Boolean(link?.length) })) return fail(403, "Your account is waiting for approval.");
   const [mine, wabaOwner, phoneOwner] = await Promise.all([
     link?.[0] ? db.from("clients").select(COLUMNS).eq("id", link[0].client_id).single() : Promise.resolve({ data: null }),
     db.from("clients").select(COLUMNS).eq("wa_waba_id", b.wabaId).maybeSingle(),

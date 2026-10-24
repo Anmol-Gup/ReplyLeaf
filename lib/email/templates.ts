@@ -51,3 +51,24 @@ export function adminAlertEmail(a: { to: string; kind: string; detail: string | 
     text: `Alert: ${a.kind}\nClient: ${a.clientName ?? "unknown"}\n\n${clip(a.detail ?? "(no detail)", 1500)}`,
   };
 }
+
+// ---- sign-up emails ----
+
+/** To the admin: someone created an account and is waiting for approval. */
+export function signupNotificationEmail(a: { to: string; email: string; business: string; mode: string }): MailMessage {
+  return {
+    to: a.to,
+    subject: oneLine(`New sign-up: ${a.business}`),
+    text: `A new account was created.\n\nBusiness: ${a.business}\nEmail: ${a.email}\n\n${a.mode === "approval" ? "They are waiting for your approval. Approve with:\n  npm run approve-user -- " + a.email : "Sign-up is open, so they can already sign in."}`,
+  };
+}
+
+/** To the new owner: their access was approved. */
+export function approvedEmail(a: { to: string; appUrl?: string }): MailMessage {
+  const link = a.appUrl ? `\n\nSign in: ${a.appUrl.replace(/\/$/, "")}/login` : "";
+  return {
+    to: a.to,
+    subject: "Your access is ready",
+    text: `Good news: your account has been approved.${link}\n\nAfter signing in you can connect your WhatsApp number and set up your assistant.`,
+  };
+}

@@ -16,7 +16,7 @@ async function main() {
   const { data: client } = await db.from("clients").select("id").eq("id", clientId).maybeSingle();
   if (!client) throw new Error(`No client with id ${clientId}`);
 
-  const { data, error } = await db.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data, error } = await db.auth.admin.createUser({ email, password, email_confirm: true, app_metadata: { approved: true } });
   if (error || !data.user) throw new Error(`creating user failed: ${error?.message}`);
 
   const { error: linkErr } = await db.from("client_users").insert({ client_id: clientId, user_id: data.user.id, role: "owner" });

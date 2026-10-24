@@ -2,6 +2,10 @@ import Link from "next/link";
 import Icon, { type IconName } from "../components/Icon";
 import Logo from "../components/Logo";
 import { COMPANY_NAME, privacyUrl, termsUrl } from "../lib/brand";
+import { signupMode } from "../lib/signup";
+
+// Reads SIGNUP_MODE, so it must be rendered per request, not frozen at build time.
+export const dynamic = "force-dynamic";
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: "book", title: "Answers from your own knowledge", text: "Replies only from the information you provide. If the answer isn't there, it says it will check with your team." },
@@ -25,7 +29,10 @@ export default function Home() {
         <section className="hero">
           <h1>An AI assistant on WhatsApp for your business</h1>
           <p>It answers your customers&apos; questions from your own information and takes booking requests, so you can focus on the work.</p>
-          <Link className="btn btn-primary" href="/login">Business owners: sign in</Link>
+          <div className="row" style={{ justifyContent: "center" }}>
+            <Link className="btn btn-primary" href="/login">Business owners: sign in</Link>
+            {signupMode() !== "off" && <Link className="btn btn-secondary" href="/signup">Create an account</Link>}
+          </div>
         </section>
 
         <section className="features" aria-label="Features">

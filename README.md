@@ -29,7 +29,10 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 
 ### Owner dashboard (`/dashboard`)
 Conversations (takeover / hand back / reply), contacts (edit, confirm or dismiss suggestions, delete a person's data), booking requests (confirm / decline), knowledge base, settings (business info, hours, booking link, AI provider, alert email), usage (tokens, monthly cap).
-- **Login:** Supabase Auth email + password, no social login. There is no public sign-up: create owners with `CLIENT_ID=<uuid> OWNER_LOGIN_EMAIL=... OWNER_PASSWORD='12+ chars' npm run create-owner`.
+- **Login:** Supabase Auth email + password, no social login.
+- **Sign-up** (`/signup`, controlled by `SIGNUP_MODE`): `approval` (default) lets anyone create an account but they only see a "you're on the list" page until you approve them; `open` lets accounts work immediately (use it once customers can connect WhatsApp themselves, after Tech Provider approval); `off` removes public sign-up. In approval mode you get an email for each new sign-up. Run `npm run list-signups` to see who is waiting and `npm run approve-user -- someone@example.com` to approve (it also emails them). Approval is a flag in the login's `app_metadata`, which users cannot edit, so no database change is involved. Anyone linked to a business counts as approved, and `create-owner` logins are approved automatically. The `/onboarding` page and its callback endpoint both refuse unapproved accounts.
+- **Sign-up protection:** email confirmation (turn it on, see Setup), Supabase's built-in rate limits, a hidden honeypot field, and the approval step. The form gives the same answer for new and already-registered addresses, so it cannot be used to find out who has an account. There is no CAPTCHA.
+- **Creating an owner by hand** still works: `CLIENT_ID=<uuid> OWNER_LOGIN_EMAIL=... OWNER_PASSWORD='12+ chars' npm run create-owner`.
 - **Sessions** use plain supabase-js (no extra package): the login action stores the tokens in httpOnly cookies, `proxy.ts` refreshes them, and every page re-verifies the user with Supabase (`requireClient()` in `lib/auth/session.ts`).
 - **Tenant isolation, two layers:** page reads use a client carrying the owner's own JWT, so RLS applies. Writes (server actions) use the service role but always filter by the `client_id` derived from the verified membership, never from form input. `supabase/tests/rls_isolation.test.sql` is a pgTAP test of the isolation rules (`npx supabase test db`, needs Docker).
 - **Human reply:** take over a conversation first (the assistant stays silent while you handle it). Replies outside the 24-hour window are blocked, recorded as "NOT SENT", and shown with a clear warning.
@@ -71,25 +74,26 @@ Requires Node 20.9+.
    ```
    For non-interactive use set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` instead of answering prompts.
    **Schema rule:** all schema changes live in numbered files in `supabase/migrations/` (`npx supabase migration new <name>` creates the next one). Never edit tables, policies or functions by hand in the dashboard. Each table is created with RLS enabled in the same migration. If you applied an earlier draft of 0001/0002 (they were reorganised before the first release), reset that database first.
-3. **Env**: `cp .env.example .env` and fill it in (every variable is explained there). Generate the encryption key with `openssl rand -base64 32`. `GRAPH_API_VERSION` is pinned in env (Meta's docs currently show `v26.0`). In Supabase > Project Settings > API, copy the project URL, the public anon key and the service-role key.
-4. **Meta app** (developers.facebook.com): create a Business app and add the **WhatsApp** product. Under *WhatsApp > API Setup* you get a **test phone number**, its **Phone number ID**, and a temporary **access token** (expires in about 24h; regenerate it and re-run step 7 when it does). Add your own phone as a recipient there.
-5. **Webhook**: deploy (or tunnel), then in *WhatsApp > Configuration* set
+3. **Supabase Auth settings** (needed for sign-up): in the Supabase dashboard open Authentication, then Providers > Email and make sure **Confirm email** is on; under URL Configuration set **Site URL** to your app URL (the same as `APP_URL`) and add `<APP_URL>/login` to **Redirect URLs**. For reliable confirmation emails at any volume, set up custom SMTP in Authentication > SMTP Settings, because Supabase's built-in email service is heavily rate limited. (Menu names are from memory; check them in your dashboard.)
+4. **Env**: `cp .env.example .env` and fill it in (every variable is explained there). Generate the encryption key with `openssl rand -base64 32`. `GRAPH_API_VERSION` is pinned in env (Meta's docs currently show `v26.0`). In Supabase > Project Settings > API, copy the project URL, the public anon key and the service-role key.
+5. **Meta app** (developers.facebook.com): create a Business app and add the **WhatsApp** product. Under *WhatsApp > API Setup* you get a **test phone number**, its **Phone number ID**, and a temporary **access token** (expires in about 24h; regenerate it and re-run step 7 when it does). Add your own phone as a recipient there.
+6. **Webhook**: deploy (or tunnel), then in *WhatsApp > Configuration* set
    - **Callback URL:** `https://<your-domain>/api/webhooks/whatsapp`
    - **Verify token:** the value of `WHATSAPP_VERIFY_TOKEN`
    - click Verify and save, then **subscribe to the `messages` and `account_update` fields** (the latter confirms Embedded Signup onboardings).
    - Local testing: `npm run dev`, expose it with a tunnel (e.g. `ngrok http 3000`) and use `https://<tunnel>/api/webhooks/whatsapp`.
    - `WHATSAPP_APP_SECRET` is under *App settings > Basic > App secret*.
-6. **AI keys and email**: put `GEMINI_API_KEY` (aistudio.google.com) and optionally `OPENAI_API_KEY` in `.env`. For email, turn on 2-step verification on a Gmail account, create an app password at myaccount.google.com/apppasswords, and set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_ALERT_EMAIL` and `APP_URL`. With these unset, emails are skipped (a warning is logged) and everything else still works.
-7. **Register the test number as a client**:
+7. **AI keys and email**: put `GEMINI_API_KEY` (aistudio.google.com) and optionally `OPENAI_API_KEY` in `.env`. For email, turn on 2-step verification on a Gmail account, create an app password at myaccount.google.com/apppasswords, and set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_ALERT_EMAIL` and `APP_URL`. With these unset, emails are skipped (a warning is logged) and everything else still works.
+8. **Register the test number as a client**:
    ```
    CLIENT_NAME="Test Biz" WA_PHONE_NUMBER_ID=<phone number id> WA_ACCESS_TOKEN=<token> OWNER_EMAIL=you@example.com npm run create-client
    ```
    The token is stored AES-256-GCM encrypted in `client_secrets`, a table the dashboard's database role cannot read. The command prints the client id.
-8. **Create your dashboard login**: `CLIENT_ID=<id from step 7> OWNER_LOGIN_EMAIL=you@example.com OWNER_PASSWORD='a-long-password' npm run create-owner`, then sign in at `/login`.
-9. **Try the eval first** (no database needed): `npm run eval` runs the 20 sample questions in `eval/questions.json` against the sample knowledge base `eval/sample-kb.md` on both providers (or `npm run eval -- --provider gemini`). It prints each reply with PASS/FAIL, tokens and latency. The checks are heuristic, so skim the replies.
-10. **Give your test client knowledge**: paste the sample into dashboard > Knowledge base > Core knowledge, or run `CLIENT_ID=<id> KB_FILE=eval/sample-kb.md npm run set-kb` (optional `BOOKING_LINK=...`, `AI_PROVIDER=openai`). Try uploading a `.docx` or `.txt` under Documents to see the preview-and-confirm step.
-11. **Test on WhatsApp**: message the test number several short messages in a row. You should get ONE reply about 5 seconds later, built from all of them. Check `messages` (token columns filled), `usage_events` and `pending_messages` (empty again). Replaying the same payload must not produce a second reply. Try "I want to talk to a person": you should get an owner email and the conversation shows as waiting in the dashboard.
-12. **Vercel**: add the same env vars to the project (including `CRON_SECRET`; on Hobby the crons run once a day, on Pro you can make `/api/cron/sweep` run every minute). Routes that wait for the batch window or call a model set `maxDuration = 60`.
+9. **Create your dashboard login**: `CLIENT_ID=<id from step 7> OWNER_LOGIN_EMAIL=you@example.com OWNER_PASSWORD='a-long-password' npm run create-owner`, then sign in at `/login`.
+10. **Try the eval first** (no database needed): `npm run eval` runs the 20 sample questions in `eval/questions.json` against the sample knowledge base `eval/sample-kb.md` on both providers (or `npm run eval -- --provider gemini`). It prints each reply with PASS/FAIL, tokens and latency. The checks are heuristic, so skim the replies.
+11. **Give your test client knowledge**: paste the sample into dashboard > Knowledge base > Core knowledge, or run `CLIENT_ID=<id> KB_FILE=eval/sample-kb.md npm run set-kb` (optional `BOOKING_LINK=...`, `AI_PROVIDER=openai`). Try uploading a `.docx` or `.txt` under Documents to see the preview-and-confirm step.
+12. **Test on WhatsApp**: message the test number several short messages in a row. You should get ONE reply about 5 seconds later, built from all of them. Check `messages` (token columns filled), `usage_events` and `pending_messages` (empty again). Replaying the same payload must not produce a second reply. Try "I want to talk to a person": you should get an owner email and the conversation shows as waiting in the dashboard.
+13. **Vercel**: add the same env vars to the project (including `CRON_SECRET`; on Hobby the crons run once a day, on Pro you can make `/api/cron/sweep` run every minute). Routes that wait for the batch window or call a model set `maxDuration = 60`.
 
 ## Register in Meta for Embedded Signup (deployed URL, not ngrok)
 
@@ -110,7 +114,7 @@ Replace `YOUR-APP.vercel.app` with your production domain. Menu names come from 
 
 Needs a deployed app with all env vars set, migrations 0001 to 0008 applied, and a Facebook account that has a role on your Meta app.
 
-1. **Create a login with no business:** Supabase dashboard > Authentication > Users > Add user (email, password, auto-confirm). Do *not* use `create-owner`, which links a business.
+1. **Create a login with no business:** use `/signup` (then `npm run approve-user -- <email>` if `SIGNUP_MODE=approval`), or add a user in the Supabase dashboard (Authentication > Users > Add user, auto-confirm) and then run `npm run approve-user -- <email>`. Do *not* use `create-owner`, which links a business.
 2. **Sign in at `/login`.** You should land on `/onboarding` ("Connect your WhatsApp number").
 3. **Connect:** enter a business name, click **Connect WhatsApp**, finish the popup with a WhatsApp account and number you control. Expect "Connected!" and a redirect to `/dashboard`.
 4. **Check the result:**
@@ -147,9 +151,9 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 - [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0008 on both sides.
 
 ## Commands
-- `npm test`: 120 unit tests (signatures, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, CRM/booking, email, auth helpers, chunking, file extraction, onboarding calls and resumability rules, account_update parsing, token refresh job, retention checks). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.
+- `npm test`: unit tests (signatures, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, CRM/booking, email, auth helpers, chunking, file extraction, onboarding calls and resumability rules, account_update parsing, token refresh job, retention checks). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.
 - `npm run eval`: the 20 sample questions against the AI providers.
-- `npm run create-client`, `create-owner`, `set-kb`, `offboard-client`: admin scripts (read `.env`).
+- `npm run create-client`, `create-owner`, `set-kb`, `offboard-client`, `list-signups`, `approve-user`: admin scripts (read `.env`).
 - `npm run typecheck`, `npm run build`, `npm run dev`.
 
 ## Multi-tenancy and secrets

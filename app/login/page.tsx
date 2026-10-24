@@ -3,6 +3,7 @@ import Logo from "../../components/Logo";
 import SubmitButton from "../../components/SubmitButton";
 import { Alert } from "../../components/ui";
 import { COMPANY_NAME } from "../../lib/brand";
+import { signupMode } from "../../lib/signup";
 import { login } from "./actions";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
@@ -23,7 +24,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <label className="field">Password<input name="password" type="password" required autoComplete="current-password" /></label>
           <SubmitButton pendingText="Signing in...">Sign in</SubmitButton>
         </form>
-        <p className="muted" style={{ marginTop: 18, textAlign: "center" }}><Link href="/">Back to home</Link></p>
+        <p className="muted" style={{ marginTop: 18, textAlign: "center" }}>
+          {signupMode() !== "off" && <>New here? <Link href="/signup">Create an account</Link> · </>}
+          <Link href="/">Back to home</Link>
+        </p>
       </div>
     </main>
   );

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { hasApprovedFlag, isApproved, signupMode } from "../signup";
 import { ACCESS_COOKIE, REFRESH_COOKIE, REFRESH_MAX_AGE, anonClient, cookieOptions } from "./anon";
 
 export async function setSessionCookies(s: { access_token: string; refresh_token: string; expires_in: number }) {
@@ -14,13 +15,28 @@ export async function clearSessionCookies() {
   jar.delete(REFRESH_COOKIE);
 }
 
-/** The verified signed-in user (token checked with Supabase on every call), or a redirect to /login. */
-export async function requireUser() {
+/** The verified signed-in user (token checked with Supabase on every call), or a redirect to /login. Approval is NOT checked. */
+export async function requireVerifiedUser() {
   const token = (await cookies()).get(ACCESS_COOKIE)?.value;
   if (!token) redirect("/login");
   const { data, error } = await anonClient().auth.getUser(token);
   if (error || !data.user) redirect("/login");
   return { user: data.user, token };
+}
+
+/** Approved if the admin approved them, they already belong to a business, or sign-up is open. */
+export async function userIsApproved(user: { app_metadata?: Record<string, unknown> | null }, token: string): Promise<boolean> {
+  const mode = signupMode();
+  if (mode === "open" || hasApprovedFlag(user)) return true; // no query needed
+  const { data } = await anonClient(token).from("client_users").select("client_id").limit(1);
+  return isApproved(user, { mode, hasMembership: Boolean(data?.length) });
+}
+
+/** The verified user AND approved: unapproved sign-ups are sent to the waiting page. */
+export async function requireUser() {
+  const session = await requireVerifiedUser();
+  if (!(await userIsApproved(session.user, session.token))) redirect("/pending");
+  return session;
 }
 
 /**
