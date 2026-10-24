@@ -1,5 +1,5 @@
 import "./globals.css";
-import AuthHashHandler from "../components/AuthHashHandler";
+import { AUTH_HASH_SCRIPT } from "../lib/auth-links";
 import { COMPANY_NAME, PRODUCT_NAME } from "../lib/brand";
 
 export const metadata = {
@@ -10,10 +10,11 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        <AuthHashHandler />
-        {children}
-      </body>
+      <head>
+        {/* Redirects old-style email-confirmation links before the page is drawn (see lib/auth-links.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: AUTH_HASH_SCRIPT }} />
+      </head>
+      <body>{children}</body>
     </html>
   );
 }

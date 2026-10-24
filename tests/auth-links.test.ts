@@ -34,3 +34,34 @@ test("only the email-confirmation OTP types are accepted", () => {
   assert.equal(isEmailOtpType("signup"), true);
   for (const bad of ["recovery", "magiclink", "invite", "email_change", "", null, undefined]) assert.equal(isEmailOtpType(bad), false, String(bad));
 });
+
+// The inline <head> script must make exactly the same decision as parseAuthHash.
+import { AUTH_HASH_SCRIPT } from "../lib/auth-links";
+
+function runInlineScript(hash: string): string | null {
+  let target: string | null = null;
+  new Function("location", "URLSearchParams", AUTH_HASH_SCRIPT)({ hash, replace: (u: string) => { target = u; } }, URLSearchParams);
+  return target;
+}
+
+test("inline head script agrees with parseAuthHash for every kind of fragment", () => {
+  const cases = [
+    "#access_token=abc.def&type=signup&expires_in=3600",
+    "#access_token=abc&type=email",
+    "#error=access_denied&error_code=otp_expired&error_description=x",
+    "#error=access_denied&error_code=something_else",
+    "#error=server_error",
+    "#access_token=abc&type=recovery",
+    "#access_token=abc",
+    "#section-2",
+    "",
+    "#",
+  ];
+  const expected = (r: ReturnType<typeof parseAuthHash>) => (r === "verified" ? "/verified" : r ? `/verified?error=${r}` : null);
+  for (const hash of cases) assert.equal(runInlineScript(hash), expected(parseAuthHash(hash)), hash || "(empty)");
+});
+
+test("inline head script never navigates for an ordinary page load", () => {
+  assert.equal(runInlineScript(""), null);
+  assert.equal(runInlineScript("#top"), null);
+});
