@@ -4,8 +4,41 @@ import type { InboundDeps } from "./inbound";
 import { supabaseAdmin } from "./supabase-admin";
 import { sendTextMessage } from "./whatsapp/send";
 
-// Production implementation of InboundDeps, backed by Supabase + the Cloud API.
-export function supabaseDeps(): InboundDeps {
+// Production implementation of InboundDeps (the recording phase), plus helpers
+// shared with the batch worker. Every query filters by client_id.
+
+export async function raiseAlert(
+  clientId: string | null, kind: string, detail: string, opts: { oncePerMonth?: boolean } = {},
+): Promise<void> {
+  const db = supabaseAdmin();
+  if (opts.oncePerMonth && clientId) {
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const { count } = await db
+      .from("admin_alerts")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", clientId).eq("kind", kind).gte("created_at", monthStart);
+    if (count) return; // already alerted this month
+  }
+  // Stage 3 adds the admin email; for now alerts are recorded in the table.
+  const { error } = await db.from("admin_alerts").insert({ client_id: clientId, kind, detail });
+  if (error) throw new Error(`could not save alert: ${error.message}`);
+}
+
+// Looks up and decrypts this client's token, then calls the Cloud API.
+// The caller must have checked the 24h window already.
+export async function sendClientText(clientId: string, phoneNumberId: string, to: string, body: string) {
+  const { data, error } = await supabaseAdmin()
+    .from("client_secrets")
+    .select("wa_access_token_enc")
+    .eq("client_id", clientId)
+    .single();
+  if (error || !data?.wa_access_token_enc) throw new Error("no WhatsApp token stored for client");
+  const accessToken = decryptSecret(data.wa_access_token_enc, env().ENCRYPTION_KEY);
+  return sendTextMessage({ graphVersion: env().GRAPH_API_VERSION, phoneNumberId, accessToken, to, body });
+}
+
+export function supabaseInboundDeps(): InboundDeps {
   const db = supabaseAdmin();
 
   return {
@@ -21,8 +54,8 @@ export function supabaseDeps(): InboundDeps {
     },
 
     async recordInbound(clientId, msg) {
-      // One SQL function does contact + conversation upsert and the message
-      // insert in a single transaction; the unique wa_message_id dedupes.
+      // One SQL function: contact + conversation upsert, message insert (unique
+      // wamid dedupes) and batch queueing, all in one transaction.
       const { data, error } = await db.rpc("record_inbound_message", {
         p_client_id: clientId,
         p_phone: msg.from,
@@ -42,21 +75,6 @@ export function supabaseDeps(): InboundDeps {
       };
     },
 
-    async saveOutbound(rec) {
-      const { error } = await db.from("messages").insert({
-        client_id: rec.clientId,
-        conversation_id: rec.conversationId,
-        direction: "outbound",
-        sender: "bot",
-        type: "text",
-        body: rec.body,
-        wa_message_id: rec.waMessageId,
-        status: rec.status,
-        error: rec.error ?? null,
-      });
-      if (error) throw new Error(`saving outbound message failed: ${error.message}`);
-    },
-
     async updateMessageStatus(waMessageId, status, error) {
       const { error: dbErr } = await db
         .from("messages")
@@ -66,21 +84,6 @@ export function supabaseDeps(): InboundDeps {
       if (dbErr) throw new Error(`status update failed: ${dbErr.message}`);
     },
 
-    async sendText(client, phoneNumberId, to, body) {
-      const { data, error } = await db
-        .from("client_secrets")
-        .select("wa_access_token_enc")
-        .eq("client_id", client.id)
-        .single();
-      if (error || !data?.wa_access_token_enc) throw new Error("no WhatsApp token stored for client");
-      const accessToken = decryptSecret(data.wa_access_token_enc, env().ENCRYPTION_KEY);
-      return sendTextMessage({ graphVersion: env().GRAPH_API_VERSION, phoneNumberId, accessToken, to, body });
-    },
-
-    async raiseAlert(clientId, kind, detail) {
-      // Stage 3 adds the admin email; for now alerts are recorded + logged.
-      const { error } = await db.from("admin_alerts").insert({ client_id: clientId, kind, detail });
-      if (error) throw new Error(`could not save alert: ${error.message}`);
-    },
+    raiseAlert,
   };
 }

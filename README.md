@@ -2,15 +2,21 @@
 
 Next.js (App Router, TypeScript) on Vercel + Supabase (Postgres, pgvector, Auth). Small businesses connect a WhatsApp number; an AI assistant answers customers using only that business's knowledge base.
 
-**Status: Stage 1 of 6.** Webhook, signature check, dedupe, message storage, fixed-text reply, RLS schema. No AI yet.
+**Status: Stage 2 of 6.** Webhook, dedupe, message batching, AI replies from a pasted knowledge base (Gemini or OpenAI), sample-question eval. CRM, booking requests, email alerts and the dashboard come in later stages.
 
-## What Stage 1 does
-- `GET /api/webhooks/whatsapp` answers Meta's verification handshake (`hub.verify_token`).
-- `POST /api/webhooks/whatsapp` verifies `X-Hub-Signature-256` (HMAC-SHA256 of the **raw** body with the app secret, constant-time compare), returns `200` immediately, and does the work in `after()` (Next.js; on Vercel this is backed by `waitUntil`, so the function stays alive until the work finishes, up to `maxDuration`).
-- Each inbound message is stored via the SQL function `record_inbound_message` (one transaction: upsert contact + conversation, insert message; `UNIQUE(wa_message_id)` dedupes Meta retries).
-- If the conversation is `human_active` the bot stays silent. Otherwise it sends a fixed reply, but only inside the 24-hour window (`last_customer_message_at`); outside it the send is blocked and recorded as `blocked`.
-- Non-text messages (voice, images) get a "please send text" reply.
-- Failures write an `admin_alerts` row and send the customer a safe fallback. (Admin **email** arrives in Stage 3 with nodemailer.)
+## How it works
+1. `POST /api/webhooks/whatsapp` verifies `X-Hub-Signature-256` (HMAC-SHA256 of the **raw** body, constant-time compare). Invalid signature: 401.
+2. It **stores the messages first** (quick DB-only step) via the SQL function `record_inbound_message`: one transaction upserts the contact and conversation, inserts the message (`UNIQUE(wa_message_id)` dedupes Meta retries) and queues it in `pending_messages`. If storing fails the route returns 500, so Meta retries.
+3. It returns `200` and does the slow work in `after()` (Next.js; on Vercel backed by `waitUntil`, so the function stays alive up to `maxDuration` = 60s).
+4. **Batching:** each inbound message pushes the conversation's `batch_due_at` to now + 4s. After waiting, a worker claims the conversation with one atomic UPDATE (`claim_batch`; the row lock lets only one concurrent worker win), builds one prompt from all pending messages, sends one reply, then `complete_batch` removes the handled rows. Messages that arrive during the reply cause another loop.
+5. **Recovery:** the claim sets a lease (120s). If a worker crashes the lease expires, and the sweep (`find_due_batches`) re-processes the batch. The sweep runs after every webhook request and from `/api/cron/sweep`. Delivery is at-least-once: a crash between sending and completing can produce a duplicate reply, which we prefer to silence.
+6. `generateReply()` (`lib/ai/generate-reply.ts`) calls the client's provider (Gemini or OpenAI adapter in `lib/ai/providers.ts`) and asks for JSON. The output is parsed and validated with Zod; on failure it retries once, then throws. Nothing downstream sees unvalidated output. Input/output tokens are stored on the message and in `usage_events`.
+
+Rules enforced in code: human takeover (`human_active`) keeps the bot silent; auto-handoff on `intent = human_needed` or two failed answers in a row; free-form sends only inside the 24-hour window (otherwise recorded as `blocked`); media-only messages get a "please send text" reply with no AI call; per-customer limit of 30 messages/hour; per-client monthly reply cap (`clients.monthly_message_cap`) checked before each model call; any failure writes an `admin_alerts` row and sends the customer a safe fallback (admin **email** arrives in Stage 3).
+
+**Prompt-injection stance:** the system prompt holds only our rules and the owner's knowledge. Customer text goes only inside `<customer_messages>` tags in a user turn (our closing tag is stripped from it), is labelled untrusted, and the model has no tools, so it cannot read other customers' data or change settings.
+
+**Deviation from the spec:** the model JSON has one extra field, `answered` (boolean). It is the signal needed for "two failed answers" handoff and, in Stage 5, for logging unanswered questions. Remove it from `lib/ai/schema.ts` if you disagree.
 
 ## Setup
 
@@ -22,9 +28,9 @@ Requires Node 20.9+.
    npx supabase login                                  # opens a browser to authorise the CLI
    npx supabase init                                   # once only; creates supabase/config.toml, keeps supabase/migrations/
    npx supabase link --project-ref <project-ref>       # ref = the id in https://supabase.com/dashboard/project/<project-ref>
-   npx supabase db push --dry-run                      # preview: should list 0001 and 0002
+   npx supabase db push --dry-run                      # preview: should list 0001, 0002 and 0003
    npx supabase db push                                # apply (asks for the database password you set when creating the project)
-   npx supabase migration list                         # Local and Remote columns should both show 0001 and 0002
+   npx supabase migration list                         # Local and Remote columns should all show 0001, 0002 and 0003
    ```
    For non-interactive use set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` instead of answering prompts.
    **Schema rule:** all schema changes live in numbered files in `supabase/migrations/` (`npx supabase migration new <name>` creates the next one). Never edit tables, policies or functions by hand in the dashboard. Each table is created with RLS enabled in the same migration. If you applied an earlier draft of these migrations, reset the project's database first, because 0001/0002 were reorganised before the first release.
@@ -41,8 +47,11 @@ Requires Node 20.9+.
    CLIENT_NAME="Test Biz" WA_PHONE_NUMBER_ID=<phone number id> WA_ACCESS_TOKEN=<token> npm run create-client
    ```
    The token is stored AES-256-GCM encrypted in `client_secrets`, a table the dashboard's database role cannot read.
-7. **Test**: from your phone, message the test number. You should get the fixed reply and see rows in `contacts`, `conversations` and `messages`. Replaying the same payload must not produce a second reply.
-8. **Vercel**: add the same env vars to the project. The webhook route has `maxDuration = 60`.
+7. **Add AI keys**: put `GEMINI_API_KEY` (aistudio.google.com) and optionally `OPENAI_API_KEY` in `.env`. Keys are platform-owned, server-only.
+8. **Try the eval first** (no database needed): `npm run eval` runs the 20 sample questions in `eval/questions.json` against the sample knowledge base `eval/sample-kb.md` on both providers (or `npm run eval -- --provider gemini`). It prints each reply with PASS/FAIL, tokens and latency. The checks are heuristic, so skim the replies.
+9. **Give your test client a knowledge base**: `CLIENT_ID=<uuid printed in step 6> KB_FILE=eval/sample-kb.md npm run set-kb` (optional `BOOKING_LINK=...`, `AI_PROVIDER=openai`). The dashboard editor replaces this in Stage 4.
+10. **Test on WhatsApp**: message the test number several short messages in a row. You should get ONE reply about 5 seconds later, built from all of them. Check `messages` (token columns filled), `usage_events` and `pending_messages` (empty again). Replaying the same payload must not produce a second reply.
+11. **Vercel**: add the same env vars to the project (including `CRON_SECRET`). The webhook route has `maxDuration = 60`. `vercel.json` schedules `/api/cron/sweep` **once a day**, because Hobby plans allow nothing more frequent; on Pro you can change it to `* * * * *`. The webhook sweeps after every request anyway, so the cron is only a backstop.
 
 ## Verify the database after `db push`
 
@@ -62,11 +71,11 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
   select * from public.client_secrets;          -- ERROR: permission denied
   rollback;
   ```
-- [ ] **Migrations match**: `npx supabase migration list` shows 0001 and 0002 on both sides.
+- [ ] **Migrations match**: `npx supabase migration list` shows 0001, 0002 and 0003 on both sides.
 
 ## Commands
-- `npm test`: unit tests (signature, dedupe, 24h window, payload parsing, crypto). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.
-- `npm run typecheck`, `npm run build`
+- `npm test`: unit tests (signature, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, payload parsing, crypto). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.
+- `npm run eval`, `npm run set-kb`, `npm run create-client`, `npm run typecheck`, `npm run build`
 
 ## Multi-tenancy and secrets
 - Every table has `client_id`. Composite foreign keys `(id, client_id)` stop a row from pointing at another client's parent row.
@@ -74,8 +83,10 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 - The server uses the service-role key (bypasses RLS), so **every server query must filter by `client_id`**. Keep `lib/supabase-admin.ts` out of client code.
 - Tokens are never logged or returned to the browser.
 
-## Known Stage 1 limits (planned)
-- No batching yet: each message gets its own reply. Stage 2 adds the pending-messages worker.
-- A crash between storing a message and replying is not retried, because a Meta retry would be deduped. The Stage 2 worker design fixes this.
-- Rate limits, monthly cap, email alerts, dashboard, retention and deletion jobs come in later stages.
+## Known limits (planned)
+- **Not for real customers yet:** booking requests are not saved and no emails are sent (Stage 3), so the no-link booking flow only collects details in chat.
+- Model-extracted contact and booking details are validated but not stored yet (Stage 3).
+- Knowledge base is plain pasted text with no search (Stage 5 adds chunking and vector search).
+- Each webhook invocation sleeps ~5s for the batch window; fine at small scale.
+- Dashboard, retention and deletion jobs, daily check and Embedded Signup come in later stages.
 - **Real clients can only onboard after Tech Provider approval** (Stage 6, Embedded Signup). Until then only Meta's test number, or numbers in your own WABA, work.

@@ -1,13 +1,15 @@
 import { after } from "next/server";
+import { runBatches } from "../../../../lib/batch";
 import { env } from "../../../../lib/env";
-import { processEvents } from "../../../../lib/inbound";
-import { supabaseDeps } from "../../../../lib/supabase-deps";
+import { recordEvents } from "../../../../lib/inbound";
+import { supabaseBatchDeps } from "../../../../lib/supabase-batch";
+import { supabaseInboundDeps } from "../../../../lib/supabase-deps";
 import { parseWebhookPayload } from "../../../../lib/whatsapp/payload";
 import { safeEqual, verifySignature } from "../../../../lib/whatsapp/signature";
 
 export const runtime = "nodejs"; // we need node:crypto
 export const dynamic = "force-dynamic";
-// after() work shares this limit on Vercel. Stage 2 (AI replies) needs headroom.
+// after() work shares this limit on Vercel: batch wait (~5s) + model call (<=25s x2 attempts).
 export const maxDuration = 60;
 
 // GET: Meta's one-time verification handshake when you save the webhook URL.
@@ -42,10 +44,16 @@ export async function POST(req: Request) {
 
   const events = parseWebhookPayload(json);
 
-  // Return 200 right away (Meta retries on slow/non-200 responses) and do the
-  // real work with after(), which on Vercel keeps the function alive via
-  // waitUntil until the callback finishes (up to maxDuration).
-  after(() => processEvents(events, supabaseDeps()));
+  // 1) Store the messages BEFORE answering Meta. This is a quick DB-only step;
+  //    if it fails we return 500 so Meta retries, and the unique wamid dedupes.
+  const { conversationIds, failed } = await recordEvents(events, supabaseInboundDeps());
 
-  return new Response("ok", { status: 200 });
+  // 2) Answer 200 right away and do the slow work (wait for the batch window,
+  //    call the model, send the reply) with after(). On Vercel after() is backed
+  //    by waitUntil, so the function stays alive until it finishes (maxDuration).
+  //    The same call also sweeps stranded batches, so every webhook (even a mere
+  //    delivery status) helps recover work a crashed worker left behind.
+  after(() => runBatches(conversationIds, supabaseBatchDeps()));
+
+  return failed > 0 ? new Response("Temporary error", { status: 500 }) : new Response("ok", { status: 200 });
 }

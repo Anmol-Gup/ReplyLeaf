@@ -1,108 +1,73 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  FALLBACK_REPLY, FIXED_REPLY, NON_TEXT_REPLY, handleInboundMessage, processEvents,
-  type InboundDeps, type OutboundRecord, type RecordResult,
-} from "../lib/inbound";
+import { recordEvents, type InboundDeps, type RecordResult } from "../lib/inbound";
 import type { InboundMessage } from "../lib/whatsapp/payload";
-import { WINDOW_MS } from "../lib/whatsapp/window";
 
 const NOW = new Date("2026-01-02T12:00:00Z");
-
 const msg = (over: Partial<InboundMessage> = {}): InboundMessage => ({
   phoneNumberId: "PNID", waMessageId: "wamid.1", from: "911", sentAt: NOW,
   type: "text", text: "hello", profileName: null, ...over,
 });
 
-// In-memory fake that mimics the SQL function: a unique wamid set = dedupe.
-function fakeDeps(opts: { handling?: "bot" | "human_active"; lastAt?: Date | null; sendFails?: boolean; knownClient?: boolean } = {}) {
-  const seen = new Set<string>();
-  const sent: string[] = [];
-  const saved: OutboundRecord[] = [];
+// In-memory fake mimicking the SQL function: a unique wamid set = dedupe.
+function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boolean; dbFails?: boolean } = {}) {
+  const stored: string[] = [];
   const alerts: string[] = [];
   const statuses: string[] = [];
-  let failNextSend = opts.sendFails ?? false;
   const deps: InboundDeps = {
     findClientByPhoneNumberId: async () => (opts.knownClient === false ? null : { id: "c1", name: "Biz" }),
     recordInbound: async (_c, m): Promise<RecordResult> => {
-      const duplicate = seen.has(m.waMessageId);
-      seen.add(m.waMessageId);
-      return {
-        duplicate, conversationId: "conv1", handling: opts.handling ?? "bot",
-        lastCustomerMessageAt: opts.lastAt === undefined ? m.sentAt : opts.lastAt,
-      };
+      if (opts.dbFails) throw new Error("db down");
+      const duplicate = stored.includes(m.waMessageId);
+      if (!duplicate) stored.push(m.waMessageId);
+      return { duplicate, conversationId: "conv1", handling: opts.handling ?? "bot", lastCustomerMessageAt: m.sentAt };
     },
-    saveOutbound: async (r) => void saved.push(r),
     updateMessageStatus: async (id, s) => void statuses.push(`${id}:${s}`),
-    sendText: async (_c, _p, _to, body) => {
-      if (failNextSend) { failNextSend = false; throw new Error("graph down"); }
-      sent.push(body);
-      return { waMessageId: `out.${sent.length}` };
-    },
     raiseAlert: async (_c, kind) => void alerts.push(kind),
   };
-  return { deps, sent, saved, alerts, statuses };
+  return { deps, stored, alerts, statuses };
 }
 
-test("replies once with the fixed text and stores the outbound message", async () => {
+test("stores each message once and schedules its conversation once", async () => {
   const f = fakeDeps();
-  await handleInboundMessage(msg(), f.deps, NOW);
-  assert.deepEqual(f.sent, [FIXED_REPLY]);
-  assert.equal(f.saved[0].status, "sent");
+  const out = await recordEvents({ statuses: [], messages: [msg(), msg({ waMessageId: "wamid.2" })] }, f.deps);
+  assert.deepEqual(f.stored, ["wamid.1", "wamid.2"]);
+  assert.deepEqual(out.conversationIds, ["conv1"]); // two messages, one batch
+  assert.equal(out.failed, 0);
 });
 
-test("dedupe: a Meta retry of the same wamid does not reply twice", async () => {
+test("dedupe: a Meta retry of the same wamid is stored only once", async () => {
   const f = fakeDeps();
-  await handleInboundMessage(msg(), f.deps, NOW);
-  await handleInboundMessage(msg(), f.deps, NOW);
-  assert.equal(f.sent.length, 1);
-  // a different wamid is a new message and does get a reply
-  await handleInboundMessage(msg({ waMessageId: "wamid.2" }), f.deps, NOW);
-  assert.equal(f.sent.length, 2);
+  await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
+  const again = await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
+  assert.deepEqual(f.stored, ["wamid.1"]);
+  // the retry still schedules the conversation, so a batch stranded by a crash is picked up
+  assert.deepEqual(again.conversationIds, ["conv1"]);
 });
 
-test("human takeover: the bot stays silent", async () => {
+test("human takeover: message is stored but no batch is scheduled", async () => {
   const f = fakeDeps({ handling: "human_active" });
-  await handleInboundMessage(msg(), f.deps, NOW);
-  assert.equal(f.sent.length, 0);
-  assert.equal(f.saved.length, 0);
+  const out = await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
+  assert.deepEqual(f.stored, ["wamid.1"]);
+  assert.deepEqual(out.conversationIds, []);
 });
 
-test("24h window: a send outside the window is blocked and recorded, not sent", async () => {
-  const f = fakeDeps({ lastAt: new Date(NOW.getTime() - WINDOW_MS - 1) });
-  await handleInboundMessage(msg(), f.deps, NOW);
-  assert.equal(f.sent.length, 0);
-  assert.equal(f.saved[0].status, "blocked");
-  assert.equal(f.saved[0].error, "outside_24h_window");
+test("storage failure: alerts and reports failed so the route can return 500 (Meta retries)", async () => {
+  const f = fakeDeps({ dbFails: true });
+  const out = await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
+  assert.equal(out.failed, 1);
+  assert.deepEqual(f.alerts, ["inbound_record_failed"]);
 });
 
-test("non-text messages get the ask-for-text reply", async () => {
-  const f = fakeDeps();
-  await handleInboundMessage(msg({ type: "audio", text: null }), f.deps, NOW);
-  assert.deepEqual(f.sent, [NON_TEXT_REPLY]);
-});
-
-test("failure: alerts the admin and sends the customer a safe fallback", async () => {
-  const f = fakeDeps({ sendFails: true });
-  await handleInboundMessage(msg(), f.deps, NOW);
-  assert.deepEqual(f.alerts, ["inbound_processing_failed"]);
-  assert.deepEqual(f.sent, [FALLBACK_REPLY]);
-});
-
-test("unknown phone_number_id raises an alert and sends nothing", async () => {
+test("unknown phone_number_id alerts but is not a retryable failure", async () => {
   const f = fakeDeps({ knownClient: false });
-  await handleInboundMessage(msg(), f.deps, NOW);
+  const out = await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
+  assert.equal(out.failed, 0);
   assert.deepEqual(f.alerts, ["unknown_phone_number_id"]);
-  assert.equal(f.sent.length, 0);
 });
 
-test("processEvents handles statuses and several messages in order", async () => {
+test("delivery statuses are recorded", async () => {
   const f = fakeDeps();
-  await processEvents(
-    { statuses: [{ waMessageId: "out.1", status: "delivered", error: null }],
-      messages: [msg(), msg({ waMessageId: "wamid.2" })] },
-    f.deps, NOW,
-  );
+  await recordEvents({ statuses: [{ waMessageId: "out.1", status: "delivered", error: null }], messages: [] }, f.deps);
   assert.deepEqual(f.statuses, ["out.1:delivered"]);
-  assert.equal(f.sent.length, 2);
 });
