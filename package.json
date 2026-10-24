@@ -21,7 +21,8 @@
     "list-signups": "npm run build:node && node --env-file=.env .build/scripts/list-signups.js",
     "make-admin": "npm run build:node && node --env-file=.env .build/scripts/make-admin.js",
     "email-templates": "npm run build:node && node --env-file=.env .build/scripts/email-templates.js",
-    "push-email-template": "npm run build:node && node --env-file=.env .build/scripts/push-email-template.js"
+    "push-email-template": "npm run build:node && node --env-file=.env .build/scripts/push-email-template.js",
+    "create-admin": "npm run build:node && node --env-file=.env .build/scripts/create-admin.js"
   },
   "dependencies": {
     "@google/genai": "^2.31.0",

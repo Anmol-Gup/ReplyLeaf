@@ -1,4 +1,5 @@
-// Makes a login a platform admin, so it can open /admin/signups and approve sign-ups.
+// Promotes an EXISTING login to platform admin. To create a brand-new admin login with no
+// sign-up, use `npm run create-admin -- you@example.com` instead.
 //
 //   npm run make-admin -- you@example.com
 //
@@ -17,7 +18,7 @@ async function main() {
     found = data.users.find((u) => u.email?.toLowerCase() === email) ?? null;
     if (data.users.length < 200) break;
   }
-  if (!found) throw new Error(`No account found for ${email}. Sign up first.`);
+  if (!found) throw new Error(`No account found for ${email}. Create the admin with: npm run create-admin -- ${email}`);
 
   const { error } = await db.auth.admin.updateUserById(found.id, { app_metadata: { ...found.app_metadata, is_admin: true, approved: true } });
   if (error) throw new Error(`failed: ${error.message}`);
