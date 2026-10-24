@@ -23,7 +23,6 @@ export default function SignupSentDialog({ approval }: { approval: boolean }) {
           If you don&apos;t see it, check your spam folder.
           {approval ? " After that, we'll review your account and email you when your access is approved." : ""}
         </p>
-        <p className="muted">Already registered with this email? No new email is sent, so just sign in.</p>
         <div className="row" style={{ justifyContent: "center" }}>
           <Link className="btn btn-primary" href="/login">Go to sign in</Link>
           <button type="button" className="btn btn-secondary" onClick={() => ref.current?.close()}>Close</button>

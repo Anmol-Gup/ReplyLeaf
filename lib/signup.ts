@@ -37,3 +37,17 @@ export const signupSchema = z.object({
 });
 
 export type SignupInput = z.infer<typeof signupSchema>;
+
+/**
+ * Did this sign-up hit an address that already has an account?
+ * With "Confirm email" ON, Supabase answers an existing address with success but an EMPTY
+ * identities list (and sends nothing). With it OFF, it returns a user_already_exists error.
+ * Showing this is a product choice: it tells visitors whether an email is registered.
+ */
+export function isExistingAccount(
+  data: { user?: { identities?: unknown[] | null } | null } | null | undefined,
+  error: { code?: string } | null | undefined,
+): boolean {
+  if (error) return error.code === "user_already_exists" || error.code === "email_exists";
+  return Array.isArray(data?.user?.identities) && data.user.identities.length === 0;
+}

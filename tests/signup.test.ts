@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { approvedEmail, pendingUserEmail, signupNotificationEmail } from "../lib/email/templates";
-import { hasApprovedFlag, isApproved, signupMode, signupSchema } from "../lib/signup";
+import { hasApprovedFlag, isApproved, isExistingAccount, signupMode, signupSchema } from "../lib/signup";
 
 test("signup mode defaults to approval and never falls back to open by accident", () => {
   assert.equal(signupMode(undefined), "approval");
@@ -89,4 +89,21 @@ test("approval email links to the sign-in page, in HTML and text", () => {
   assert.match(m.text, /https:\/\/app\.example\.com\/login/);
   assert.match(m.html ?? "", /href="https:\/\/app\.example\.com\/login"/);
   assert.doesNotMatch(approvedEmail({ to: "o@e.com" }).text, /Sign in:/);
+});
+
+test("existing accounts are detected in both Supabase modes, and new ones are not", () => {
+  // Confirm email ON: success with an EMPTY identities list means "already registered"
+  assert.equal(isExistingAccount({ user: { identities: [] } }, null), true);
+  // a genuinely new account has an identity
+  assert.equal(isExistingAccount({ user: { identities: [{}] } }, null), false);
+  // Confirm email OFF: an explicit error
+  assert.equal(isExistingAccount(null, { code: "user_already_exists" }), true);
+  assert.equal(isExistingAccount(null, { code: "email_exists" }), true);
+  // other errors are not "exists"
+  assert.equal(isExistingAccount(null, { code: "over_request_rate_limit" }), false);
+  assert.equal(isExistingAccount(null, {}), false);
+  // missing data is not treated as existing
+  assert.equal(isExistingAccount({ user: null }, null), false);
+  assert.equal(isExistingAccount({ user: {} }, null), false);
+  assert.equal(isExistingAccount(undefined, null), false);
 });

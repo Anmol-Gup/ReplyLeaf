@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { anonClient } from "../../lib/auth/anon";
-import { signupMode, signupSchema } from "../../lib/signup";
+import { isExistingAccount, signupMode, signupSchema } from "../../lib/signup";
 
 export async function signUp(formData: FormData) {
   const mode = signupMode();
@@ -24,6 +24,7 @@ export async function signUp(formData: FormData) {
     email, password,
     options: { data: { business_name: business }, emailRedirectTo: appUrl ? `${appUrl}/login` : undefined },
   });
+  if (isExistingAccount(data, error)) redirect("/signup?error=exists");
   if (error) {
     console.error("sign-up failed", error.status, error.code); // never the email or password
     redirect(`/signup?error=${error.status === 429 ? "busy" : "failed"}`);
@@ -32,8 +33,6 @@ export async function signUp(formData: FormData) {
   // Supabase has now emailed the verification link (styled by the template you push with
   // `npm run push-email-template`). The admin is told later, once the address is VERIFIED,
   // so unverified or mistyped addresses never reach your inbox, and nobody can make us email
-  // an arbitrary third party. The same answer is shown for new and already-registered
-  // addresses, so this form cannot be used to find out who has an account.
-  void data;
+  // an arbitrary third party.
   redirect("/signup?sent=1");
 }

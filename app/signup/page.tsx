@@ -13,6 +13,7 @@ const ERRORS: Record<string, string> = {
   password: "Your password must be between 10 and 72 characters.",
   busy: "Too many attempts. Please wait a few minutes and try again.",
   failed: "We couldn't create your account. Please try again.",
+  exists: "An account with this email already exists.",
 };
 
 export default async function SignupPage({ searchParams }: { searchParams: Promise<{ error?: string; sent?: string }> }) {
@@ -38,7 +39,14 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
             <Alert kind="info">We are onboarding businesses in small groups. You can sign up now, and we will email you when your access is ready.</Alert>
           </div>
         )}
-        {error && ERRORS[error] && <div style={{ marginBottom: 16 }}><Alert kind="error">{ERRORS[error]}</Alert></div>}
+        {error && ERRORS[error] && (
+          <div style={{ marginBottom: 16 }}>
+            <Alert kind="error">
+              {ERRORS[error]}
+              {error === "exists" && <> <Link href="/login">Sign in instead</Link>. If you never verified it, <Link href="/verified?error=expired">send a new verification link</Link>.</>}
+            </Alert>
+          </div>
+        )}
         <form action={signUp} className="stack">
           <label className="field">Business name<input name="business" required maxLength={100} autoComplete="organization" /></label>
           <label className="field">Email<input name="email" type="email" required maxLength={200} autoComplete="username" /></label>
