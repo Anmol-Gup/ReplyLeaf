@@ -14,7 +14,7 @@ test("layout is branded, has a hidden preheader, and escapes every dynamic value
     button: { label: "Go", url: "https://x.test/a?b=1&c=2" }, footer: "foot <u>",
   });
   assert.match(html, /AG Enterprises and Technologies/);
-  assert.match(html, /bgcolor="#5b21b6"/);
+  assert.match(html, /bgcolor="#5b12a6"/);
   assert.match(html, /display:none!important/); // preheader hidden
   assert.doesNotMatch(html, /<script>|<img |<i>|<u>|<b>pre/); // none of the injected markup survives
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);

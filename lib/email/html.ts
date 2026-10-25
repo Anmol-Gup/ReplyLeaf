@@ -5,10 +5,11 @@ import { COMPANY_NAME } from "../brand";
 // and a plain-text twin is always sent alongside. Every piece of dynamic text is
 // escaped, so a business name like "<script>" can never become markup.
 
-const BRAND = "#5b21b6";
-const INK = "#1a1730";
+const BRAND = "#5b12a6"; // AG logo purple; the button adds a gradient on top (bgcolor stays as the fallback)
+const BRAND_GRADIENT = "linear-gradient(135deg,#8a22dc 0%,#5b12a6 55%,#3f0a82 100%)";
+const INK = "#1d1233";
 const BODY = "#3d3a55";
-const MUTED = "#6b6882";
+const MUTED = "#4a4664";
 const LINE = "#e2dfee";
 const BG = "#f6f5fa";
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -40,7 +41,7 @@ export function emailLayout(c: EmailContent): string {
 
   const url = c.button ? escapeHtml(c.button.url) : "";
   const button = c.button
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 22px;"><tr><td align="center" bgcolor="${BRAND}" style="border-radius:9px;"><a href="${url}" target="_blank" style="display:inline-block;padding:13px 26px;font-family:${FONT};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:9px;">${escapeHtml(c.button.label)}</a></td></tr></table>
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 22px;"><tr><td align="center" bgcolor="${BRAND}" style="border-radius:9px;background:${BRAND_GRADIENT};"><a href="${url}" target="_blank" style="display:inline-block;padding:13px 26px;font-family:${FONT};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:9px;">${escapeHtml(c.button.label)}</a></td></tr></table>
        <p style="margin:0 0 6px;font-size:12px;line-height:1.5;color:${MUTED};">If the button doesn&#39;t work, copy and paste this link into your browser:</p>
        <p style="margin:0 0 8px;font-size:12px;line-height:1.5;word-break:break-all;"><a href="${url}" target="_blank" style="color:${BRAND};">${url}</a></p>`
     : "";
@@ -53,7 +54,7 @@ export function emailLayout(c: EmailContent): string {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;font-family:${FONT};">
     <tr><td style="padding:0 4px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-        <td bgcolor="${BRAND}" width="36" height="36" align="center" style="border-radius:9px;font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">AG</td>
+        <td bgcolor="${BRAND}" width="36" height="36" align="center" style="border-radius:9px;background:${BRAND_GRADIENT};font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">AG</td>
         <td style="padding-left:10px;font-size:15px;font-weight:700;color:${INK};">${escapeHtml(COMPANY_NAME)}</td>
       </tr></table>
     </td></tr>

@@ -7,14 +7,17 @@
   --surface: #ffffff;
   --surface-2: #f1eff8;
   --border: #e2dfee;
-  --text: #1a1730;
-  --muted: #4a4664;
-  --brand: #5b21b6;          /* buttons, active states */
-  --brand-hover: #4c1d95;
-  --brand-text: #5b21b6;     /* links and brand-coloured text */
-  --brand-soft: #efe9fd;
+  --text: #1d1233;
+  --muted: #595571;
+  /* Purple taken from the AG logo: bright violet (#9324e9) fading to deep indigo (#3b0a79). */
+  --brand: #5b12a6;          /* solid brand colour: active states, bars */
+  --brand-hover: #3b0a79;
+  --brand-gradient: linear-gradient(135deg, #8a22dc 0%, #5b12a6 55%, #3f0a82 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #7a1acf 0%, #4a0e92 55%, #2f0768 100%);
+  --brand-text: #5b12a6;     /* links and brand-coloured text */
+  --brand-soft: #f1e8fc;
   --on-brand: #ffffff;
-  --ring: #7c3aed;
+  --ring: #9324e9;
   --success: #0b6b43; --success-soft: #e2f4ea;
   --warn: #8a4b04;    --warn-soft: #fdf0d8;
   --danger: #b42318;  --danger-soft: #fde9e7;
@@ -42,7 +45,7 @@ small { font-size: 0.8rem; }
 
 /* ---- accessibility: visible focus everywhere, skip link, reduced motion ---- */
 :focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
-.skip-link { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--brand); color: var(--on-brand); padding: 10px 14px; border-radius: 8px; }
+.skip-link { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--brand-gradient); color: var(--on-brand); padding: 10px 14px; border-radius: 8px; }
 .skip-link:focus { top: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -61,8 +64,8 @@ small { font-size: 0.8rem; }
   transition: background-color .15s, border-color .15s, color .15s;
 }
 .btn-sm { min-height: 34px; padding: 0 12px; font-size: 0.85rem; }
-.btn-primary { background: var(--brand); color: var(--on-brand); }
-.btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
+.btn-primary { background: var(--brand-gradient); color: var(--on-brand); }
+.btn-primary:hover:not(:disabled) { background: var(--brand-gradient-hover); }
 .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
 .btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
 .btn-ghost { background: transparent; color: var(--text); }
@@ -137,11 +140,11 @@ a.stat:hover { border-color: var(--brand); }
 .stat b { font-size: 1.9rem; line-height: 1.1; letter-spacing: -0.02em; }
 .stat span { color: var(--muted); font-size: 0.88rem; }
 .bar { height: 10px; background: var(--surface-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
-.bar > div { height: 100%; background: var(--brand); }
+.bar > div { height: 100%; background: var(--brand-gradient); }
 
 /* ---- logo ---- */
 .logo-img { display: block; object-fit: contain; border-radius: 8px; }
-.logo-mark { display: inline-grid; place-items: center; background: var(--brand); color: var(--on-brand); font-weight: 800; border-radius: 10px; letter-spacing: .02em; }
+.logo-mark { display: inline-grid; place-items: center; background: var(--brand-gradient); color: var(--on-brand); font-weight: 800; border-radius: 10px; letter-spacing: .02em; }
 
 /* ---- dashboard shell ---- */
 .app { min-height: 100vh; display: grid; grid-template-columns: 250px 1fr; }
@@ -224,7 +227,6 @@ a.stat:hover { border-color: var(--brand); }
 .footer { margin-top: auto; padding: 22px 24px; border-top: 1px solid var(--border); background: var(--surface); }
 .footer-inner { max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 0.88rem; color: var(--muted); }
 .footer-inner nav { display: flex; gap: 18px; }
-.footer-about { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .auth .card { width: 100%; max-width: 420px; padding: 28px; }
 .auth-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 20px; text-align: center; }
@@ -286,4 +288,4 @@ a.stat:hover { border-color: var(--brand); }
 .sample-msg { max-width: 86%; padding: 8px 12px 6px; border-radius: 14px; font-size: 0.95rem; line-height: 1.45; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgb(0 0 0 / 0.08); }
 .sample-in { align-self: flex-start; background: var(--bubble-in); color: var(--bubble-in-text); border-top-left-radius: 4px; border: 1px solid var(--border); }
 .sample-out { align-self: flex-end; background: var(--bubble-out); color: var(--bubble-out-text); border-top-right-radius: 4px; }
-.sample-time { display: block; text-align: right; font-size: 0.72rem; opacity: 0.85; margin-top: 2px; }
+.sample-time { display: block; text-align: right; font-size: 0.72rem; opacity: 0.75; margin-top: 2px; }
