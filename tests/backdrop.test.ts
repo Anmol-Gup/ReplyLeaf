@@ -6,7 +6,7 @@ import test from "node:test";
 const tile = (name: string) => readFileSync(join(process.cwd(), "public", name), "utf8");
 
 test("doodle tiles are original outline art with the intended opacity", () => {
-  for (const [name, opacity] of [["doodle-light.svg", "0.07"], ["doodle-dark.svg", "0.05"]]) {
+  for (const [name, opacity] of [["doodle-light.svg", "0.07"]]) {
     const svg = tile(name);
     assert.match(svg, /viewBox="0 0 240 240"/);
     assert.match(svg, new RegExp(`stroke-opacity="${opacity}"`));
@@ -18,4 +18,11 @@ test("doodle tiles are original outline art with the intended opacity", () => {
       assert.ok(Number(m[2]) >= 10 && Number(m[2]) + 32 <= 230, `y ${m[2]}`);
     }
   }
+});
+
+test("the app is light theme only", () => {
+  const css = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
+  assert.doesNotMatch(css, /prefers-color-scheme/);
+  assert.doesNotMatch(css, /color-scheme:\s*dark/);
+  assert.match(css, /color-scheme:\s*light/);
 });

@@ -7,6 +7,9 @@ export const metadata = {
   description: "An AI assistant on WhatsApp that answers customer questions and takes booking requests.",
 };
 
+// Light theme only: tells the browser never to draw form controls, scrollbars or the page dark.
+export const viewport = { colorScheme: "light" };
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

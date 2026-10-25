@@ -1,5 +1,5 @@
 /* Design system: purple brand, neutral greys, one accent per state.
-   Light by default; dark follows the system setting.
+   Light theme only (color-scheme: light below); there are no dark-mode styles.
    Contrast: body text >= 7:1, muted text >= 4.5:1, white on brand buttons >= 5.7:1 in both themes. */
 
 :root {
@@ -22,28 +22,6 @@
   --radius: 14px;
   --radius-sm: 9px;
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #100e1a;
-    --surface: #181526;
-    --surface-2: #211d35;
-    --border: #322d4c;
-    --text: #eeecf8;
-    --muted: #aaa6c4;
-    --brand: #7c3aed;
-    --brand-hover: #6d28d9;
-    --brand-text: #b9a0ff;
-    --brand-soft: #2a2150;
-    --on-brand: #ffffff;
-    --ring: #a78bfa;
-    --success: #4ade80; --success-soft: #12301f;
-    --warn: #fbbf24;    --warn-soft: #36280c;
-    --danger: #ff8a80;  --danger-soft: #3a1714;
-    --shadow: none;
-    color-scheme: dark;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -273,8 +251,8 @@ a.stat:hover { border-color: var(--brand); }
 .legal .muted { margin-bottom: 8px; }
 
 /* ---- chat-themed backdrop (landing, sign-in, sign-up) ----
-   An original outline-icon doodle (public/doodle-*.svg: bubbles, calendar, clock, check, phone, heart, star)
-   tiled seamlessly. Opacity is baked into the SVG (7% light, 5% dark). Content sits on solid cards. */
+   An original outline-icon doodle (public/doodle-light.svg: bubbles, calendar, clock, check, phone, heart, star)
+   tiled seamlessly. Opacity (7%) is baked into the SVG. Content sits on solid cards. */
 .chat-bg {
   --bg: #efeae2; --surface: #ffffff; --surface-2: #f6f2ea; --border: #d9d0c2;
   --bubble-in: #ffffff; --bubble-in-text: #1a1730;
@@ -282,15 +260,6 @@ a.stat:hover { border-color: var(--brand); }
   background-color: #efeae2;
   background-image: url("/doodle-light.svg");
   background-size: 240px 240px;
-}
-@media (prefers-color-scheme: dark) {
-  .chat-bg {
-    --bg: #0b141a; --surface: #14212a; --surface-2: #1b2c36; --border: #2a3f4b;
-    --bubble-in: #202c33; --bubble-in-text: #eeecf8;
-    --bubble-out: #14453a; --bubble-out-text: #e6f6ee;
-    background-color: #0b141a;
-    background-image: url("/doodle-dark.svg");
-  }
 }
 @media (forced-colors: active) {
   .chat-bg { background-image: none; background-color: Canvas; }
