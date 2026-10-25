@@ -13,26 +13,53 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: "users", title: "You stay in control", text: "Take over any chat in one click, hand it back when you're done, and keep every customer in your contact list." },
 ];
 
+const CHAT: { from: "customer" | "assistant"; text: string; time: string }[] = [
+  { from: "customer", text: "Hi! What time do you open on Saturdays?", time: "10:02" },
+  { from: "assistant", text: "Hello! On Saturdays we're open from 9am to 2pm. Is there anything else I can help with?", time: "10:02" },
+  { from: "customer", text: "Great. Can I book a haircut for this Saturday?", time: "10:03" },
+  { from: "assistant", text: "Of course! You can choose a time that suits you here: book.example.com/riya-salon", time: "10:03" },
+];
+
 function LegalLink({ href, children }: { href: string | null; children: React.ReactNode }) {
   return href ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>;
 }
 
 export default function Home() {
   return (
-    <div className="landing">
+    <div className="landing chat-bg">
       <header className="landing-nav">
         <span className="row" style={{ gap: 10, fontWeight: 700 }}><Logo size={36} /> {COMPANY_NAME}</span>
         <Link className="btn btn-secondary btn-sm" href="/login">Sign in</Link>
       </header>
 
       <main id="main">
-        <section className="hero">
-          <h1>An AI assistant on WhatsApp for your business</h1>
-          <p>It answers your customers&apos; questions from your own information and takes booking requests, so you can focus on the work.</p>
-          <div className="row" style={{ justifyContent: "center" }}>
-            <Link className="btn btn-primary" href="/login">Business owners: sign in</Link>
-            {signupMode() !== "off" && <Link className="btn btn-secondary" href="/signup">Create an account</Link>}
+        <section className="hero hero-split">
+          <div className="hero-copy">
+            <p className="hero-eyebrow"><Logo size={28} /> {COMPANY_NAME}</p>
+            <h1>An AI assistant on WhatsApp that answers customer questions and takes booking requests</h1>
+            <p className="hero-lead">Customers get an instant, friendly answer from your own information, and you keep control of every conversation.</p>
+            <div className="row hero-actions">
+              <Link className="btn btn-primary" href="/login">Sign in</Link>
+              {signupMode() !== "off" && <Link className="btn btn-secondary" href="/signup">Create account</Link>}
+            </div>
+            <p className="hero-note">Works through WhatsApp in plain text only: replies arrive as ordinary text messages, with nothing for your customers to install.</p>
           </div>
+
+          <figure className="card sample-chat">
+            <figcaption className="sample-chat-head">
+              <span className="sample-chat-title">Example conversation</span>
+              <span className="muted">Sample only</span>
+            </figcaption>
+            <ol className="sample-log" aria-label="Example conversation between a customer and the assistant">
+              {CHAT.map((m, i) => (
+                <li key={i} className={`sample-msg ${m.from === "customer" ? "sample-in" : "sample-out"}`}>
+                  <span className="sr-only">{m.from === "customer" ? "Customer: " : "Assistant: "}</span>
+                  {m.text}
+                  <span className="sample-time" aria-hidden="true">{m.time}</span>
+                </li>
+              ))}
+            </ol>
+          </figure>
         </section>
 
         <section className="features" aria-label="Features">

@@ -25,7 +25,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
   const terms = termsUrl();
 
   return (
-    <main className="auth" id="main">
+    <main className="auth chat-bg" id="main">
       {sent === "1" && <SignupSentDialog approval={mode === "approval"} />}
       <div className="card">
         <div className="auth-brand">

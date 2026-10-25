@@ -12,7 +12,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { error, next } = await searchParams;
   const target = safeNext(next);
   return (
-    <main className="auth" id="main">
+    <main className="auth chat-bg" id="main">
       <div className="card">
         <div className="auth-brand">
           <Logo size={48} />
