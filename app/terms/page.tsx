@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import LegalPage from "../../components/LegalPage";
-import { COMPANY_NAME, PRODUCT_NAME, contactEmail } from "../../lib/brand";
+import { COMPANY_NAME, PRODUCT_NAME, supportEmail } from "../../lib/brand";
 
 export const metadata: Metadata = { title: "Terms of Service" };
 export const dynamic = "force-dynamic";
 
 export default function Terms() {
-  const email = contactEmail();
+  const email = supportEmail();
   return (
     <LegalPage title="Terms of Service">
       <p>These terms apply when a business (&ldquo;you&rdquo;) uses {PRODUCT_NAME}, provided by {COMPANY_NAME} (&ldquo;we&rdquo;). By creating an account or connecting WhatsApp you agree to them.</p>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Icon, { type IconName } from "../components/Icon";
 import Logo from "../components/Logo";
-import { COMPANY_NAME, privacyUrl, termsUrl } from "../lib/brand";
+import { COMPANY_NAME, LEGAL_NAME, privacyUrl, supportEmail, termsUrl } from "../lib/brand";
 import { signupMode } from "../lib/signup";
 
 // Reads SIGNUP_MODE, so it must be rendered per request, not frozen at build time.
@@ -20,11 +20,15 @@ const CHAT: { from: "customer" | "assistant"; text: string; time: string }[] = [
   { from: "assistant", text: "Of course! You can choose a time that suits you here: book.example.com/riya-salon", time: "10:03" },
 ];
 
+// Hidden entirely when the URL is not configured.
 function LegalLink({ href, children }: { href: string | null; children: React.ReactNode }) {
-  return href ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>;
+  return href ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : null;
 }
 
 export default function Home() {
+  const privacy = privacyUrl();
+  const terms = termsUrl();
+  const support = supportEmail();
   return (
     <div className="landing chat-bg">
       <header className="landing-nav">
@@ -75,11 +79,16 @@ export default function Home() {
 
       <footer className="footer">
         <div className="footer-inner">
-          <span>&copy; {new Date().getFullYear()} {COMPANY_NAME}</span>
-          <nav aria-label="Legal">
-            <LegalLink href={privacyUrl()}>Privacy Policy</LegalLink>
-            <LegalLink href={termsUrl()}>Terms</LegalLink>
-          </nav>
+          <div className="footer-about">
+            <span>&copy; {new Date().getFullYear()} {LEGAL_NAME}</span>
+            {support && <span>Support: <a href={`mailto:${support}`}>{support}</a></span>}
+          </div>
+          {(privacy || terms) && (
+            <nav aria-label="Legal">
+              <LegalLink href={privacy}>Privacy Policy</LegalLink>
+              <LegalLink href={terms}>Terms</LegalLink>
+            </nav>
+          )}
         </div>
       </footer>
     </div>

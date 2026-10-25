@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import LegalPage from "../../components/LegalPage";
-import { COMPANY_NAME, PRODUCT_NAME, contactEmail } from "../../lib/brand";
+import { COMPANY_NAME, PRODUCT_NAME, supportEmail } from "../../lib/brand";
 
 export const metadata: Metadata = { title: "Privacy Policy" };
 export const dynamic = "force-dynamic";
 
 export default function Privacy() {
-  const email = contactEmail();
+  const email = supportEmail();
   return (
     <LegalPage title="Privacy Policy">
       <p>{COMPANY_NAME} (&ldquo;we&rdquo;) provides {PRODUCT_NAME}, a service that lets a business answer its customers&apos; WhatsApp messages with an AI assistant. This policy explains what data we handle and why.</p>

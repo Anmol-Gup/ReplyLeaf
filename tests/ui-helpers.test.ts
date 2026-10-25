@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { COMPANY_NAME, privacyUrl, termsUrl } from "../lib/brand";
+import { COMPANY_NAME, LEGAL_NAME, privacyUrl, supportEmail, termsUrl } from "../lib/brand";
 import { clip, fmtDay, fmtTime, matches, windowStatus } from "../lib/dashboard";
 
 test("time and day formatting is UTC and tolerant of missing values", () => {
@@ -40,12 +40,23 @@ test("clip shortens long text only", () => {
 
 test("brand name and optional legal links", () => {
   assert.equal(COMPANY_NAME, "AG Enterprises and Technologies");
-  const saved = { p: process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL, t: process.env.NEXT_PUBLIC_TERMS_URL };
-  delete process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL; delete process.env.NEXT_PUBLIC_TERMS_URL;
-  assert.equal(privacyUrl(), "/privacy");
-  assert.equal(termsUrl(), "/terms");
-  process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL = "https://example.com/privacy";
-  assert.equal(privacyUrl(), "https://example.com/privacy");
-  if (saved.p === undefined) delete process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL; else process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL = saved.p;
-  if (saved.t !== undefined) process.env.NEXT_PUBLIC_TERMS_URL = saved.t;
+  assert.equal(LEGAL_NAME, "AG Enterprises and Technologies (OPC) Pvt. Ltd.");
+  const names = ["PRIVACY_POLICY_URL", "TERMS_URL", "SUPPORT_EMAIL", "NEXT_PUBLIC_PRIVACY_POLICY_URL", "NEXT_PUBLIC_TERMS_URL", "NEXT_PUBLIC_CONTACT_EMAIL"];
+  const saved = Object.fromEntries(names.map((n) => [n, process.env[n]]));
+  try {
+    for (const n of names) delete process.env[n];
+    assert.equal(privacyUrl(), null); // unset: hidden
+    assert.equal(termsUrl(), null);
+    assert.equal(supportEmail(), null);
+    process.env.PRIVACY_POLICY_URL = "https://example.com/privacy";
+    process.env.TERMS_URL = "  ";
+    process.env.SUPPORT_EMAIL = "help@example.com";
+    assert.equal(privacyUrl(), "https://example.com/privacy");
+    assert.equal(termsUrl(), null); // blank counts as unset
+    assert.equal(supportEmail(), "help@example.com");
+    process.env.NEXT_PUBLIC_TERMS_URL = "https://example.com/terms"; // old name still works
+    assert.equal(termsUrl(), "https://example.com/terms");
+  } finally {
+    for (const n of names) { if (saved[n] === undefined) delete process.env[n]; else process.env[n] = saved[n]; }
+  }
 });
