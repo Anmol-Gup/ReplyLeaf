@@ -42,8 +42,8 @@ test("brand name and optional legal links", () => {
   assert.equal(COMPANY_NAME, "AG Enterprises and Technologies");
   const saved = { p: process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL, t: process.env.NEXT_PUBLIC_TERMS_URL };
   delete process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL; delete process.env.NEXT_PUBLIC_TERMS_URL;
-  assert.equal(privacyUrl(), null);
-  assert.equal(termsUrl(), null);
+  assert.equal(privacyUrl(), "/privacy");
+  assert.equal(termsUrl(), "/terms");
   process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL = "https://example.com/privacy";
   assert.equal(privacyUrl(), "https://example.com/privacy");
   if (saved.p === undefined) delete process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL; else process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL = saved.p;
