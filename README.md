@@ -20,6 +20,11 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 
 **Deviation from the spec:** the model JSON has one extra field, `answered` (boolean). It is the signal needed for "two failed answers" handoff and for logging unanswered questions. Remove it from `lib/ai/schema.ts` if you disagree.
 
+### Human handoff
+A handoff silences the assistant for ONE conversation (`conversations.handling = 'human_active'`; other chats are untouched) and writes a `handoff_requests` row: why it happened, a short model-written summary, who has it, internal notes, and a status of `requested` > `assigned` > `human_active` > `resolved` (migration 0009, functions `create_handoff` and `set_handoff_status`). It starts when the customer asks for a person or is upset or has a sensitive request (the model sets `human_needed`), after two unanswered questions in a row, when a customer wants to book and no booking link is set, or when the owner clicks Take over. The owner is emailed once per handoff (a retried webhook finds the open request and sends nothing). Only one handoff can be open per conversation.
+
+The **Human handoff** page lists them with filters and search. Per request: open the chat to reply (replies go out over WhatsApp inside the 24-hour window; after it closes the page says so and nothing is sent), Take over (assigns it to you), Assign (a typed name or email, or "Assign to me"; there are no team accounts yet), Mark resolved (the assistant STAYS silent), Resume assistant (resolves it and switches the assistant back on), and an internal note that is never sent to the customer. `supabase/tests/handoff_smoke.sql` checks the SQL against a throwaway Postgres.
+
 ### CRM, booking link and owner alerts
 - Every person who messages becomes a contact. A contact's first reply flips it from `new` to `lead` and emails the owner (once, guarded by an atomic SQL update).
 - Names/emails the model extracts are guesses. `apply_contact_details` fills **empty** fields only; a different value goes to `contacts.suggested` for the owner to confirm in the dashboard. Emails must pass Zod validation first; junk like "n/a" is dropped.
@@ -74,7 +79,7 @@ Requires Node 20.9+.
    npx supabase login                                  # opens a browser to authorise the CLI
    npx supabase init                                   # once only; creates supabase/config.toml, keeps supabase/migrations/
    npx supabase link --project-ref <project-ref>       # ref = the id in https://supabase.com/dashboard/project/<project-ref>
-   npx supabase db push --dry-run                      # preview: should list 0001 to 0008
+   npx supabase db push --dry-run                      # preview: should list 0001 to 0009
    npx supabase db push                                # apply (asks for the database password you set when creating the project)
    npx supabase migration list                         # Local and Remote columns should both show 0001 to 0008
    ```
@@ -146,10 +151,10 @@ Needs a deployed app with all env vars set, migrations 0001 to 0008 applied, and
 Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 
 - [ ] **Extensions**: `select extname from pg_extension where extname in ('vector','pgcrypto');` gives **2 rows**.
-- [ ] **15 tables, all with RLS on**: `select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1;` gives **admin_alerts, booking_requests, client_secrets, client_users, clients, contacts, conversations, kb_chunks, kb_document_versions, kb_documents, messages, pending_messages, unanswered_questions, usage_events, whatsapp_account_events, and `rowsecurity = true` on every row**.
+- [ ] **16 tables, all with RLS on**: `select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1;` gives **admin_alerts, booking_requests, client_secrets, client_users, clients, contacts, conversations, handoff_requests, kb_chunks, kb_document_versions, kb_documents, messages, pending_messages, unanswered_questions, usage_events, whatsapp_account_events, and `rowsecurity = true` on every row**.
 - [ ] **11 policies, all `SELECT` for `authenticated`**: `select tablename, policyname, cmd, roles from pg_policies where schemaname = 'public' order by 1;` gives policies on every table **except `client_secrets`, `admin_alerts`, `pending_messages` and `whatsapp_account_events`** (those four deliberately have none).
 - [ ] **No access for `anon`; browser role is read-only and never sees secrets**: `select table_name, grantee, privilege_type from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon','authenticated') order by 1, 2;` gives **only `SELECT` rows for `authenticated`, nothing for `anon`, and nothing for `client_secrets`, `admin_alerts`, `pending_messages` or `whatsapp_account_events`**.
-- [ ] **Functions locked down**: `select routine_name, grantee from information_schema.routine_privileges where routine_schema = 'public' and grantee in ('anon','authenticated','public') order by 1;` gives **only `current_client_ids` (for `authenticated`)**. Every other function (`record_inbound_message`, `claim_batch`, `complete_batch`, `find_due_batches`, `save_booking_request`, `apply_contact_details`, `mark_contact_lead`, `client_usage_summary`, `replace_document_chunks`, `save_document_version`, `search_kb`, `run_retention`, `daily_reply_check`, `apply_account_event`) is callable by `service_role` only.
+- [ ] **Functions locked down**: `select routine_name, grantee from information_schema.routine_privileges where routine_schema = 'public' and grantee in ('anon','authenticated','public') order by 1;` gives **only `current_client_ids` (for `authenticated`)**. Every other function (`record_inbound_message`, `claim_batch`, `complete_batch`, `find_due_batches`, `save_booking_request`, `apply_contact_details`, `mark_contact_lead`, `client_usage_summary`, `replace_document_chunks`, `save_document_version`, `search_kb`, `run_retention`, `daily_reply_check`, `apply_account_event`, `create_handoff`, `set_handoff_status`) is callable by `service_role` only.
 - [ ] **Embedding column is 768-dimensional with an HNSW index**: `select format_type(atttypid, atttypmod) from pg_attribute where attrelid = 'public.kb_chunks'::regclass and attname = 'embedding';` gives **`vector(768)`**, and `select indexname from pg_indexes where tablename = 'kb_chunks';` includes **`kb_chunks_embedding_idx`**.
 - [ ] **RLS actually blocks a browser session**:
   ```sql

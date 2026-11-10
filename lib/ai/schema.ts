@@ -18,6 +18,8 @@ export const ReplySchema = z.object({
     name: z.string().trim().max(100).nullable(),
     email: z.string().trim().max(200).nullable(), // validated properly before use (Stage 3)
   }),
+  // What the customer needs, for the team. Only used when a person takes over; capped again before saving.
+  summary: z.string().trim().max(600).nullable(),
 });
 
 export type ReplyResult = z.infer<typeof ReplySchema>;
@@ -30,7 +32,7 @@ const nullableString = (description: string) => ({ type: ["string", "null"], des
 export const REPLY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "intent", "answered", "contact"],
+  required: ["reply", "intent", "answered", "contact", "summary"],
   properties: {
     reply: { type: "string", description: "The WhatsApp message to send to the customer." },
     intent: { type: "string", enum: [...INTENTS] },
@@ -47,5 +49,6 @@ export const REPLY_JSON_SCHEMA = {
         email: nullableString("Customer's email only if they clearly stated it, else null."),
       },
     },
+    summary: nullableString("When intent is human_needed (or the customer wants to book and no booking link exists): one or two plain sentences telling the team what the customer needs, based only on this conversation. Otherwise null."),
   },
 } as const;

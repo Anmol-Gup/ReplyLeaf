@@ -11,7 +11,7 @@ export default async function Overview() {
     return (await q).count ?? 0;
   };
   const [human, leads, contacts] = await Promise.all([
-    count("conversations", "handling", "human_active"),
+    (await db.from("handoff_requests").select("id", { count: "exact", head: true }).neq("status", "resolved")).count ?? 0,
     count("contacts", "status", "lead"),
     count("contacts"),
   ]);
@@ -20,7 +20,7 @@ export default async function Overview() {
       <PageHeader title="Overview" description="What needs your attention right now." />
       <OnboardingBanner status={conn?.onboarding_status} step={conn?.onboarding_step} />
       <div className="stat-grid">
-        <Stat href="/dashboard/conversations" value={human} label="Conversations waiting for you" />
+        <Stat href="/dashboard/handoff" value={human} label="Chats handed to you" />
         <Stat href="/dashboard/contacts" value={leads} label="New leads" />
         <Stat href="/dashboard/contacts" value={contacts} label="Contacts in total" />
       </div>

@@ -15,6 +15,10 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   discarded: { kind: "ok", text: "Draft discarded." },
   extract_failed: { kind: "error", text: "That file could not be used." },
   not_found: { kind: "error", text: "Not found." },
+  handoff_updated: { kind: "ok", text: "Handoff updated." },
+  handoff_resolved: { kind: "ok", text: "Marked as resolved. The assistant stays silent in that chat until you resume it." },
+  handoff_resumed: { kind: "ok", text: "Done. The assistant is replying to that customer again." },
+  handoff_failed: { kind: "error", text: "That change was not allowed (it may already be resolved or taken over). Refresh and try again." },
 };
 
 // ---- display helpers (pure, unit-tested) ----

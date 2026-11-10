@@ -150,6 +150,16 @@ export function supabaseBatchDeps(): BatchDeps {
       }
     },
 
+    async createHandoff(clientId, conversationId, input) {
+      const { data, error } = await db.rpc("create_handoff", {
+        p_client_id: clientId, p_conversation_id: conversationId, p_source: input.source,
+        p_reason: input.reason, p_summary: input.summary,
+      });
+      if (error) throw new Error(`create_handoff failed: ${error.message}`);
+      const row = Array.isArray(data) ? data[0] : data;
+      return { created: row?.out_created === true };
+    },
+
     async updateConversation(clientId, conversationId, patch) {
       const { error } = await db.from("conversations").update({
         ...(patch.handling ? { handling: patch.handling } : {}),

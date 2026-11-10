@@ -1,3 +1,4 @@
+import { summaryOrFallback, SOURCE_LABELS, type HandoffSource } from "./handoff";
 import { z } from "zod";
 import { errorText } from "./inbound";
 import type { OwnerEvent } from "./email/templates";
@@ -66,6 +67,7 @@ export interface BatchDeps {
   generate(ctx: BatchContext, customerLines: string[], hasUnreadableMedia: boolean): Promise<GenerateReplyOutput>;
   sendText(ctx: BatchContext, body: string): Promise<{ waMessageId: string }>;
   saveReply(rec: SaveReply): Promise<void>;
+  createHandoff(clientId: string, conversationId: string, input: { source: HandoffSource; reason: string; summary: string }): Promise<{ created: boolean }>;
   updateConversation(clientId: string, conversationId: string, patch: { handling?: "human_active"; failedAnswerCount?: number }): Promise<void>;
   recordFailedUsage(clientId: string, usage: Usage, provider: Provider, model: string): Promise<void>;
   raiseAlert(clientId: string | null, kind: string, detail: string, opts?: { oncePerMonth?: boolean }): Promise<void>;
@@ -201,18 +203,22 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
   const bookingNeedsPerson = result.intent === "booking" && !client.bookingLink;
   const failed = result.answered || bookingNeedsPerson ? 0 : conversation.failedAnswerCount + 1;
   const handoff = askedForHuman || bookingNeedsPerson || failed >= HANDOFF_AFTER_FAILED_ANSWERS;
-  await safely(deps, client.id, "conversation", async () => {
-    await deps.updateConversation(client.id, conversation.id, {
-      failedAnswerCount: failed,
-      ...(handoff ? { handling: "human_active" as const } : {}),
+  const source: HandoffSource = askedForHuman ? "customer_request" : bookingNeedsPerson ? "booking_without_link" : "failed_answers";
+  // 1) The silence switch first (it is what stops the assistant), then 2) the record and the email.
+  await safely(deps, client.id, "conversation", () => deps.updateConversation(client.id, conversation.id, {
+    failedAnswerCount: failed,
+    ...(handoff ? { handling: "human_active" as const } : {}),
+  }));
+  if (handoff) {
+    await safely(deps, client.id, "handoff", async () => {
+      const summary = summaryOrFallback(result.summary, lastMessage);
+      // Idempotent: a retried webhook finds the open request and gets created=false, so no second email.
+      const { created } = await deps.createHandoff(client.id, conversation.id, { source, reason: SOURCE_LABELS[source], summary });
+      if (created) {
+        await deps.notifyOwner(client.id, { type: "needs_human", contactName: contact.name, phone: ctx.phone, lastMessage, reason: source, summary });
+      }
     });
-    if (handoff) {
-      await deps.notifyOwner(client.id, {
-        type: "needs_human", contactName: contact.name, phone: ctx.phone, lastMessage,
-        reason: askedForHuman ? "customer_request_or_upset" : bookingNeedsPerson ? "booking_without_link" : "failed_answers",
-      });
-    }
-  });
+  }
 }
 
 const emailSchema = z.string().email().max(200);

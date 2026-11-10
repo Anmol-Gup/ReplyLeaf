@@ -14,7 +14,7 @@ const NOW = new Date("2026-01-02T12:00:00Z");
 
 const reply = (over: Partial<ReplyResult> = {}): ReplyResult => ({
   reply: "We open at 9.", intent: "question", answered: true,
-  contact: { name: null, email: null }, ...over,
+  contact: { name: null, email: null }, summary: null, ...over,
 });
 
 function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["conversation"]> = {}): BatchContext {
@@ -33,11 +33,11 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
 
 function fakeDeps(ctx: BatchContext | null, opts: {
   gen?: () => Promise<{ result: ReplyResult }>; claimResults?: boolean[]; moreAfter?: boolean[]; sendFails?: boolean;
-  newLead?: boolean; crmFails?: boolean;
+  newLead?: boolean; crmFails?: boolean; handoffCreated?: boolean; handoffFails?: boolean;
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
     generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
-    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[] };
+    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -54,6 +54,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
       log.sent.push(body); return { waMessageId: `out.${log.sent.length}` };
     },
     saveReply: async (r) => void log.saved.push(r),
+    createHandoff: async (_c, _v, input) => { if (opts.handoffFails) throw new Error("db down"); log.handoffs.push(input); return { created: opts.handoffCreated ?? true }; },
     updateConversation: async (_c, _v, patch) => void log.conv.push(patch),
     recordFailedUsage: async () => void log.failedUsage++,
     raiseAlert: async (_c, kind) => void log.alerts.push(kind),
@@ -236,7 +237,7 @@ test("booking with a link: the link is shared by the model and the bot stays on"
 test("handoff emails the owner with the right reason", async () => {
   const asked = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "human_needed" }) }) });
   await run(asked.deps);
-  assert.deepEqual(asked.log.owner.map((e) => e.type === "needs_human" && e.reason), ["customer_request_or_upset"]);
+  assert.deepEqual(asked.log.owner.map((e) => e.type === "needs_human" && e.reason), ["customer_request"]);
 
   const failed = fakeDeps(makeCtx({}, { failedAnswerCount: 1 }), { gen: async () => ({ result: reply({ answered: false }) }) });
   await run(failed.deps);
@@ -267,4 +268,40 @@ test("unanswered questions are logged; answered ones and handoffs are not", asyn
   const human = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ answered: false, intent: "human_needed" }) }) });
   await run(human.deps);
   assert.equal(human.log.unanswered.length, 0);
+});
+
+// ---- Human handoff ----
+test("handoff creates a record with a reason and the model's summary, and emails the owner once", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "human_needed", summary: "Wants a refund for order 123." }) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.handoffs, [{ source: "customer_request", reason: "The customer asked for a person, is upset, or needs something sensitive", summary: "Wants a refund for order 123." }]);
+  const mail = f.log.owner.find((e) => e.type === "needs_human");
+  assert.ok(mail && mail.type === "needs_human" && mail.summary === "Wants a refund for order 123.");
+});
+
+test("a retried webhook (open handoff already exists) does not email the owner again", async () => {
+  const f = fakeDeps(makeCtx(), { handoffCreated: false, gen: async () => ({ result: reply({ intent: "human_needed" }) }) });
+  await run(f.deps);
+  assert.equal(f.log.handoffs.length, 1);
+  assert.equal(f.log.owner.filter((e) => e.type === "needs_human").length, 0);
+});
+
+test("no model summary: the record falls back to the customer's last message", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "human_needed", summary: null }) }) });
+  await run(f.deps);
+  assert.match(f.log.handoffs[0].summary, /^Last message: /);
+});
+
+test("the assistant is silenced even if saving the handoff record fails", async () => {
+  const f = fakeDeps(makeCtx(), { handoffFails: true, gen: async () => ({ result: reply({ intent: "human_needed" }) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.conv[0], { failedAnswerCount: 0, handling: "human_active" });
+  assert.ok(f.log.alerts.includes("post_reply_step_failed")); // the admin is told, the customer still got the reply
+  assert.equal(f.log.sent.length, 1);
+});
+
+test("a normal answer creates no handoff", async () => {
+  const f = fakeDeps(makeCtx());
+  await run(f.deps);
+  assert.equal(f.log.handoffs.length, 0);
 });

@@ -18,9 +18,17 @@ test("new lead email", () => {
 });
 
 test("needs-human email explains why", () => {
-  assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "failed_answers", lastMessage: "?" }, o).text, /could not answer twice/);
-  assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "customer_request_or_upset", lastMessage: "?" }, o).text, /asked for a person/);
-  assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "booking_without_link", lastMessage: "?" }, o).text, /no booking link is set/);
+  assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "failed_answers", lastMessage: "?", summary: "s" }, o).text, /could not answer twice/);
+  assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "customer_request", lastMessage: "?", summary: "s" }, o).text, /asked for a person/);
+  assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "booking_without_link", lastMessage: "?", summary: "s" }, o).text, /no booking link is set/);
+});
+
+test("needs-human email carries the summary, the customer's last message and the handoff page link", () => {
+  const m = ownerEmail({ type: "needs_human", contactName: "Asha", phone: "911", reason: "customer_request", lastMessage: "call me", summary: "Wants a refund." }, o);
+  assert.match(m.text, /Summary: Wants a refund\./);
+  assert.match(m.text, /last message: call me/);
+  assert.match(m.text, /https:\/\/app\.example\.com\/dashboard\/handoff/);
+  assert.match(m.text, /Next step/);
 });
 
 test("customer-controlled text cannot add lines to the subject", () => {

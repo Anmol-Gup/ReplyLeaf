@@ -22,7 +22,7 @@ const FEATURES: { icon: IconName; label: string; title: string; text: string }[]
   { icon: "book", label: "AI customer support", title: "Answers from your business knowledge", text: "Give customers instant answers using your own documents, FAQs and business information. If the answer isn't there, it says it will check with your team." },
   { icon: "users", label: "Customer contacts", title: "Never miss a potential customer", text: "Every new customer becomes a contact in your dashboard. Names and emails shared in chat are suggested for you to confirm, and you get an email for each new lead." },
   { icon: "calendar", label: "Bookings", title: "Send customers to your booking link", text: "When a customer wants to book, Replyleaf shares your booking link. No link set? Your team is alerted to take over the chat." },
-  { icon: "shield", label: "Human handoff", title: "Stay in control of every conversation", text: "Let your team take over conversations whenever personal assistance is needed, then hand them back to the assistant when you're done." },
+  { icon: "shield", label: "Human handoff", title: "Stay in control of every conversation", text: "When a customer needs a person, the assistant steps aside and your team is emailed with a short summary of what they need. Take over, then hand the chat back when you're done." },
 ];
 
 const STEPS = [
@@ -44,7 +44,7 @@ const CONTROL_POINTS = [
   "See every conversation as it happens in your dashboard.",
   "Take over any chat in one click. The assistant goes quiet while you reply.",
   "Hand the chat back to the assistant when you're finished.",
-  "Get an email for new leads and for chats that need a person.",
+  "Get an email for new leads and for chats that need a person, with a summary of what the customer wants.",
 ];
 
 export default function Home() {

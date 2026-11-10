@@ -8,7 +8,7 @@ import type { Adapter } from "../lib/ai/providers";
 
 const good = {
   reply: "We open at 9.", intent: "question", answered: true,
-  contact: { name: null, email: null },
+  contact: { name: null, email: null }, summary: null,
 };
 const config = aiConfig({ GEMINI_API_KEY: "k", OPENAI_API_KEY: "k2" });
 const base = { provider: "gemini" as const, config, system: "sys", history: [], userTurn: "hi" };

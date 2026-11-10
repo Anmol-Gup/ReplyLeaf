@@ -5,7 +5,7 @@ import type { ReplyResult } from "../lib/ai/schema";
 
 const r = (reply: string, over: Partial<ReplyResult> = {}): ReplyResult => ({
   reply, intent: "question", answered: true,
-  contact: { name: null, email: null }, ...over,
+  contact: { name: null, email: null }, summary: null, ...over,
 });
 
 test("passes when every expectation holds", () => {

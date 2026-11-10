@@ -266,3 +266,25 @@ a.stat:hover { border-color: var(--brand); }
   .chat-bg { background-image: none; background-color: Canvas; }
 }
 
+
+/* ---- human handoff page ---- */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.tab { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; font-size: 0.9rem; font-weight: 500; }
+.tab:hover { background: var(--surface-2); }
+.tab.active { background: var(--brand-soft); border-color: transparent; color: var(--brand-text); font-weight: 700; }
+.tab-count { font-size: 0.78rem; color: var(--muted); }
+.tab.active .tab-count { color: var(--brand-text); }
+.handoff-list { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.handoff-card { display: flex; flex-direction: column; gap: 14px; }
+.handoff-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.handoff-top h2 { font-size: 1.05rem; }
+.handoff-facts { margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.handoff-facts div { min-width: 0; }
+.handoff-facts dt { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.handoff-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.handoff-facts dd.note { white-space: pre-wrap; }
+.handoff-window { font-size: 0.88rem; }
+.handoff-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.handoff-more summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--brand-text); }
+.handoff-forms { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+.handoff-forms input[name="assignee"] { flex: 1 1 200px; min-width: 0; }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { clearSessionCookies, requireClient } from "../../lib/auth/session";
+import { SOURCE_LABELS } from "../../lib/handoff";
 import { deleteContactData } from "../../lib/privacy";
 import { supabaseAdmin } from "../../lib/supabase-admin";
 import { sendClientText } from "../../lib/supabase-deps";
@@ -26,21 +27,41 @@ export async function logout() {
 
 // ----------------------------------------------------------- conversations
 export async function takeOver(formData: FormData) {
-  const { clientId } = await requireClient();
+  const { clientId, user } = await requireClient();
   const id = uuid.parse(formData.get("id"));
-  await supabaseAdmin().from("conversations")
-    .update({ handling: "human_active", updated_at: new Date().toISOString() })
-    .eq("id", id).eq("client_id", clientId);
+  const db = supabaseAdmin();
+  // Records the handoff (so it shows on the Human Handoff page) and silences the assistant for THIS chat only.
+  const { data, error } = await db.rpc("create_handoff", {
+    p_client_id: clientId, p_conversation_id: id, p_source: "owner", p_reason: SOURCE_LABELS.owner, p_summary: null,
+    p_status: "human_active", p_assigned_to: user.email ?? null,
+  });
+  if (!error) {
+    const row = Array.isArray(data) ? data[0] : data;
+    // A request that was already open (waiting or assigned) moves to "you are handling it".
+    if (row && row.out_created === false) {
+      await db.rpc("set_handoff_status", { p_client_id: clientId, p_handoff_id: row.out_id, p_action: "take_over", p_assignee: user.email ?? null });
+    }
+  }
   revalidatePath(`/dashboard/conversations/${id}`);
+  revalidatePath("/dashboard/handoff");
 }
 
 export async function handBack(formData: FormData) {
   const { clientId } = await requireClient();
   const id = uuid.parse(formData.get("id"));
-  await supabaseAdmin().from("conversations")
-    .update({ handling: "bot", failed_answer_count: 0, updated_at: new Date().toISOString() })
-    .eq("id", id).eq("client_id", clientId);
+  const db = supabaseAdmin();
+  // If a handoff is open for this chat, closing it also switches the assistant back on.
+  const { data: open } = await db.from("handoff_requests").select("id")
+    .eq("conversation_id", id).eq("client_id", clientId).neq("status", "resolved").maybeSingle();
+  if (open) {
+    await db.rpc("set_handoff_status", { p_client_id: clientId, p_handoff_id: open.id, p_action: "resume_ai", p_assignee: null });
+  } else {
+    await db.from("conversations")
+      .update({ handling: "bot", failed_answer_count: 0, updated_at: new Date().toISOString() })
+      .eq("id", id).eq("client_id", clientId);
+  }
   revalidatePath(`/dashboard/conversations/${id}`);
+  revalidatePath("/dashboard/handoff");
 }
 
 export async function sendHumanMessage(formData: FormData) {
