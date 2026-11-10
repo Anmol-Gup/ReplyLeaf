@@ -5,8 +5,8 @@ import { LEGAL_NAME, PRODUCT_NAME } from "../brand";
 // and a plain-text twin is always sent alongside. Every piece of dynamic text is
 // escaped, so a business name like "<script>" can never become markup.
 
-const BRAND = "#0b6b45"; // Replyleaf green; the button adds a gradient on top (bgcolor stays as the fallback)
-const BRAND_GRADIENT = "linear-gradient(135deg,#0f8557 0%,#0b6b45 55%,#08513a 100%)";
+const BRAND = "#087b55"; // Replyleaf green; the button adds a gradient on top (bgcolor stays as the fallback)
+const BRAND_GRADIENT = "linear-gradient(135deg,#0a8159 0%,#087b55 55%,#066a48 100%)";
 const INK = "#10241a";
 const BODY = "#34463d";
 const MUTED = "#455a4f";

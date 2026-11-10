@@ -6,7 +6,7 @@ import test from "node:test";
 const tile = (name: string) => readFileSync(join(process.cwd(), "public", name), "utf8");
 
 test("doodle tiles are original outline art with the intended opacity", () => {
-  for (const [name, opacity] of [["doodle-light.svg", "0.07"]]) {
+  for (const [name, opacity] of [["doodle-light.svg", "0.05"]]) {
     const svg = tile(name);
     assert.match(svg, /viewBox="0 0 240 240"/);
     assert.match(svg, new RegExp(`stroke-opacity="${opacity}"`));
@@ -36,9 +36,11 @@ const ratio = (a: string, b: string) => (Math.max(luminance(a), luminance(b)) + 
 
 test("secondary grey text meets WCAG AA on the beige backdrop, white cards and green bubbles", () => {
   const css = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
-  const muted = css.match(/--muted:\s*(#[0-9a-f]{6})/i)?.[1];
-  assert.ok(muted);
-  for (const bg of ["#efeae2", "#ffffff", "#f6f2ea", "#d8f0dc"]) {
-    assert.ok(ratio(muted, bg) >= 4.5, `${muted} on ${bg} = ${ratio(muted, bg).toFixed(2)}`);
+  const mutedColours = [...css.matchAll(/--muted:\s*(#[0-9a-f]{6})/gi)].map((m) => m[1]);
+  assert.ok(mutedColours.length >= 2); // the app default and the cream-backdrop pages
+  for (const muted of mutedColours) {
+    for (const bg of ["#f7f5ef", "#f2efe6", "#ffffff", "#f4f7f5"]) {
+      assert.ok(ratio(muted, bg) >= 4.5, `${muted} on ${bg} = ${ratio(muted, bg).toFixed(2)}`);
+    }
   }
 });
