@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import Icon, { type IconName } from "./Icon";
 import Logo from "./Logo";
 import SubmitButton from "./SubmitButton";
+import { PRODUCT_NAME } from "../lib/brand";
 
 // Sidebar on desktop, a menu button + dropdown on phones. Navigation only:
 // the same routes as before, no data access here.
@@ -46,7 +47,7 @@ export default function DashboardShell({
     <div className="app">
       <a className="skip-link" href="#main">Skip to content</a>
       <aside className="sidebar">
-        <Link href="/dashboard" className="brand"><Logo size={34} /> AG Enterprises<br />and Technologies</Link>
+        <Link href="/dashboard" className="brand"><Logo size={34} /> {PRODUCT_NAME}</Link>
         <Nav pathname={pathname} isAdmin={isAdmin} />
       </aside>
 

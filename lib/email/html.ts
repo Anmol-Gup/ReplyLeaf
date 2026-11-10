@@ -1,17 +1,17 @@
-import { COMPANY_NAME } from "../brand";
+import { LEGAL_NAME, PRODUCT_NAME } from "../brand";
 
 // One branded HTML layout for the sign-up emails. Written the way email clients
 // need: tables, inline styles, no external CSS or images (many clients block those),
 // and a plain-text twin is always sent alongside. Every piece of dynamic text is
 // escaped, so a business name like "<script>" can never become markup.
 
-const BRAND = "#5b12a6"; // AG logo purple; the button adds a gradient on top (bgcolor stays as the fallback)
-const BRAND_GRADIENT = "linear-gradient(135deg,#8a22dc 0%,#5b12a6 55%,#3f0a82 100%)";
-const INK = "#1d1233";
-const BODY = "#3d3a55";
-const MUTED = "#4a4664";
-const LINE = "#e2dfee";
-const BG = "#f6f5fa";
+const BRAND = "#0b6b45"; // Replyleaf green; the button adds a gradient on top (bgcolor stays as the fallback)
+const BRAND_GRADIENT = "linear-gradient(135deg,#0f8557 0%,#0b6b45 55%,#08513a 100%)";
+const INK = "#10241a";
+const BODY = "#34463d";
+const MUTED = "#455a4f";
+const LINE = "#dbe4df";
+const BG = "#f4f7f5";
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 export const escapeHtml = (s: string) =>
@@ -54,8 +54,8 @@ export function emailLayout(c: EmailContent): string {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;font-family:${FONT};">
     <tr><td style="padding:0 4px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-        <td bgcolor="${BRAND}" width="36" height="36" align="center" style="border-radius:9px;background:${BRAND_GRADIENT};font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">AG</td>
-        <td style="padding-left:10px;font-size:15px;font-weight:700;color:${INK};">${escapeHtml(COMPANY_NAME)}</td>
+        <td bgcolor="${BRAND}" width="36" height="36" align="center" style="border-radius:9px;background:${BRAND_GRADIENT};font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">R</td>
+        <td style="padding-left:10px;font-size:15px;font-weight:700;color:${INK};">${escapeHtml(PRODUCT_NAME)}</td>
       </tr></table>
     </td></tr>
     <tr><td style="background:#ffffff;border:1px solid ${LINE};border-radius:14px;padding:32px 30px;">
@@ -63,7 +63,7 @@ export function emailLayout(c: EmailContent): string {
       ${paragraphs}${details}${button}
       ${c.footer ? `<p style="margin:18px 0 0;padding-top:16px;border-top:1px solid ${LINE};font-size:12px;line-height:1.5;color:${MUTED};">${escapeHtml(c.footer)}</p>` : ""}
     </td></tr>
-    <tr><td style="padding:16px 8px 0;font-size:12px;line-height:1.5;color:${MUTED};text-align:center;">&copy; ${new Date().getFullYear()} ${escapeHtml(COMPANY_NAME)}</td></tr>
+    <tr><td style="padding:16px 8px 0;font-size:12px;line-height:1.5;color:${MUTED};text-align:center;">&copy; ${new Date().getFullYear()} ${escapeHtml(LEGAL_NAME)}</td></tr>
   </table>
 </td></tr></table>
 </body></html>`;
@@ -76,7 +76,7 @@ export function emailLayout(c: EmailContent): string {
  */
 export function confirmSignupTemplate(): { subject: string; html: string } {
   return {
-    subject: `Confirm your email address - ${COMPANY_NAME}`,
+    subject: `Confirm your email address - ${PRODUCT_NAME}`,
     html: emailLayout({
       preheader: "One quick step to finish creating your account.",
       heading: "Confirm your email address",

@@ -5,7 +5,7 @@ import SubmitButton from "../../../components/SubmitButton";
 import { Alert } from "../../../components/ui";
 import { getUserOrNull } from "../../../lib/auth/session";
 import { safeNext } from "../../../lib/auth-links";
-import { COMPANY_NAME } from "../../../lib/brand";
+import { PRODUCT_NAME } from "../../../lib/brand";
 import { adminLogin } from "./actions";
 
 const ERRORS: Record<string, string> = {
@@ -28,7 +28,7 @@ export default async function AdminLoginPage({ searchParams }: { searchParams: P
           <Logo size={48} />
           <div>
             <h1>Administrator sign in</h1>
-            <p className="muted">{COMPANY_NAME}</p>
+            <p className="muted">{PRODUCT_NAME}</p>
           </div>
         </div>
         {error && ERRORS[error] && <div style={{ marginBottom: 16 }}><Alert kind="error">{ERRORS[error]}</Alert></div>}

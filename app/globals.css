@@ -3,25 +3,25 @@
    Contrast: body text >= 7:1, muted text >= 4.5:1, white on brand buttons >= 5.7:1. */
 
 :root {
-  --bg: #f6f5fa;
+  --bg: #f4f7f5;
   --surface: #ffffff;
-  --surface-2: #f1eff8;
-  --border: #e2dfee;
-  --text: #1d1233;
-  --muted: #595571;
-  /* Purple taken from the AG logo: bright violet (#9324e9) fading to deep indigo (#3b0a79). */
-  --brand: #5b12a6;          /* solid brand colour: active states, bars */
-  --brand-hover: #3b0a79;
-  --brand-gradient: linear-gradient(135deg, #8a22dc 0%, #5b12a6 55%, #3f0a82 100%);
-  --brand-gradient-hover: linear-gradient(135deg, #7a1acf 0%, #4a0e92 55%, #2f0768 100%);
-  --brand-text: #5b12a6;     /* links and brand-coloured text */
-  --brand-soft: #f1e8fc;
+  --surface-2: #eef3f0;
+  --border: #dbe4df;
+  --text: #10241a;
+  --muted: #455a4f;
+  /* Replyleaf green: fresh leaf green fading to deep forest green. White text on every stop of the gradient is >= 4.5:1. */
+  --brand: #0b6b45;          /* solid brand colour: active states, bars */
+  --brand-hover: #08513a;
+  --brand-gradient: linear-gradient(135deg, #0f8557 0%, #0b6b45 55%, #08513a 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #0b6b45 0%, #08513a 55%, #063d2b 100%);
+  --brand-text: #0b6b45;     /* links and brand-coloured text */
+  --brand-soft: #e1f4e9;
   --on-brand: #ffffff;
-  --ring: #9324e9;
+  --ring: #1fa56a;
   --success: #0b6b43; --success-soft: #e2f4ea;
   --warn: #8a4b04;    --warn-soft: #fdf0d8;
   --danger: #b42318;  --danger-soft: #fde9e7;
-  --shadow: 0 1px 2px rgb(26 23 48 / 0.06), 0 1px 3px rgb(26 23 48 / 0.05);
+  --shadow: 0 1px 2px rgb(16 36 26 / 0.06), 0 1px 3px rgb(16 36 26 / 0.05);
   --radius: 14px;
   --radius-sm: 9px;
   color-scheme: light;
@@ -227,6 +227,7 @@ a.stat:hover { border-color: var(--brand); }
 .footer { margin-top: auto; padding: 22px 24px; border-top: 1px solid var(--border); background: var(--surface); }
 .footer-inner { max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 0.88rem; color: var(--muted); }
 .footer-inner nav { display: flex; gap: 18px; }
+.footer-about { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .auth .card { width: 100%; max-width: 420px; padding: 28px; }
 .auth-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 20px; text-align: center; }
@@ -258,7 +259,7 @@ a.stat:hover { border-color: var(--brand); }
    tiled seamlessly. Opacity (7%) is baked into the SVG. Content sits on solid cards. */
 .chat-bg {
   --bg: #efeae2; --surface: #ffffff; --surface-2: #f6f2ea; --border: #d9d0c2;
-  --bubble-in: #ffffff; --bubble-in-text: #1a1730;
+  --bubble-in: #ffffff; --bubble-in-text: #10241a;
   --bubble-out: #d8f0dc; --bubble-out-text: #10301d;
   background-color: #efeae2;
   background-image: url("/doodle-light.svg");
@@ -288,4 +289,4 @@ a.stat:hover { border-color: var(--brand); }
 .sample-msg { max-width: 86%; padding: 8px 12px 6px; border-radius: 14px; font-size: 0.95rem; line-height: 1.45; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgb(0 0 0 / 0.08); }
 .sample-in { align-self: flex-start; background: var(--bubble-in); color: var(--bubble-in-text); border-top-left-radius: 4px; border: 1px solid var(--border); }
 .sample-out { align-self: flex-end; background: var(--bubble-out); color: var(--bubble-out-text); border-top-right-radius: 4px; }
-.sample-time { display: block; text-align: right; font-size: 0.72rem; opacity: 0.75; margin-top: 2px; }
+.sample-time { display: block; text-align: right; font-size: 0.72rem; opacity: 0.85; margin-top: 2px; }

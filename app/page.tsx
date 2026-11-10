@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Icon, { type IconName } from "../components/Icon";
 import Logo from "../components/Logo";
-import { COMPANY_NAME, LEGAL_NAME, privacyUrl, supportEmail, termsUrl } from "../lib/brand";
+import { PRODUCT_NAME, LEGAL_NAME, privacyUrl, supportEmail, termsUrl } from "../lib/brand";
 import { signupMode } from "../lib/signup";
 
 // Reads SIGNUP_MODE, so it must be rendered per request, not frozen at build time.
@@ -32,14 +32,14 @@ export default function Home() {
   return (
     <div className="landing chat-bg">
       <header className="landing-nav">
-        <span className="row" style={{ gap: 10, fontWeight: 700 }}><Logo size={36} /> {COMPANY_NAME}</span>
+        <span className="row" style={{ gap: 10, fontWeight: 700 }}><Logo size={36} /> {PRODUCT_NAME}</span>
         <Link className="btn btn-secondary btn-sm" href="/login">Sign in</Link>
       </header>
 
       <main id="main">
         <section className="hero hero-split">
           <div className="hero-copy">
-            <p className="hero-eyebrow"><Logo size={28} /> {COMPANY_NAME}</p>
+            <p className="hero-eyebrow"><Logo size={28} /> {PRODUCT_NAME}</p>
             <h1>An AI assistant on WhatsApp that answers customer questions and takes booking requests</h1>
             <p className="hero-lead">Customers get an instant, friendly answer from your own information, and you keep control of every conversation.</p>
             <div className="row hero-actions">

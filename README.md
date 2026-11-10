@@ -1,4 +1,4 @@
-# WhatsApp AI Assistant (multi-tenant)
+# Replyleaf: WhatsApp AI assistant for small businesses (multi-tenant)
 
 Next.js (App Router, TypeScript) on Vercel + Supabase (Postgres, pgvector, Auth). Small businesses connect a WhatsApp number; an AI assistant (Gemini or OpenAI, chosen per client) answers customers using only that business's knowledge base. Owners manage everything from a dashboard.
 
@@ -106,7 +106,7 @@ Requires Node 20.9+.
 
 Replace `YOUR-APP.vercel.app` with your production domain. Menu names come from Meta's documentation and may differ slightly in the dashboard.
 
-1. **App settings > Basic:** App ID goes into `NEXT_PUBLIC_META_APP_ID`; App secret into `WHATSAPP_APP_SECRET`. Add `YOUR-APP.vercel.app` under **App domains**. Set **Privacy Policy URL** to `https://YOUR-APP.vercel.app/privacy` and **Terms of Service URL** to `https://YOUR-APP.vercel.app/terms` (the app serves both pages; the text is a starting template, so have a lawyer review it). To show these links in the footer and sign-up form, set `PRIVACY_POLICY_URL=/privacy` and `TERMS_URL=/terms` (or your own URLs); they are hidden when empty. `SUPPORT_EMAIL` shows a support address in the footer.
+1. **App settings > Basic:** App ID goes into `NEXT_PUBLIC_META_APP_ID`; App secret into `WHATSAPP_APP_SECRET`. Add `YOUR-APP.vercel.app` under **App domains**. Set **Privacy Policy URL** to `https://YOUR-APP.vercel.app/privacy` and **Terms of Service URL** to `https://YOUR-APP.vercel.app/terms` (the app serves both pages; the text is a starting template, so have a lawyer review it, and set `NEXT_PUBLIC_CONTACT_EMAIL` so people can reach you).
 2. **Facebook Login for Business > Configurations:** create one configuration with the **WhatsApp Embedded Signup** variation, product **WhatsApp Cloud API**, token type **System-user access token** with expiry **60 days**, asset **WhatsApp accounts**, and permissions **`whatsapp_business_management`** and **`whatsapp_business_messaging`** only. Copy its **Configuration ID** into `NEXT_PUBLIC_META_ES_CONFIG_ID`.
 3. **Facebook Login for Business > Settings > Client OAuth settings:** turn on Client OAuth login, Web OAuth login, Enforce HTTPS, Embedded Browser OAuth Login, Use Strict Mode for redirect URIs, and **Login with the JavaScript SDK**. Then set:
    - **Allowed Domains for the JavaScript SDK:** `https://YOUR-APP.vercel.app`

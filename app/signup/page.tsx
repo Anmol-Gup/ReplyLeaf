@@ -5,7 +5,7 @@ import PasswordField from "../../components/PasswordField";
 import SignupSentDialog from "../../components/SignupSentDialog";
 import SubmitButton from "../../components/SubmitButton";
 import { Alert } from "../../components/ui";
-import { COMPANY_NAME, privacyUrl, termsUrl } from "../../lib/brand";
+import { PRODUCT_NAME, privacyUrl, termsUrl } from "../../lib/brand";
 import { signupMode } from "../../lib/signup";
 import { signUp } from "./actions";
 
@@ -32,7 +32,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
           <Logo size={48} />
           <div>
             <h1>Create your account</h1>
-            <p className="muted">{COMPANY_NAME}</p>
+            <p className="muted">{PRODUCT_NAME}</p>
           </div>
         </div>
         {mode === "approval" && (

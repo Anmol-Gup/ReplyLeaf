@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import LegalPage from "../../components/LegalPage";
-import { COMPANY_NAME, PRODUCT_NAME, supportEmail } from "../../lib/brand";
+import { LEGAL_NAME, PRODUCT_NAME, supportEmail } from "../../lib/brand";
 
 export const metadata: Metadata = { title: "Privacy Policy" };
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export default function Privacy() {
   const email = supportEmail();
   return (
     <LegalPage title="Privacy Policy">
-      <p>{COMPANY_NAME} (&ldquo;we&rdquo;) provides {PRODUCT_NAME}, a service that lets a business answer its customers&apos; WhatsApp messages with an AI assistant. This policy explains what data we handle and why.</p>
+      <p>{LEGAL_NAME} (&ldquo;we&rdquo;) provides {PRODUCT_NAME}, a service that lets a business answer its customers&apos; WhatsApp messages with an AI assistant. This policy explains what data we handle and why.</p>
 
       <h2>Who is responsible for what</h2>
       <p>The business that uses the service (&ldquo;the business&rdquo;) decides why its customers&apos; messages are handled and is responsible for telling its customers about it. We process that data on the business&apos;s behalf, only to run the service. For the account details of business owners who sign up with us, we are responsible for the data.</p>

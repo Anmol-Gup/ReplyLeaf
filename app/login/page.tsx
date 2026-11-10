@@ -3,7 +3,7 @@ import Logo from "../../components/Logo";
 import PasswordField from "../../components/PasswordField";
 import SubmitButton from "../../components/SubmitButton";
 import { Alert } from "../../components/ui";
-import { COMPANY_NAME } from "../../lib/brand";
+import { PRODUCT_NAME } from "../../lib/brand";
 import { safeNext } from "../../lib/auth-links";
 import { signupMode } from "../../lib/signup";
 import { login } from "./actions";
@@ -18,7 +18,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <Logo size={48} />
           <div>
             <h1>Sign in</h1>
-            <p className="muted">{COMPANY_NAME}</p>
+            <p className="muted">{PRODUCT_NAME}</p>
           </div>
         </div>
         {error === "unverified" ? (

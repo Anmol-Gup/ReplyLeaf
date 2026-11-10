@@ -1,6 +1,6 @@
 // Company branding and the legal links shown on the landing page.
 export const COMPANY_NAME = "AG Enterprises and Technologies";
-export const PRODUCT_NAME = "WhatsApp AI Assistant";
+export const PRODUCT_NAME = "Replyleaf";
 
 export const LEGAL_NAME = `${COMPANY_NAME} (OPC) Pvt. Ltd.`;
 

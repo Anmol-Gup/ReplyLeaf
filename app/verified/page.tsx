@@ -2,7 +2,7 @@ import Link from "next/link";
 import Icon from "../../components/Icon";
 import Logo from "../../components/Logo";
 import SubmitButton from "../../components/SubmitButton";
-import { COMPANY_NAME } from "../../lib/brand";
+import { PRODUCT_NAME } from "../../lib/brand";
 import { signupMode } from "../../lib/signup";
 import { resendVerification } from "./actions";
 
@@ -56,7 +56,7 @@ export default async function Verified({ searchParams }: { searchParams: Promise
   return (
     <main className="auth" id="main">
       <div className="card">
-        <div className="auth-brand"><Logo size={48} /><p className="muted">{COMPANY_NAME}</p></div>
+        <div className="auth-brand"><Logo size={48} /><p className="muted">{PRODUCT_NAME}</p></div>
         {view}
       </div>
     </main>

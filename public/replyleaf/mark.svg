@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Replyleaf"><title>Replyleaf</title>
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#17a06a"/><stop offset=".55" stop-color="#0b6b45"/><stop offset="1" stop-color="#07533a"/></linearGradient></defs>
+<path fill="url(#g)" d="M84 20H172A64 64 0 0 1 236 84V132A64 64 0 0 1 172 196H104L52 238L62 188A64 64 0 0 1 20 132V84A64 64 0 0 1 84 20Z"/>
+<path fill="#e8f8ee" d="M84 148C76 98 112 60 178 56C182 120 142 154 84 148Z"/>
+<path fill="none" stroke="#0b6b45" stroke-width="7" stroke-linecap="round" d="M84 150L158 76"/>
+</svg>
