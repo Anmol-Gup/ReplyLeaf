@@ -166,7 +166,6 @@ const settingsSchema = z.object({
   business_hours: z.string().max(1000),
   booking_link: z.union([z.literal(""), z.string().trim().url().max(500).refine((u) => /^https?:\/\//i.test(u), "http(s) only")]),
   ai_provider: z.enum(["gemini", "openai"]),
-  owner_email: z.union([z.literal(""), z.string().trim().email().max(200)]),
 });
 
 export async function updateSettings(formData: FormData) {
@@ -176,7 +175,7 @@ export async function updateSettings(formData: FormData) {
   const v = parsed.data;
   await supabaseAdmin().from("clients").update({
     name: v.name, business_info: v.business_info || null, business_hours: v.business_hours || null,
-    booking_link: v.booking_link || null, ai_provider: v.ai_provider, owner_email: v.owner_email || null,
+    booking_link: v.booking_link || null, ai_provider: v.ai_provider,
   }).eq("id", clientId);
   flash("/dashboard/settings", "saved");
 }

@@ -288,3 +288,13 @@ a.stat:hover { border-color: var(--brand); }
 .handoff-more summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--brand-text); }
 .handoff-forms { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
 .handoff-forms input[name="assignee"] { flex: 1 1 200px; min-width: 0; }
+
+/* ---- leads / appointments ---- */
+.brief { margin: 0; padding: 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; font: 0.88rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; max-height: 420px; overflow: auto; }
+.note { padding: 12px 14px; background: var(--surface-2); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.due { color: var(--danger); font-weight: 700; }
+
+.check { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.check input[type=checkbox] { flex: none; }
+fieldset.field { border: 0; padding: 0; margin: 0; }
+fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-size: 0.88rem; }

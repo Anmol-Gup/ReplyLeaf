@@ -21,6 +21,7 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   appt_done_not_sent: { kind: "warn", text: "Appointment updated, but the customer could NOT be reached: the 24-hour WhatsApp window has closed and we have no email for them. Copy the message below and send it another way." },
   appt_need_alternative: { kind: "error", text: "Tell the customer what you suggest instead (a date, a time or a note)." },
   appt_failed: { kind: "error", text: "That change was not allowed (the appointment may already have changed). Refresh and try again." },
+  notif_invalid: { kind: "error", text: "One of the email addresses is not valid (or there are more than 5 additional addresses). Nothing was changed." },
   lead_saved: { kind: "ok", text: "Lead updated." },
   handoff_updated: { kind: "ok", text: "Handoff updated." },
   handoff_resolved: { kind: "ok", text: "Marked as resolved. The assistant stays silent in that chat until you resume it." },

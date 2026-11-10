@@ -10,8 +10,8 @@ import "./landing.css";
 // Reads SIGNUP_MODE and the legal/support env vars, so it must be rendered per request, not frozen at build time.
 export const dynamic = "force-dynamic";
 
-// Every claim on this page describes something the app does today. Appointment collection and lead
-// qualification are NOT built yet: do not add them here until they are.
+// Every claim on this page must describe something the app does today. There is no calendar connection, so never
+// promise live availability or automatic bookings: appointments are REQUESTS that the owner confirms.
 const NAV_LINKS = [
   { href: "#features", label: "Features" },
   { href: "#how-it-works", label: "How it works" },
@@ -20,28 +20,30 @@ const NAV_LINKS = [
 
 const FEATURES: { icon: IconName; label: string; title: string; text: string }[] = [
   { icon: "book", label: "AI customer support", title: "Answers from your business knowledge", text: "Give customers instant answers using your own documents, FAQs and business information. If the answer isn't there, it says it will check with your team." },
-  { icon: "users", label: "Customer contacts", title: "Never miss a potential customer", text: "Every new customer becomes a contact in your dashboard. Names and emails shared in chat are suggested for you to confirm, and you get an email for each new lead." },
-  { icon: "calendar", label: "Bookings", title: "Send customers to your booking link", text: "When a customer wants to book, Replyleaf shares your booking link. No link set? Your team is alerted to take over the chat." },
-  { icon: "shield", label: "Human handoff", title: "Stay in control of every conversation", text: "When a customer needs a person, the assistant steps aside and your team is emailed with a short summary of what they need. Take over, then hand the chat back when you're done." },
+  { icon: "users", label: "Lead capture", title: "Never miss a potential customer", text: "When someone asks about a project or service, Replyleaf collects what they need, shows them a summary to confirm, and saves it as a lead with a project brief you can copy." },
+  { icon: "calendar", label: "Appointment requests", title: "Make appointment requests effortless", text: "Replyleaf collects the preferred date and time, notifies your team, and you confirm, reject or reschedule from your dashboard. Have a booking link? It shares that instead." },
+  { icon: "shield", label: "Human handoff", title: "Stay in control of every conversation", text: "When a customer needs a person, the assistant steps aside and your team is emailed with a short summary. Assign, take over and reply, then hand the chat back when you're done." },
 ];
 
 const STEPS = [
   { title: "Connect your WhatsApp Business account", text: "Sign in and connect your number through Meta's secure sign-up. It takes a few minutes." },
   { title: "Add your business information", text: "Upload documents or type in what customers ask about, then choose how the assistant should help." },
-  { title: "Let Replyleaf handle the conversations", text: "It replies to customers, flags new leads for you, and hands over to your team when a person is needed." },
+  { title: "Let Replyleaf handle the conversations", text: "It replies to customers, collects enquiries and appointment requests, and hands over to your team when a person is needed." },
 ];
 
 const USE_CASES = [
-  { title: "Digital marketing agencies", text: "Answer questions about services and packages, and be alerted to new enquiries." },
-  { title: "Clinics", text: "Share opening hours and service details, and point patients to your booking link." },
-  { title: "Real estate businesses", text: "Answer questions from your listing information and hand serious buyers to an agent." },
-  { title: "Coaching institutes", text: "Reply to course, schedule and fee questions from your own information." },
-  { title: "E-commerce businesses", text: "Answer shipping, returns and product questions from your FAQ." },
-  { title: "Professional service providers", text: "Handle first questions and pass client requests to the right person." },
+  { title: "Digital marketing agencies", text: "Capture project enquiries with budget and timeline, and get an email for each new lead." },
+  { title: "Clinics", text: "Answer common questions and collect appointment requests for your team to confirm." },
+  { title: "Real estate businesses", text: "Capture buyer and renter enquiries, and hand serious ones to an agent." },
+  { title: "Coaching institutes", text: "Reply to course, schedule and fee questions, and collect enquiries from interested students." },
+  { title: "E-commerce businesses", text: "Answer shipping, returns and product questions, and pass upset customers to your team." },
+  { title: "Professional service providers", text: "Handle first questions, collect enquiries and appointment requests, and pass them to the right person." },
 ];
 
 const CONTROL_POINTS = [
   "See every conversation as it happens in your dashboard.",
+  "Confirm, reject or reschedule appointment requests in one place.",
+  "Review each lead with a summary, its requirements and a status you control.",
   "Take over any chat in one click. The assistant goes quiet while you reply.",
   "Hand the chat back to the assistant when you're finished.",
   "Get an email for new leads and for chats that need a person, with a summary of what the customer wants.",
@@ -77,7 +79,7 @@ export default function Home() {
           <div className="lp-hero-copy">
             <p className="lp-eyebrow">Your AI-powered WhatsApp assistant</p>
             <h1>Turn WhatsApp conversations into business growth.</h1>
-            <p className="lp-lead">Replyleaf answers customer questions using your business knowledge, shares your booking link, and connects customers with your team whenever they need a person.</p>
+            <p className="lp-lead">Replyleaf answers customer questions using your business knowledge, captures enquiries, collects appointment requests for you to confirm, and connects customers with your team whenever they need a person.</p>
             <div className="lp-actions">
               <Link className="btn btn-primary lp-btn-lg" href={ctaHref}>{ctaLabel}</Link>
               <a className="btn btn-secondary lp-btn-lg" href="#how-it-works">See how it works</a>

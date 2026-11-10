@@ -118,3 +118,36 @@ export function renderWorkflowRules(s: WorkflowSettings, bookingLink: string | n
   }
   return out.join("\n\n");
 }
+
+/** The settings form (checkboxes, text boxes, one-item-per-line textareas) -> the settings shape, before validation.
+ *  `get` returns a field's text, or null when it is missing (an unchecked checkbox is missing). */
+export function formToWorkflowInput(get: (name: string) => string | null): unknown {
+  const on = (n: string) => get(n) !== null;
+  const text = (n: string) => get(n) ?? "";
+  const duration = text("appointment_duration").trim();
+  const notice = text("appointment_notice").trim();
+  return {
+    appointments: {
+      enabled: on("appointments_enabled"),
+      instructions: text("appointment_instructions"),
+      workingDays: WEEKDAYS.filter((d) => on(`day_${d}`)),
+      openTime: text("open_time") || "09:00",
+      closeTime: text("close_time") || "17:00",
+      durationMinutes: duration === "" ? null : Number(duration),
+      minNoticeHours: notice === "" ? 0 : Number(notice),
+    },
+    enquiries: {
+      enabled: on("enquiries_enabled"),
+      services: linesToList(text("services"), 20, 100),
+      questions: linesToList(text("questions"), 10, 200),
+      budgetRanges: linesToList(text("budget_ranges"), 10, 60),
+      instructions: text("enquiry_instructions"),
+    },
+    handoff: {
+      enabled: on("handoff_enabled"),
+      availability: text("availability"),
+      responseTime: text("response_time"),
+      escalationInstructions: text("escalation_instructions"),
+    },
+  };
+}

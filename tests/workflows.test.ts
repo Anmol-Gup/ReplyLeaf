@@ -7,7 +7,7 @@ import {
 import { LEAD_STATUSES, leadFormSchema, leadOverview, projectBrief } from "../lib/leads";
 import { eventCategory, parseEmails, parseOneEmail, recipientsFor, type NotificationSettings } from "../lib/notify-settings";
 import { CONFIRMATION_TTL_MS, decideAction, leadDedupeKey, nextWorkflowState, parseWorkflowState, validateAppointment, validateLead, validPreferredDate } from "../lib/workflow";
-import { bookingMode, DEFAULT_WORKFLOW_SETTINGS, linesToList, parseWorkflowSettings, renderWorkflowRules } from "../lib/workflow-settings";
+import { bookingMode, DEFAULT_WORKFLOW_SETTINGS, formToWorkflowInput, linesToList, parseWorkflowSettings, renderWorkflowRules, workflowSettingsSchema } from "../lib/workflow-settings";
 import { baseReply } from "./fixtures";
 
 const NOW = new Date("2026-01-02T12:00:00Z");
@@ -210,4 +210,26 @@ test("lead statuses, form validation, brief and overview", () => {
   assert.doesNotMatch(brief, /internal/i);
   assert.deepEqual(leadOverview([{ status: "new", follow_up_at: "2026-01-01" }, { status: "won", follow_up_at: null }, { status: "contacted", follow_up_at: "2026-03-01" }], "2026-01-02"),
     { total: 3, fresh: 1, open: 2, dueFollowUp: 1, won: 1 });
+});
+
+test("settings form -> validated settings (unchecked boxes are off, lists come from lines, bad numbers are rejected)", () => {
+  const fields: Record<string, string> = {
+    appointments_enabled: "on", day_mon: "on", day_wed: "on", open_time: "08:30", close_time: "17:00", appointment_duration: "45", appointment_notice: "",
+    appointment_instructions: " Ask if new patient ", services: "Web\n\nApps\nweb", questions: "", budget_ranges: "<1k\n1-5k", availability: "Mon-Fri", response_time: "1 day",
+  };
+  const get = (n: string) => (n in fields ? fields[n] : null);
+  const parsed = parseWorkflowSettings(formToWorkflowInput(get));
+  assert.equal(parsed.appointments.enabled, true);
+  assert.deepEqual(parsed.appointments.workingDays, ["mon", "wed"]);
+  assert.equal(parsed.appointments.durationMinutes, 45);
+  assert.equal(parsed.appointments.minNoticeHours, 0);
+  assert.equal(parsed.appointments.instructions, "Ask if new patient");
+  assert.deepEqual(parsed.enquiries.services, ["Web", "Apps"]);
+  assert.equal(parsed.enquiries.enabled, false); // checkbox not sent = off
+  assert.equal(parsed.handoff.enabled, false);
+  assert.equal(parsed.handoff.responseTime, "1 day");
+  // strict validation (what the save action uses): a nonsense number fails instead of being stored
+  assert.equal(workflowSettingsSchema.safeParse(formToWorkflowInput((n) => (n === "appointment_duration" ? "9999" : n === "appointments_enabled" ? "on" : null))).success, false);
+  assert.equal(workflowSettingsSchema.safeParse(formToWorkflowInput((n) => (n === "open_time" ? "25:00" : null))).success, false);
+  assert.equal(workflowSettingsSchema.safeParse(formToWorkflowInput(() => null)).success, true);
 });
