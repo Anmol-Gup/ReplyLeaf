@@ -4,7 +4,7 @@
 //   CLIENT_NAME="Test Biz" WA_PHONE_NUMBER_ID=123 WA_ACCESS_TOKEN=EAAG... \
 //     npm run create-client
 //
-//   (optional) OWNER_EMAIL=owner@example.com   # where lead/booking/handoff alerts go
+//   (optional) OWNER_EMAIL=owner@example.com   # where lead/handoff alerts go
 //
 // The token comes from an env var (not a CLI flag) so it stays out of shell history.
 import { encryptSecret } from "../lib/crypto";

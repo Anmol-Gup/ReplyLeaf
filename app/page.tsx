@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const FEATURES: { icon: IconName; title: string; text: string }[] = [
   { icon: "book", title: "Answers from your own knowledge", text: "Replies only from the information you provide. If the answer isn't there, it says it will check with your team." },
-  { icon: "calendar", title: "Takes booking requests", text: "Shares your booking link, or collects the service, time and name and emails you the request to confirm." },
+  { icon: "calendar", title: "Shares your booking link", text: "When a customer wants to book, it sends your booking link. No link set? A team member takes over the chat." },
   { icon: "users", title: "You stay in control", text: "Take over any chat in one click, hand it back when you're done, and keep every customer in your contact list." },
 ];
 
@@ -40,7 +40,7 @@ export default function Home() {
         <section className="hero hero-split">
           <div className="hero-copy">
             <p className="hero-eyebrow"><Logo size={28} /> {PRODUCT_NAME}</p>
-            <h1>An AI assistant on WhatsApp that answers customer questions and takes booking requests</h1>
+            <h1>An AI assistant on WhatsApp that answers customer questions and shares your booking link</h1>
             <p className="hero-lead">Customers get an instant, friendly answer from your own information, and you keep control of every conversation.</p>
             <div className="row hero-actions">
               <Link className="btn btn-primary" href="/login">Sign in</Link>

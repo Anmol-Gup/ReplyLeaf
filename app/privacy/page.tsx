@@ -18,14 +18,14 @@ export default function Privacy() {
       <ul>
         <li><strong>Business owners:</strong> name or business name, email address, password (stored only as a secure hash by our login provider), and the business information and documents you add to the knowledge base.</li>
         <li><strong>WhatsApp access:</strong> the identifiers of the connected WhatsApp account and number, and an access token that lets us send and receive messages for that business. Tokens are stored encrypted and are never shown in the dashboard.</li>
-        <li><strong>The business&apos;s customers:</strong> phone number, WhatsApp profile name, message content and times, and details the customer shares in chat (such as a name, email or booking request).</li>
+        <li><strong>The business&apos;s customers:</strong> phone number, WhatsApp profile name, message content and times, and details the customer shares in chat (such as a name or email).</li>
         <li><strong>Usage:</strong> anonymous counts such as the number of AI tokens used, for limits and billing.</li>
       </ul>
 
       <h2>How we use it</h2>
       <ul>
         <li>To receive customer messages, write replies from the business&apos;s own knowledge base, and send them.</li>
-        <li>To show the business its conversations, contacts and booking requests, and to email the owner about leads, booking requests and conversations that need a person.</li>
+        <li>To show the business its conversations and contacts, and to email the owner about leads and conversations that need a person.</li>
         <li>To keep the service secure, prevent abuse and fix faults.</li>
       </ul>
       <p>We do not sell personal data, and we do not use customer messages to train AI models.</p>

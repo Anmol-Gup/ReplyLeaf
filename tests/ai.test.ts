@@ -8,7 +8,7 @@ import type { Adapter } from "../lib/ai/providers";
 
 const good = {
   reply: "We open at 9.", intent: "question", answered: true,
-  contact: { name: null, email: null }, booking: { service: null, preferred_time: null, name: null },
+  contact: { name: null, email: null },
 };
 const config = aiConfig({ GEMINI_API_KEY: "k", OPENAI_API_KEY: "k2" });
 const base = { provider: "gemini" as const, config, system: "sys", history: [], userTurn: "hi" };
@@ -34,7 +34,6 @@ test("JSON schema sent to providers is strict-mode shaped and matches the Zod ke
   };
   check(REPLY_JSON_SCHEMA);
   check(REPLY_JSON_SCHEMA.properties.contact);
-  check(REPLY_JSON_SCHEMA.properties.booking);
   assert.deepEqual(Object.keys(REPLY_JSON_SCHEMA.properties).sort(), Object.keys(ReplySchema.shape).sort());
 });
 
@@ -91,6 +90,8 @@ test("system prompt holds rules + knowledge, and branches on the booking link", 
   assert.match(p, /Cleaning costs \$60/);
   assert.match(p, /Never invent prices/);
   assert.match(p, /No booking link exists/);
+  assert.match(p, /team member will follow up/);
+  assert.doesNotMatch(p, /preferred date/i); // no booking details are collected any more
   const withLink = buildSystemPrompt({ ...client, bookingLink: "https://cal.example/x" });
   assert.match(withLink, /https:\/\/cal\.example\/x/);
   assert.doesNotMatch(withLink, /No booking link exists/);

@@ -174,16 +174,6 @@ export function supabaseBatchDeps(): BatchDeps {
       if (error) throw new Error(`apply_contact_details failed: ${error.message}`);
     },
 
-    async saveBookingRequest(clientId, contactId, conversationId, b) {
-      const { data, error } = await db.rpc("save_booking_request", {
-        p_client_id: clientId, p_contact_id: contactId, p_conversation_id: conversationId,
-        p_service: b.service, p_preferred_time: b.preferredTime, p_name: b.name,
-      });
-      if (error) throw new Error(`save_booking_request failed: ${error.message}`);
-      const row = Array.isArray(data) ? data[0] : data;
-      return { created: row.out_created === true };
-    },
-
     async markLead(clientId, contactId) {
       const { data, error } = await db.rpc("mark_contact_lead", { p_client_id: clientId, p_contact_id: contactId });
       if (error) throw new Error(`mark_contact_lead failed: ${error.message}`);

@@ -14,7 +14,7 @@ const NOW = new Date("2026-01-02T12:00:00Z");
 
 const reply = (over: Partial<ReplyResult> = {}): ReplyResult => ({
   reply: "We open at 9.", intent: "question", answered: true,
-  contact: { name: null, email: null }, booking: { service: null, preferred_time: null, name: null }, ...over,
+  contact: { name: null, email: null }, ...over,
 });
 
 function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["conversation"]> = {}): BatchContext {
@@ -33,11 +33,11 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
 
 function fakeDeps(ctx: BatchContext | null, opts: {
   gen?: () => Promise<{ result: ReplyResult }>; claimResults?: boolean[]; moreAfter?: boolean[]; sendFails?: boolean;
-  newLead?: boolean; bookingCreated?: boolean; crmFails?: boolean;
+  newLead?: boolean; crmFails?: boolean;
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
     generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
-    crm: [] as object[], bookings: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[] };
+    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -58,7 +58,6 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     recordFailedUsage: async () => void log.failedUsage++,
     raiseAlert: async (_c, kind) => void log.alerts.push(kind),
     applyContactDetails: async (_c, _id, d) => { if (opts.crmFails) throw new Error("crm down"); log.crm.push(d); },
-    saveBookingRequest: async (_c, _id, _conv, b) => { log.bookings.push(b); return { created: opts.bookingCreated ?? true }; },
     markLead: async () => opts.newLead ?? false,
     notifyOwner: async (_c, e) => void log.owner.push(e),
     logUnanswered: async (_c, _v, q) => void log.unanswered.push(q),
@@ -187,9 +186,8 @@ test("sweep processes every overdue batch; runBatches waits then sweeps", async 
   assert.ok(g.log.sleeps >= 1);
 });
 
-// ---- Stage 3: CRM, leads, booking requests, owner alerts ----
+// ---- Stage 3: CRM, leads, owner alerts ----
 
-const booking = { service: "cleaning", preferred_time: "tomorrow 10am", name: "Asha K" };
 
 test("new contact becomes a lead and the owner is emailed once", async () => {
   const f = fakeDeps(makeCtx(), { newLead: true });
@@ -218,30 +216,21 @@ test("no contact details from the model: nothing is written to the CRM", async (
   assert.equal(f.log.crm.length, 0);
 });
 
-test("booking without a link: request saved and owner emailed once all 3 details are known", async () => {
-  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "booking", booking }) }) });
+test("booking without a link: a person takes over, the owner is told why, nothing is saved or logged as unanswered", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "booking", answered: false }) }) });
   await run(f.deps);
-  assert.deepEqual(f.log.bookings, [{ service: "cleaning", preferredTime: "tomorrow 10am", name: "Asha K" }]);
-  assert.deepEqual(f.log.owner.map((e) => e.type), ["new_booking"]);
+  assert.deepEqual(f.log.owner.map((e) => e.type === "needs_human" && e.reason), ["booking_without_link"]);
+  assert.equal(f.log.unanswered.length, 0);
+  assert.deepEqual(f.log.conv.at(-1), { failedAnswerCount: 0, handling: "human_active" });
 });
 
-test("refining an existing booking request updates it without a second email", async () => {
-  const f = fakeDeps(makeCtx(), { bookingCreated: false, gen: async () => ({ result: reply({ intent: "booking", booking }) }) });
-  await run(f.deps);
-  assert.equal(f.log.bookings.length, 1);
-  assert.equal(f.log.owner.length, 0);
-});
-
-test("booking details incomplete, or a booking link exists: no request is saved", async () => {
-  const partial = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "booking", booking: { ...booking, name: null } }) }) });
-  await run(partial.deps);
-  assert.equal(partial.log.bookings.length, 0);
-
+test("booking with a link: the link is shared by the model and the bot stays on", async () => {
   const ctx = makeCtx();
   ctx.client.bookingLink = "https://cal.example/x";
-  const linked = fakeDeps(ctx, { gen: async () => ({ result: reply({ intent: "booking", booking }) }) });
-  await run(linked.deps);
-  assert.equal(linked.log.bookings.length, 0);
+  const f = fakeDeps(ctx, { gen: async () => ({ result: reply({ intent: "booking", reply: "Pick a time: https://cal.example/x" }) }) });
+  await run(f.deps);
+  assert.equal(f.log.owner.filter((e) => e.type === "needs_human").length, 0);
+  assert.deepEqual(f.log.conv.at(-1), { failedAnswerCount: 0 });
 });
 
 test("handoff emails the owner with the right reason", async () => {

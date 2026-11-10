@@ -22,9 +22,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <label className="field">Opening hours<textarea name="business_hours" maxLength={1000} defaultValue={c?.business_hours ?? ""} /></label>
           </div>
         </Card>
-        <Card title="Bookings and AI">
+        <Card title="Booking link and AI">
           <div className="stack">
-            <label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it instead of collecting booking requests.</span>
+            <label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book. If not, a team member takes over those chats.</span>
               <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
             </label>
             <label className="field">AI provider
@@ -33,7 +33,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           </div>
         </Card>
         <Card title="Alerts">
-          <label className="field">Email for alerts <span className="hint">New leads, booking requests and chats that need you.</span>
+          <label className="field">Email for alerts <span className="hint">New leads and chats that need you.</span>
             <input name="owner_email" type="email" maxLength={200} defaultValue={c?.owner_email ?? ""} />
           </label>
         </Card>

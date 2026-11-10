@@ -6,9 +6,14 @@ import { oneLine, type MailMessage } from "./mailer";
 
 export type OwnerEvent =
   | { type: "new_lead"; contactName: string | null; phone: string; firstMessage: string }
-  | { type: "new_booking"; contactName: string | null; phone: string; service: string; preferredTime: string; bookingName: string }
   | { type: "onboarded"; businessName: string }
-  | { type: "needs_human"; contactName: string | null; phone: string; reason: "customer_request_or_upset" | "failed_answers"; lastMessage: string };
+  | { type: "needs_human"; contactName: string | null; phone: string; reason: "customer_request_or_upset" | "failed_answers" | "booking_without_link"; lastMessage: string };
+
+const NEEDS_HUMAN_REASONS = {
+  failed_answers: "the assistant could not answer twice in a row",
+  customer_request_or_upset: "the customer asked for a person or seems upset",
+  booking_without_link: "the customer wants to book and no booking link is set (add one in Settings so the assistant can share it)",
+} as const;
 
 const who = (name: string | null, phone: string) => (name ? `${name} (+${phone})` : `+${phone}`);
 const clip = (s: string, n = 500) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -24,12 +29,6 @@ export function ownerEmail(
         subject: oneLine(`New lead: ${who(event.contactName, event.phone)}`),
         text: `${o.businessName} has a new lead on WhatsApp.\n\nFrom: ${who(event.contactName, event.phone)}\nFirst message: ${clip(event.firstMessage)}${link}`,
       };
-    case "new_booking":
-      return {
-        to: o.to,
-        subject: oneLine(`New booking request: ${event.service}`),
-        text: `${o.businessName} has a new booking REQUEST (not confirmed yet).\n\nCustomer: ${who(event.contactName, event.phone)}\nName for booking: ${event.bookingName}\nService: ${event.service}\nPreferred time: ${event.preferredTime}\n\nThe customer was told the team will confirm shortly. Please confirm or decline it.${link}`,
-      };
     case "onboarded":
       return {
         to: o.to,
@@ -40,7 +39,7 @@ export function ownerEmail(
       return {
         to: o.to,
         subject: oneLine(`Needs a human: ${who(event.contactName, event.phone)}`),
-        text: `${o.businessName}: the assistant has stopped replying to ${who(event.contactName, event.phone)} and is waiting for you.\n\nReason: ${event.reason === "failed_answers" ? "the assistant could not answer twice in a row" : "the customer asked for a person or seems upset"}\nTheir last message: ${clip(event.lastMessage)}\n\nReply from the dashboard, then hand the chat back to the assistant when you are done.${link}`,
+        text: `${o.businessName}: the assistant has stopped replying to ${who(event.contactName, event.phone)} and is waiting for you.\n\nReason: ${NEEDS_HUMAN_REASONS[event.reason]}\nTheir last message: ${clip(event.lastMessage)}\n\nReply from the dashboard, then hand the chat back to the assistant when you are done.${link}`,
       };
   }
 }

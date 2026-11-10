@@ -3,6 +3,9 @@ import { z } from "zod";
 // The ONLY shape we accept from a model. Anything that fails this is discarded;
 // we never act on unvalidated model output.
 //
+// Intent "booking" means the customer wants to book. The assistant never takes bookings itself:
+// it shares the business's booking link, or (no link) hands the chat to a person.
+//
 // Note: `answered` goes beyond the original spec. It is the signal we need for
 // "two failed answers => human takeover" and for logging unanswered questions.
 export const INTENTS = ["question", "booking", "human_needed", "other"] as const;
@@ -14,11 +17,6 @@ export const ReplySchema = z.object({
   contact: z.object({
     name: z.string().trim().max(100).nullable(),
     email: z.string().trim().max(200).nullable(), // validated properly before use (Stage 3)
-  }),
-  booking: z.object({
-    service: z.string().trim().max(200).nullable(),
-    preferred_time: z.string().trim().max(200).nullable(),
-    name: z.string().trim().max(100).nullable(),
   }),
 });
 
@@ -32,7 +30,7 @@ const nullableString = (description: string) => ({ type: ["string", "null"], des
 export const REPLY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["reply", "intent", "answered", "contact", "booking"],
+  required: ["reply", "intent", "answered", "contact"],
   properties: {
     reply: { type: "string", description: "The WhatsApp message to send to the customer." },
     intent: { type: "string", enum: [...INTENTS] },
@@ -47,16 +45,6 @@ export const REPLY_JSON_SCHEMA = {
       properties: {
         name: nullableString("Customer's name only if they clearly stated it, else null."),
         email: nullableString("Customer's email only if they clearly stated it, else null."),
-      },
-    },
-    booking: {
-      type: "object",
-      additionalProperties: false,
-      required: ["service", "preferred_time", "name"],
-      properties: {
-        service: nullableString("Service the customer wants to book, else null."),
-        preferred_time: nullableString("Preferred date/time in the customer's words, else null."),
-        name: nullableString("Name for the booking, else null."),
       },
     },
   },

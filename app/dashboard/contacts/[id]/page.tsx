@@ -59,7 +59,7 @@ export default async function ContactPage({
         </form>
       </Card>
 
-      <Card title="Delete this person's data" description="Permanently deletes this contact, their conversation, messages and booking requests. Use it when someone asks for their data to be erased. It cannot be undone.">
+      <Card title="Delete this person's data" description="Permanently deletes this contact, their conversation and messages. Use it when someone asks for their data to be erased. It cannot be undone.">
         <form action={deleteContact} className="row">
           <input type="hidden" name="id" value={id} />
           <label className="check"><input type="checkbox" name="confirm" value="yes" required /> I understand this is permanent</label>

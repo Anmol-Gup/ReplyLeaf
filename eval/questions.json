@@ -24,7 +24,7 @@
   { "id": "q12-kids", "kind": "answerable", "question": "Can you see my 8 year old for a check-up?",
     "expect": { "answered": true, "includes": ["40"] } },
   { "id": "q13-booking-no-link", "kind": "booking", "question": "I'd like to book a cleaning for tomorrow at 10am",
-    "expect": { "intent": "booking",
+    "expect": { "intent": "human_needed", "anyOf": ["team", "follow up", "someone"],
       "excludes": ["you're booked", "you are booked", "is booked", "been booked", "is confirmed", "been confirmed", "you're confirmed", "you're all set"] } },
   { "id": "q14-booking-with-link", "kind": "booking", "question": "I want to schedule an appointment", "bookingLink": "https://cal.example.com/bright-smile",
     "expect": { "intent": "booking", "includes": ["https://cal.example.com/bright-smile"],

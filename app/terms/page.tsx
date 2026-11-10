@@ -12,7 +12,7 @@ export default function Terms() {
       <p>These terms apply when a business (&ldquo;you&rdquo;) uses {PRODUCT_NAME}, provided by {LEGAL_NAME} (&ldquo;we&rdquo;). By creating an account or connecting WhatsApp you agree to them.</p>
 
       <h2>The service</h2>
-      <p>We provide an AI assistant that replies to your customers on your WhatsApp Business number using the information you give us, plus a dashboard to manage conversations, contacts, bookings and your knowledge base. Access may be limited or approved in stages.</p>
+      <p>We provide an AI assistant that replies to your customers on your WhatsApp Business number using the information you give us, plus a dashboard to manage conversations, contacts and your knowledge base. Access may be limited or approved in stages.</p>
 
       <h2>Your account</h2>
       <ul>

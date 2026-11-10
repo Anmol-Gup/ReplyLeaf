@@ -14,7 +14,6 @@ const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard", label: "Overview", icon: "home" },
   { href: "/dashboard/conversations", label: "Conversations", icon: "chat" },
   { href: "/dashboard/contacts", label: "Contacts", icon: "users" },
-  { href: "/dashboard/bookings", label: "Booking requests", icon: "calendar" },
   { href: "/dashboard/knowledge", label: "Knowledge base", icon: "book" },
   { href: "/dashboard/settings", label: "Settings", icon: "settings" },
   { href: "/dashboard/usage", label: "Usage", icon: "chart" },

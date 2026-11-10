@@ -71,7 +71,6 @@ export interface BatchDeps {
   raiseAlert(clientId: string | null, kind: string, detail: string, opts?: { oncePerMonth?: boolean }): Promise<void>;
   /** Fills empty contact fields; differing values go to contacts.suggested for the owner to confirm. */
   applyContactDetails(clientId: string, contactId: string, details: { name: string | null; email: string | null }): Promise<void>;
-  saveBookingRequest(clientId: string, contactId: string, conversationId: string, b: { service: string; preferredTime: string; name: string }): Promise<{ created: boolean }>;
   /** True only for the call that flipped the contact from 'new' to 'lead'. */
   markLead(clientId: string, contactId: string): Promise<boolean>;
   notifyOwner(clientId: string, event: OwnerEvent): Promise<void>;
@@ -185,7 +184,7 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
 
   // Questions we could not answer go to a list the owner can turn into knowledge.
   // (Handoff requests are not knowledge gaps.)
-  if (!result.answered && result.intent !== "human_needed") {
+  if (!result.answered && result.intent !== "human_needed" && !(result.intent === "booking" && !client.bookingLink)) {
     await safely(deps, client.id, "unanswered", () => deps.logUnanswered(client.id, conversation.id, lastMessage.slice(0, 500)));
   }
 
@@ -196,27 +195,12 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
     }
   });
 
-  // Booking: with a booking link the model just shares it. Without one we save a
-  // request once the model has all three details, and email the owner.
-  const b = result.booking;
-  if (result.intent === "booking" && !client.bookingLink && b.service && b.preferred_time && b.name) {
-    await safely(deps, client.id, "booking", async () => {
-      const saved = await deps.saveBookingRequest(client.id, contact.id, conversation.id, {
-        service: b.service as string, preferredTime: b.preferred_time as string, name: b.name as string,
-      });
-      if (saved.created) {
-        await deps.notifyOwner(client.id, {
-          type: "new_booking", contactName: contact.name, phone: ctx.phone,
-          service: b.service as string, preferredTime: b.preferred_time as string, bookingName: b.name as string,
-        });
-      }
-    });
-  }
-
   // Handoff rules: customer asked for a person / is upset (model intent), or two failed answers in a row.
-  const failed = result.answered ? 0 : conversation.failedAnswerCount + 1;
   const askedForHuman = result.intent === "human_needed";
-  const handoff = askedForHuman || failed >= HANDOFF_AFTER_FAILED_ANSWERS;
+  // Booking without a link: the assistant cannot book, so a person takes over (whatever the model's wording).
+  const bookingNeedsPerson = result.intent === "booking" && !client.bookingLink;
+  const failed = result.answered || bookingNeedsPerson ? 0 : conversation.failedAnswerCount + 1;
+  const handoff = askedForHuman || bookingNeedsPerson || failed >= HANDOFF_AFTER_FAILED_ANSWERS;
   await safely(deps, client.id, "conversation", async () => {
     await deps.updateConversation(client.id, conversation.id, {
       failedAnswerCount: failed,
@@ -225,7 +209,7 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
     if (handoff) {
       await deps.notifyOwner(client.id, {
         type: "needs_human", contactName: contact.name, phone: ctx.phone, lastMessage,
-        reason: askedForHuman ? "customer_request_or_upset" : "failed_answers",
+        reason: askedForHuman ? "customer_request_or_upset" : bookingNeedsPerson ? "booking_without_link" : "failed_answers",
       });
     }
   });

@@ -20,15 +20,15 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 
 **Deviation from the spec:** the model JSON has one extra field, `answered` (boolean). It is the signal needed for "two failed answers" handoff and for logging unanswered questions. Remove it from `lib/ai/schema.ts` if you disagree.
 
-### CRM, booking and owner alerts
+### CRM, booking link and owner alerts
 - Every person who messages becomes a contact. A contact's first reply flips it from `new` to `lead` and emails the owner (once, guarded by an atomic SQL update).
 - Names/emails the model extracts are guesses. `apply_contact_details` fills **empty** fields only; a different value goes to `contacts.suggested` for the owner to confirm in the dashboard. Emails must pass Zod validation first; junk like "n/a" is dropped.
-- Booking: if the client has a `booking_link`, the model shares it and never says "booked". If not, once the model has service + preferred time + name, a `booking_requests` row is saved (one open request per conversation, later messages refine it) and the owner is emailed.
-- Owner emails (new lead, new booking request, conversation needs a human) go to `clients.owner_email`; failures go to `ADMIN_ALERT_EMAIL` (the first alert of a kind per client per 10 minutes is emailed, the rest stay in `admin_alerts`). Email uses nodemailer + Gmail SMTP behind the `Mailer` interface in `lib/email/mailer.ts`; to swap providers, write another implementation there. Emails are plain text and subjects are forced to one line.
+- Booking: the assistant never takes bookings. If the client has a `booking_link`, the model shares it and never says "booked". If not, the chat is handed to a person (conversation set to `human_active`, owner emailed with the reason "no booking link is set"). The old `booking_requests` table and its functions are still in the database but unused.
+- Owner emails (new lead, conversation needs a human) go to `clients.owner_email`; failures go to `ADMIN_ALERT_EMAIL` (the first alert of a kind per client per 10 minutes is emailed, the rest stay in `admin_alerts`). Email uses nodemailer + Gmail SMTP behind the `Mailer` interface in `lib/email/mailer.ts`; to swap providers, write another implementation there. Emails are plain text and subjects are forced to one line.
 - Bookkeeping that fails *after* the customer already got their reply is alerted but never triggers the "something went wrong" fallback.
 
 ### Owner dashboard (`/dashboard`)
-Conversations (takeover / hand back / reply), contacts (edit, confirm or dismiss suggestions, delete a person's data), booking requests (confirm / decline), knowledge base, settings (business info, hours, booking link, AI provider, alert email), usage (tokens, monthly cap).
+Conversations (takeover / hand back / reply), contacts (edit, confirm or dismiss suggestions, delete a person's data), knowledge base, settings (business info, hours, booking link, AI provider, alert email), usage (tokens, monthly cap).
 - **Login:** Supabase Auth email + password, no social login.
 - **Sign-up** (`/signup`, controlled by `SIGNUP_MODE`): `approval` (default) lets anyone create an account but they only see a "you're on the list" page until you approve them; `open` lets accounts work immediately (use it once customers can connect WhatsApp themselves, after Tech Provider approval); `off` removes public sign-up. Anyone linked to a business counts as approved, and `create-owner` logins are approved automatically. The `/onboarding` page and its callback endpoint both refuse unapproved accounts. "Approved" is a flag in the login's `app_metadata`, which users cannot edit, so no database change is involved.
 - **The sign-up journey:**
@@ -43,7 +43,6 @@ Conversations (takeover / hand back / reply), contacts (edit, confirm or dismiss
 - **Sessions** use plain supabase-js (no extra package): the login action stores the tokens in httpOnly cookies, `proxy.ts` refreshes them, and every page re-verifies the user with Supabase (`requireClient()` in `lib/auth/session.ts`).
 - **Tenant isolation, two layers:** page reads use a client carrying the owner's own JWT, so RLS applies. Writes (server actions) use the service role but always filter by the `client_id` derived from the verified membership, never from form input. `supabase/tests/rls_isolation.test.sql` is a pgTAP test of the isolation rules (`npx supabase test db`, needs Docker).
 - **Human reply:** take over a conversation first (the assistant stays silent while you handle it). Replies outside the 24-hour window are blocked, recorded as "NOT SENT", and shown with a clear warning.
-- Confirming or declining a booking request does not message the customer; reply to them yourself from the conversation.
 
 ### Knowledge base at scale
 - **Two layers.** *Core knowledge* (`clients.kb_text`, max 8,000 chars) is always in the prompt: hours, headline prices. *Documents* hold everything else; for each customer message only the most relevant chunks are added (`<retrieved_knowledge>`).
@@ -164,7 +163,7 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 - [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0008 on both sides.
 
 ## Commands
-- `npm test`: unit tests (signatures, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, CRM/booking, email, auth helpers, chunking, file extraction, onboarding calls and resumability rules, account_update parsing, token refresh job, retention checks). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.
+- `npm test`: unit tests (signatures, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, CRM, booking hand-off, email, auth helpers, chunking, file extraction, onboarding calls and resumability rules, account_update parsing, token refresh job, retention checks). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.
 - `npm run eval`: the 20 sample questions against the AI providers.
 - `npm run create-client`, `create-owner`, `set-kb`, `offboard-client`, `list-signups`, `approve-user`, `make-admin`, `create-admin`, `email-templates`, `push-email-template`: admin scripts (read `.env`).
 - `npm run typecheck`, `npm run build`, `npm run dev`.
@@ -184,5 +183,5 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 ## Known limits
 - One business per owner login; a login with no business is sent to `/onboarding`.
 - Each webhook invocation sleeps ~5s for the batch window; fine at small scale.
-- Confirmed/declined bookings and template messages (outside the 24-hour window) are not sent to customers; templates are Phase 2.
+- Template messages (outside the 24-hour window) are not sent to customers; templates are Phase 2.
 - Unsubscribing a departed client's WABA from our app is not automated; do it in Meta's dashboard when offboarding.

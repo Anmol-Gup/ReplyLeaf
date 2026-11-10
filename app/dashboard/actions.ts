@@ -138,16 +138,6 @@ export async function deleteContact(formData: FormData) {
   flash("/dashboard/contacts", "deleted");
 }
 
-// ---------------------------------------------------------------- bookings
-export async function setBookingStatus(formData: FormData) {
-  const { clientId } = await requireClient();
-  const id = uuid.parse(formData.get("id"));
-  const status = z.enum(["confirmed", "declined"]).parse(formData.get("status"));
-  await supabaseAdmin().from("booking_requests").update({ status })
-    .eq("id", id).eq("client_id", clientId).eq("status", "pending");
-  revalidatePath("/dashboard/bookings");
-}
-
 // ---------------------------------------------------------------- settings
 const settingsSchema = z.object({
   name: z.string().trim().min(1).max(100),

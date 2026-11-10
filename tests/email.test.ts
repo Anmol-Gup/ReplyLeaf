@@ -17,17 +17,10 @@ test("new lead email", () => {
   assert.match(m.text, /https:\/\/app\.example\.com\/dashboard/);
 });
 
-test("booking email says REQUEST, includes the details, and never claims confirmation", () => {
-  const m = ownerEmail({ type: "new_booking", contactName: null, phone: "911", service: "cleaning", preferredTime: "Fri 10am", bookingName: "Asha" }, o);
-  assert.match(m.text, /REQUEST \(not confirmed yet\)/);
-  assert.match(m.text, /cleaning/);
-  assert.match(m.text, /Fri 10am/);
-  assert.match(m.subject, /^New booking request/);
-});
-
 test("needs-human email explains why", () => {
   assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "failed_answers", lastMessage: "?" }, o).text, /could not answer twice/);
   assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "customer_request_or_upset", lastMessage: "?" }, o).text, /asked for a person/);
+  assert.match(ownerEmail({ type: "needs_human", contactName: null, phone: "9", reason: "booking_without_link", lastMessage: "?" }, o).text, /no booking link is set/);
 });
 
 test("customer-controlled text cannot add lines to the subject", () => {
