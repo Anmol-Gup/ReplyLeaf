@@ -35,11 +35,6 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
             <p className="muted">{PRODUCT_NAME}</p>
           </div>
         </div>
-        {mode === "approval" && (
-          <div style={{ marginBottom: 16 }}>
-            <Alert kind="info">We are onboarding businesses in small groups. You can sign up now, and we will email you when your access is ready.</Alert>
-          </div>
-        )}
         {error && ERRORS[error] && (
           <div style={{ marginBottom: 16 }}>
             <Alert kind="error">
