@@ -1,3 +1,5 @@
+import { baseReply } from "./fixtures";
+import { DEFAULT_WORKFLOW_SETTINGS } from "../lib/workflow-settings";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ReplySchema, REPLY_JSON_SCHEMA } from "../lib/ai/schema";
@@ -6,10 +8,7 @@ import { buildSystemPrompt, wrapCustomerMessages } from "../lib/ai/prompt";
 import { aiConfig } from "../lib/ai/config";
 import type { Adapter } from "../lib/ai/providers";
 
-const good = {
-  reply: "We open at 9.", intent: "question", answered: true,
-  contact: { name: null, email: null }, summary: null,
-};
+const good = baseReply();
 const config = aiConfig({ GEMINI_API_KEY: "k", OPENAI_API_KEY: "k2" });
 const base = { provider: "gemini" as const, config, system: "sys", history: [], userTurn: "hi" };
 const adapterReturning = (texts: (string | null)[]): Adapter => {
@@ -34,6 +33,11 @@ test("JSON schema sent to providers is strict-mode shaped and matches the Zod ke
   };
   check(REPLY_JSON_SCHEMA);
   check(REPLY_JSON_SCHEMA.properties.contact);
+  check(REPLY_JSON_SCHEMA.properties.workflow);
+  check(REPLY_JSON_SCHEMA.properties.appointment);
+  check(REPLY_JSON_SCHEMA.properties.lead);
+  check(REPLY_JSON_SCHEMA.properties.lead.properties.requirements.items);
+  check(REPLY_JSON_SCHEMA.properties.action);
   assert.deepEqual(Object.keys(REPLY_JSON_SCHEMA.properties).sort(), Object.keys(ReplySchema.shape).sort());
 });
 
@@ -83,19 +87,22 @@ test("aiConfig has defaults and treats empty keys as unset", () => {
   assert.ok(c.geminiModel.length > 0 && c.openaiModel.length > 0);
 });
 
-const client = { name: "Biz", businessInfo: "info", businessHours: "9-5", bookingLink: null, kbText: "Cleaning costs $60" };
+const client = { name: "Biz", businessInfo: "info", businessHours: "9-5", bookingLink: null, kbText: "Cleaning costs $60", workflow: DEFAULT_WORKFLOW_SETTINGS };
 
 test("system prompt holds rules + knowledge, and branches on the booking link", () => {
   const p = buildSystemPrompt(client);
   assert.match(p, /Cleaning costs \$60/);
   assert.match(p, /Never invent prices/);
-  assert.match(p, /No booking link exists/);
-  assert.match(p, /team member will follow up/);
-  assert.doesNotMatch(p, /preferred date/i); // no booking details are collected any more
+  assert.match(p, /no calendar and no booking link/);
+  assert.match(p, /submit_appointment/);
   const withLink = buildSystemPrompt({ ...client, bookingLink: "https://cal.example/x" });
   assert.match(withLink, /https:\/\/cal\.example\/x/);
-  assert.doesNotMatch(withLink, /No booking link exists/);
+  assert.doesNotMatch(withLink, /no calendar and no booking link/);
+  assert.doesNotMatch(withLink, /submit_appointment/); // with a link the assistant never collects appointment details
   assert.match(withLink, /Never say the customer is booked/);
+  const off = buildSystemPrompt({ ...client, workflow: { ...DEFAULT_WORKFLOW_SETTINGS, appointments: { ...DEFAULT_WORKFLOW_SETTINGS.appointments, enabled: false } } });
+  assert.match(off, /does not take appointment requests/);
+  assert.doesNotMatch(off, /submit_appointment/);
 });
 
 test("customer text never reaches the system prompt; it is wrapped and cannot close the tag", () => {

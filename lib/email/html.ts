@@ -26,6 +26,8 @@ export type EmailContent = {
   details?: { label: string; value: string }[];
   button?: { label: string; url: string };
   footer?: string;
+  /** Header name. Defaults to the product; customer emails use the business name. */
+  brandName?: string;
 };
 
 export function emailLayout(c: EmailContent): string {
@@ -55,7 +57,7 @@ export function emailLayout(c: EmailContent): string {
     <tr><td style="padding:0 4px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
         <td bgcolor="${BRAND}" width="36" height="36" align="center" style="border-radius:9px;background:${BRAND_GRADIENT};font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">R</td>
-        <td style="padding-left:10px;font-size:15px;font-weight:700;color:${INK};">${escapeHtml(PRODUCT_NAME)}</td>
+        <td style="padding-left:10px;font-size:15px;font-weight:700;color:${INK};">${escapeHtml(c.brandName ?? PRODUCT_NAME)}</td>
       </tr></table>
     </td></tr>
     <tr><td style="background:#ffffff;border:1px solid ${LINE};border-radius:14px;padding:32px 30px;">

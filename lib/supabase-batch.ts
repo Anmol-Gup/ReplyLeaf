@@ -4,6 +4,8 @@ import { buildSystemPrompt, wrapCustomerMessages } from "./ai/prompt";
 import { retrieveKnowledge } from "./kb/retrieve";
 import type { ChatTurn, Provider } from "./ai/providers";
 import type { BatchContext, BatchDeps } from "./batch";
+import { parseWorkflowState } from "./workflow";
+import { parseWorkflowSettings } from "./workflow-settings";
 import { notifyOwner, raiseAlert, sendClientText } from "./supabase-deps";
 import { supabaseAdmin } from "./supabase-admin";
 
@@ -24,7 +26,7 @@ export function supabaseBatchDeps(): BatchDeps {
     async load(conversationId): Promise<BatchContext | null> {
       const { data: conv, error } = await db
         .from("conversations")
-        .select("id, client_id, contact_id, handling, failed_answer_count, last_customer_message_at")
+        .select("id, client_id, contact_id, handling, failed_answer_count, last_customer_message_at, workflow_state")
         .eq("id", conversationId)
         .maybeSingle();
       if (error) throw new Error(`conversation load failed: ${error.message}`);
@@ -35,9 +37,9 @@ export function supabaseBatchDeps(): BatchDeps {
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 
-      const [client, contact, pendingRows, recent, replies, recentInbound] = await Promise.all([
+      const [client, contact, pendingRows, recent, replies, recentInbound, openAppt] = await Promise.all([
         db.from("clients")
-          .select("id, name, wa_phone_number_id, ai_provider, business_info, business_hours, booking_link, kb_text, monthly_message_cap")
+          .select("id, name, wa_phone_number_id, ai_provider, business_info, business_hours, booking_link, kb_text, monthly_message_cap, workflow_settings")
           .eq("id", clientId).single(),
         db.from("contacts").select("id, phone, name").eq("client_id", clientId).eq("id", conv.contact_id).single(),
         db.from("pending_messages").select("id, message_id, created_at")
@@ -50,8 +52,11 @@ export function supabaseBatchDeps(): BatchDeps {
         db.from("messages").select("id", { count: "exact", head: true })
           .eq("client_id", clientId).eq("conversation_id", conversationId)
           .eq("direction", "inbound").gte("created_at", hourAgo),
+        db.from("appointments").select("status, reschedule_note")
+          .eq("client_id", clientId).eq("conversation_id", conversationId).in("status", ["pending", "reschedule_requested"])
+          .order("created_at", { ascending: false }).limit(1),
       ]);
-      for (const r of [client, contact, pendingRows, recent, replies, recentInbound]) {
+      for (const r of [client, contact, pendingRows, recent, replies, recentInbound, openAppt]) {
         if (r.error) throw new Error(`batch load failed: ${r.error.message}`);
       }
 
@@ -85,12 +90,14 @@ export function supabaseBatchDeps(): BatchDeps {
           id: c.id, name: c.name, waPhoneNumberId: c.wa_phone_number_id,
           aiProvider: c.ai_provider as Provider, businessInfo: c.business_info,
           businessHours: c.business_hours, bookingLink: c.booking_link, kbText: c.kb_text,
-          monthlyMessageCap: c.monthly_message_cap,
+          monthlyMessageCap: c.monthly_message_cap, workflow: parseWorkflowSettings(c.workflow_settings),
         },
         conversation: {
           id: conv.id, handling: conv.handling, failedAnswerCount: conv.failed_answer_count,
           lastCustomerMessageAt: conv.last_customer_message_at ? new Date(conv.last_customer_message_at) : null,
+          workflowState: parseWorkflowState(conv.workflow_state),
         },
+        openAppointment: openAppt.data?.[0] ? { status: openAppt.data[0].status as "pending" | "reschedule_requested", rescheduleNote: openAppt.data[0].reschedule_note } : null,
         contact: { id: contact.data!.id, name: contact.data!.name },
         phone: contact.data!.phone,
         pending,
@@ -115,7 +122,11 @@ export function supabaseBatchDeps(): BatchDeps {
       return generateReply({
         provider: ctx.client.aiProvider,
         config: aiConfig(),
-        system: buildSystemPrompt(ctx.client, retrieved),
+        system: buildSystemPrompt(ctx.client, retrieved, {
+          today: new Date().toISOString().slice(0, 10),
+          flowState: ctx.conversation.workflowState,
+          openAppointment: ctx.openAppointment,
+        }),
         history: ctx.history,
         userTurn: wrapCustomerMessages(customerLines, { hasUnreadableMedia }),
       });
@@ -160,10 +171,35 @@ export function supabaseBatchDeps(): BatchDeps {
       return { created: row?.out_created === true };
     },
 
+    async saveAppointment(clientId, ctx, a) {
+      const { data, error } = await db.rpc("create_appointment", {
+        p_client_id: clientId, p_conversation_id: ctx.conversation.id, p_contact_id: ctx.contact.id,
+        p_customer_name: a.customerName, p_customer_phone: ctx.phone, p_purpose: a.purpose,
+        p_preferred_date: a.preferredDate, p_preferred_time: a.preferredTime, p_timezone: a.timezone,
+        p_appointment_type: a.appointmentType, p_notes: a.notes,
+      });
+      if (error) throw new Error(`create_appointment failed: ${error.message}`);
+      const row = Array.isArray(data) ? data[0] : data;
+      return { created: row?.out_created === true };
+    },
+
+    async saveLead(clientId, ctx, l) {
+      const { data, error } = await db.rpc("create_lead", {
+        p_client_id: clientId, p_conversation_id: ctx.conversation.id, p_contact_id: ctx.contact.id,
+        p_customer_name: l.customerName, p_customer_phone: ctx.phone, p_project_type: l.projectType, p_description: l.description,
+        p_budget: l.budget, p_timeline: l.timeline, p_status: l.status, p_ai_summary: l.summary, p_dedupe_key: l.dedupeKey,
+        p_requirements: l.requirements,
+      });
+      if (error) throw new Error(`create_lead failed: ${error.message}`);
+      const row = Array.isArray(data) ? data[0] : data;
+      return { created: row?.out_created === true };
+    },
+
     async updateConversation(clientId, conversationId, patch) {
       const { error } = await db.from("conversations").update({
         ...(patch.handling ? { handling: patch.handling } : {}),
         ...(patch.failedAnswerCount !== undefined ? { failed_answer_count: patch.failedAnswerCount } : {}),
+        ...(patch.workflowState !== undefined ? { workflow_state: patch.workflowState } : {}),
         updated_at: new Date().toISOString(),
       }).eq("id", conversationId).eq("client_id", clientId);
       if (error) throw new Error(`conversation update failed: ${error.message}`);

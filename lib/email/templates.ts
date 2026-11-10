@@ -7,6 +7,9 @@ import { SOURCE_LABELS, type HandoffSource } from "../handoff";
 
 export type OwnerEvent =
   | { type: "new_lead"; contactName: string | null; phone: string; firstMessage: string }
+  | { type: "appointment_request"; contactName: string | null; phone: string; purpose: string; preferredDate: string | null; preferredTime: string | null; appointmentType: "online" | "in_person" | null; notes: string | null }
+  | { type: "appointment_update"; status: "confirmed" | "reschedule_requested" | "cancelled" | "rejected"; contactName: string | null; phone: string; purpose: string; when: string | null; note: string | null }
+  | { type: "lead_created"; contactName: string | null; phone: string; projectType: string; budget: string | null; timeline: string | null; summary: string; status: "new" | "qualified" }
   | { type: "onboarded"; businessName: string }
   | { type: "needs_human"; contactName: string | null; phone: string; reason: HandoffSource; lastMessage: string; summary: string };
 
@@ -23,6 +26,28 @@ export function ownerEmail(
         to: o.to,
         subject: oneLine(`New lead: ${who(event.contactName, event.phone)}`),
         text: `${o.businessName} has a new lead on WhatsApp.\n\nFrom: ${who(event.contactName, event.phone)}\nFirst message: ${clip(event.firstMessage)}${link}`,
+      };
+    case "appointment_request": {
+      const when = [event.preferredDate, event.preferredTime].filter(Boolean).join(" ") || "not given";
+      return {
+        to: o.to,
+        subject: oneLine(`New appointment request: ${who(event.contactName, event.phone)}`),
+        text: `${o.businessName} has a new appointment REQUEST (not confirmed yet).\n\nCustomer: ${who(event.contactName, event.phone)}\nFor: ${clip(event.purpose, 300)}\nPreferred: ${when}${event.appointmentType ? `\nType: ${event.appointmentType === "online" ? "online" : "in person"}` : ""}${event.notes ? `\nNotes: ${clip(event.notes, 300)}` : ""}\n\nThe customer was told the team will review it and get back to them. Next step: open Appointments, then confirm, reject or propose another time.${o.appUrl ? `\n\nOpen Appointments: ${o.appUrl.replace(/\/$/, "")}/dashboard/appointments` : ""}`,
+      };
+    }
+    case "appointment_update": {
+      const verb = { confirmed: "was CONFIRMED", reschedule_requested: "needs RESCHEDULING", cancelled: "was CANCELLED", rejected: "was DECLINED" }[event.status];
+      return {
+        to: o.to,
+        subject: oneLine(`Appointment ${verb.toLowerCase()}: ${who(event.contactName, event.phone)}`),
+        text: `${o.businessName}: the appointment for ${who(event.contactName, event.phone)} ${verb}.\n\nFor: ${clip(event.purpose, 300)}${event.when ? `\nWhen: ${event.when}` : ""}${event.note ? `\nNote: ${clip(event.note, 300)}` : ""}${o.appUrl ? `\n\nOpen Appointments: ${o.appUrl.replace(/\/$/, "")}/dashboard/appointments` : ""}`,
+      };
+    }
+    case "lead_created":
+      return {
+        to: o.to,
+        subject: oneLine(`New ${event.status === "qualified" ? "qualified " : ""}lead: ${event.projectType}`),
+        text: `${o.businessName} has a new project enquiry (${event.status === "qualified" ? "qualified: budget and timeline given" : "new: some details still missing"}).\n\nCustomer: ${who(event.contactName, event.phone)}\nProject: ${clip(event.projectType, 200)}\nBudget: ${event.budget ?? "not given"}\nTimeline: ${event.timeline ?? "not given"}\n\nSummary: ${clip(event.summary, 600)}\n\nNext step: open Leads, review the details and get in touch.${o.appUrl ? `\n\nOpen Leads: ${o.appUrl.replace(/\/$/, "")}/dashboard/leads` : ""}`,
       };
     case "onboarded":
       return {

@@ -6,6 +6,7 @@
 //
 // Uses eval/sample-kb.md as the knowledge base. Needs only the AI keys in .env
 // (no database). Real API calls: each run costs a few cents at most.
+import { parseWorkflowSettings } from "../lib/workflow-settings";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { aiConfig } from "../lib/ai/config";
@@ -14,7 +15,7 @@ import { generateReply } from "../lib/ai/generate-reply";
 import { buildSystemPrompt, wrapCustomerMessages } from "../lib/ai/prompt";
 import type { Provider } from "../lib/ai/providers";
 
-type Question = { id: string; kind: string; question: string; bookingLink?: string; expect: Expectation };
+type Question = { id: string; kind: string; question: string; bookingLink?: string; settings?: unknown; expect: Expectation };
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,6 +49,7 @@ async function main() {
       const system = buildSystemPrompt({
         name: "Bright Smile Dental Clinic", businessInfo: null, businessHours: null,
         bookingLink: q.bookingLink ?? null, kbText: kb,
+        workflow: parseWorkflowSettings(q.settings ?? {}),
       });
       const started = Date.now();
       try {

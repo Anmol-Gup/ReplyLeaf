@@ -1,3 +1,4 @@
+import { eventCategory, recipientsFor } from "./notify-settings";
 import { decryptSecret } from "./crypto";
 import { getMailer } from "./email/mailer";
 import { adminAlertEmail, ownerEmail, type OwnerEvent } from "./email/templates";
@@ -57,17 +58,33 @@ async function emailAdmin(alertId: string, clientId: string | null, kind: string
   }
 }
 
-// Owner alerts (new lead, new booking request, needs a human) go to clients.owner_email.
+// Business emails (new lead, appointment request, needs a human ...). Recipients come from the business's
+// notification settings (primary + additional addresses, per-category switches), falling back to clients.owner_email.
+// One failing address never stops the others; it only throws when NOBODY could be emailed, so the caller alerts the admin.
 export async function notifyOwner(clientId: string, event: OwnerEvent): Promise<void> {
-  const { data, error } = await supabaseAdmin()
-    .from("clients").select("name, owner_email").eq("id", clientId).single();
-  if (error) throw new Error(`owner lookup failed: ${error.message}`);
+  const db = supabaseAdmin();
+  const [client, settings] = await Promise.all([
+    db.from("clients").select("name, owner_email").eq("id", clientId).single(),
+    db.from("notification_settings")
+      .select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications")
+      .eq("client_id", clientId).maybeSingle(),
+  ]);
+  if (client.error) throw new Error(`owner lookup failed: ${client.error.message}`);
+  const s = settings.data;
+  const to = recipientsFor(
+    s ? { primaryEmail: s.primary_email, additionalEmails: s.additional_emails ?? [], appointments: s.appointment_notifications, leads: s.lead_notifications, handoffs: s.handoff_notifications } : null,
+    client.data.owner_email, eventCategory(event),
+  );
   const mailer = getMailer();
-  if (!data.owner_email || !mailer) {
-    console.warn("owner alert not emailed (no owner_email or GMAIL_* not set)", event.type);
+  if (to.length === 0 || !mailer) {
+    console.warn("business email not sent (switched off, no address, or GMAIL_* not set)", event.type);
     return;
   }
-  await mailer.send(ownerEmail(event, { to: data.owner_email, businessName: data.name, appUrl: process.env.APP_URL }));
+  const results = await Promise.allSettled(to.map((addr) =>
+    mailer.send(ownerEmail(event, { to: addr, businessName: client.data.name, appUrl: process.env.APP_URL }))));
+  const failed = results.filter((r) => r.status === "rejected");
+  if (failed.length === results.length) throw new Error(`could not email any recipient for ${event.type}`);
+  if (failed.length) console.warn(`${failed.length} of ${results.length} recipients could not be emailed`, event.type);
 }
 
 // Looks up and decrypts this client's token, then calls the Cloud API.

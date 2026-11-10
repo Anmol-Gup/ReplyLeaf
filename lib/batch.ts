@@ -1,4 +1,9 @@
 import { summaryOrFallback, SOURCE_LABELS, type HandoffSource } from "./handoff";
+import {
+  ACTION_FAILED_REPLY, decideAction, nextWorkflowState, REJECTED_SUBMIT_REPLY,
+  type AppointmentInput, type Decision, type LeadInput, type WorkflowState,
+} from "./workflow";
+import { bookingMode, type WorkflowSettings } from "./workflow-settings";
 import { z } from "zod";
 import { errorText } from "./inbound";
 import type { OwnerEvent } from "./email/templates";
@@ -24,6 +29,7 @@ export const CAP_REPLY = "Thanks for your message! Our team will get back to you
 
 export type BatchClient = PromptClient & {
   id: string;
+  workflow: WorkflowSettings;
   waPhoneNumberId: string;
   aiProvider: Provider;
   monthlyMessageCap: number;
@@ -38,7 +44,10 @@ export type BatchContext = {
     handling: "bot" | "human_active";
     failedAnswerCount: number;
     lastCustomerMessageAt: Date | null;
+    workflowState: WorkflowState | null;
   };
+  /** The customer's open appointment request, if any (so the assistant never collects a second one). */
+  openAppointment: { status: "pending" | "reschedule_requested"; rescheduleNote: string | null } | null;
   contact: { id: string; name: string | null };
   phone: string;
   pending: PendingItem[]; // oldest first
@@ -68,7 +77,11 @@ export interface BatchDeps {
   sendText(ctx: BatchContext, body: string): Promise<{ waMessageId: string }>;
   saveReply(rec: SaveReply): Promise<void>;
   createHandoff(clientId: string, conversationId: string, input: { source: HandoffSource; reason: string; summary: string }): Promise<{ created: boolean }>;
-  updateConversation(clientId: string, conversationId: string, patch: { handling?: "human_active"; failedAnswerCount?: number }): Promise<void>;
+  updateConversation(clientId: string, conversationId: string, patch: { handling?: "human_active"; failedAnswerCount?: number; workflowState?: WorkflowState | null }): Promise<void>;
+  /** Idempotent: an open request for this conversation already existing returns created=false. */
+  saveAppointment(clientId: string, ctx: BatchContext, a: AppointmentInput): Promise<{ created: boolean }>;
+  /** Idempotent: the same enquiry for this conversation returns created=false. */
+  saveLead(clientId: string, ctx: BatchContext, l: LeadInput): Promise<{ created: boolean }>;
   recordFailedUsage(clientId: string, usage: Usage, provider: Provider, model: string): Promise<void>;
   raiseAlert(clientId: string | null, kind: string, detail: string, opts?: { oncePerMonth?: boolean }): Promise<void>;
   /** Fills empty contact fields; differing values go to contacts.suggested for the owner to confirm. */
@@ -167,26 +180,57 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
   }
 
   const gen = await deps.generate(ctx, lines, hasMedia);
-  await sendGuarded(ctx, deps, now, gen.result.reply, { usage: gen.usage, provider: gen.provider, model: gen.model });
+
+  // The model only PROPOSES an action. Decide here, BEFORE the customer is told anything, and save first:
+  // "your request has been submitted" is only sent when it really was.
+  const mode = bookingMode(client.bookingLink, client.workflow);
+  const dctx = { prev: conversation.workflowState, result: gen.result, mode, settings: client.workflow, contactName: ctx.contact.name, now };
+  let decision: Decision = decideAction(dctx);
+  let replyText = gen.result.reply;
+  let created = false;
+  let failedSource: HandoffSource | null = null;
+  if (decision.kind === "rejected") {
+    console.warn("workflow action rejected", { clientId: client.id, flow: decision.flow, reason: decision.reason });
+    replyText = REJECTED_SUBMIT_REPLY;
+  } else if (decision.kind === "appointment" || decision.kind === "lead") {
+    try {
+      const saved = decision.kind === "appointment"
+        ? await deps.saveAppointment(client.id, ctx, decision.value)
+        : await deps.saveLead(client.id, ctx, decision.value);
+      created = saved.created;
+    } catch (e) {
+      console.error("saving workflow request failed", errorText(e));
+      try { await deps.raiseAlert(client.id, "workflow_save_failed", `${decision.kind}: ${errorText(e)}`); } catch { /* never throws here */ }
+      replyText = ACTION_FAILED_REPLY;
+      failedSource = "action_failed";
+      decision = { kind: "none" };
+    }
+  }
+  await sendGuarded(ctx, deps, now, replyText, { usage: gen.usage, provider: gen.provider, model: gen.model });
 
   // The customer has their reply. Everything below is bookkeeping: a failure
   // here is alerted but must NOT trigger the "something went wrong" fallback.
-  await afterReply(ctx, deps, gen.result, lines);
+  await afterReply(ctx, deps, gen.result, lines, { decision, created, failedSource, mode, now });
 }
 
-async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResult, lines: string[]): Promise<void> {
+type AfterInfo = { decision: Decision; created: boolean; failedSource: HandoffSource | null; mode: ReturnType<typeof bookingMode>; now: Date };
+
+async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResult, lines: string[], info: AfterInfo): Promise<void> {
   const { client, conversation, contact } = ctx;
+  const { decision, created, failedSource, mode, now } = info;
   const lastMessage = lines.join(" / ");
 
   // CRM: model-extracted details are guesses; validate, then store as suggestions.
   const details = cleanContactDetails(result.contact);
-  if (details.name || details.email) {
-    await safely(deps, client.id, "crm", () => deps.applyContactDetails(client.id, contact.id, details));
+  const name = details.name ?? (decision.kind === "appointment" ? decision.value.customerName : null);
+  if (name || details.email) {
+    await safely(deps, client.id, "crm", () => deps.applyContactDetails(client.id, contact.id, { name, email: details.email }));
   }
 
   // Questions we could not answer go to a list the owner can turn into knowledge.
-  // (Handoff requests are not knowledge gaps.)
-  if (!result.answered && result.intent !== "human_needed" && !(result.intent === "booking" && !client.bookingLink)) {
+  // (Handoff requests and workflow steps are not knowledge gaps.)
+  const bookingNeedsPerson = result.intent === "appointment_request" && mode === "handoff";
+  if (!result.answered && result.intent !== "human_needed" && !bookingNeedsPerson && !result.workflow.flow) {
     await safely(deps, client.id, "unanswered", () => deps.logUnanswered(client.id, conversation.id, lastMessage.slice(0, 500)));
   }
 
@@ -197,24 +241,44 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
     }
   });
 
-  // Handoff rules: customer asked for a person / is upset (model intent), or two failed answers in a row.
+  // A saved request: the owner is told once (created=false means it already existed, e.g. a retried webhook).
+  if (created && decision.kind === "appointment") {
+    const v = decision.value;
+    await safely(deps, client.id, "appointment_email", () => deps.notifyOwner(client.id, {
+      type: "appointment_request", contactName: v.customerName, phone: ctx.phone, purpose: v.purpose,
+      preferredDate: v.preferredDate, preferredTime: v.preferredTime, appointmentType: v.appointmentType, notes: v.notes,
+    }));
+  }
+  if (created && decision.kind === "lead") {
+    const v = decision.value;
+    await safely(deps, client.id, "lead_email", () => deps.notifyOwner(client.id, {
+      type: "lead_created", contactName: v.customerName ?? contact.name, phone: ctx.phone, projectType: v.projectType,
+      budget: v.budget, timeline: v.timeline, summary: v.summary, status: v.status,
+    }));
+  }
+
+  // Handoff rules: customer asked for a person / is upset (model intent), a booking that needs a person,
+  // two failed answers in a row, or a request that could not be saved. Switched off per business in Settings.
+  const handoffOn = client.workflow.handoff.enabled;
   const askedForHuman = result.intent === "human_needed";
-  // Booking without a link: the assistant cannot book, so a person takes over (whatever the model's wording).
-  const bookingNeedsPerson = result.intent === "booking" && !client.bookingLink;
-  const failed = result.answered || bookingNeedsPerson ? 0 : conversation.failedAnswerCount + 1;
-  const handoff = askedForHuman || bookingNeedsPerson || failed >= HANDOFF_AFTER_FAILED_ANSWERS;
-  const source: HandoffSource = askedForHuman ? "customer_request" : bookingNeedsPerson ? "booking_without_link" : "failed_answers";
-  // 1) The silence switch first (it is what stops the assistant), then 2) the record and the email.
+  const failed = result.answered || bookingNeedsPerson || result.workflow.flow || !handoffOn ? 0 : conversation.failedAnswerCount + 1;
+  const handoff = failedSource !== null || (handoffOn && (askedForHuman || bookingNeedsPerson || failed >= HANDOFF_AFTER_FAILED_ANSWERS));
+  const source: HandoffSource = failedSource ?? (askedForHuman ? "customer_request" : bookingNeedsPerson ? "booking_without_link" : "failed_answers");
+
+  // 1) The silence switch (it is what stops the assistant) and the workflow state, then 2) the record and the email.
+  const nextState = failedSource ? null : nextWorkflowState({ prev: conversation.workflowState, result, decision, mode, settings: client.workflow, contactName: contact.name, now });
+  const stateChanged = JSON.stringify(nextState) !== JSON.stringify(conversation.workflowState);
   await safely(deps, client.id, "conversation", () => deps.updateConversation(client.id, conversation.id, {
     failedAnswerCount: failed,
     ...(handoff ? { handling: "human_active" as const } : {}),
+    ...(stateChanged ? { workflowState: nextState } : {}),
   }));
   if (handoff) {
     await safely(deps, client.id, "handoff", async () => {
       const summary = summaryOrFallback(result.summary, lastMessage);
       // Idempotent: a retried webhook finds the open request and gets created=false, so no second email.
-      const { created } = await deps.createHandoff(client.id, conversation.id, { source, reason: SOURCE_LABELS[source], summary });
-      if (created) {
+      const { created: opened } = await deps.createHandoff(client.id, conversation.id, { source, reason: SOURCE_LABELS[source], summary });
+      if (opened) {
         await deps.notifyOwner(client.id, { type: "needs_human", contactName: contact.name, phone: ctx.phone, lastMessage, reason: source, summary });
       }
     });
