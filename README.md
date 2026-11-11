@@ -91,8 +91,8 @@ Requires Node 20.9+.
    npx supabase login                                  # opens a browser to authorise the CLI
    npx supabase init                                   # once only; creates supabase/config.toml, keeps supabase/migrations/
    npx supabase link --project-ref <project-ref>       # ref = the id in https://supabase.com/dashboard/project/<project-ref>
-   npx supabase db push --dry-run                      # preview: should list 0001 to 0010
-   npx supabase db push                                # apply (asks for the database password you set when creating the project)
+   npx supabase db push --remote --dry-run             # preview: should list 0001 to 0010 (newer CLIs target a LOCAL stack unless you pass --remote)
+   npx supabase db push --remote                       # apply to the linked project (asks for the database password you set when creating the project)
    npx supabase migration list                         # Local and Remote columns should both show 0001 to 0008
    ```
    For non-interactive use set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` instead of answering prompts.
