@@ -7,6 +7,7 @@ export const baseReply = (over: Partial<ReplyResult> = {}): ReplyResult => ({
   workflow: { flow: null, stage: null },
   appointment: { purpose: null, preferred_date: null, preferred_time: null, timezone: null, appointment_type: null, notes: null, customer_name: null },
   lead: { project_type: null, description: null, budget: null, timeline: null, requirements: [] },
+  ticket: { subject: null, description: null, category: null, reference_info: null, priority: null },
   action: { type: "none", customer_confirmed: false },
   ...over,
 });

@@ -10,7 +10,7 @@ import type { ReplyResult } from "../lib/ai/schema";
 import type { OwnerEvent } from "../lib/email/templates";
 import { WINDOW_MS } from "../lib/whatsapp/window";
 import { DEFAULT_WORKFLOW_SETTINGS } from "../lib/workflow-settings";
-import { ACTION_FAILED_REPLY, OPEN_REQUEST_REPLY, REJECTED_SUBMIT_REPLY, type WorkflowState } from "../lib/workflow";
+import { ACTION_FAILED_REPLY, ALREADY_SUBMITTED_REPLY, REJECTED_SUBMIT_REPLY, type WorkflowState } from "../lib/workflow";
 import { baseReply } from "./fixtures";
 
 const NOW = new Date("2026-01-02T12:00:00Z");
@@ -24,7 +24,7 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
       businessInfo: null, businessHours: null, bookingLink: null, kbText: "Open 9-5", workflow: DEFAULT_WORKFLOW_SETTINGS,
     },
     conversation: { id: "conv1", handling: "bot", failedAnswerCount: 0, lastCustomerMessageAt: NOW, workflowState: null, ...conv },
-    openAppointment: null,
+    open: { appointments: [], tickets: 0, leads: 0 },
     contact: { id: "contact1", name: "Asha" },
     phone: "911",
     pending: [{ id: "p1", type: "text", body: "hi" }],
@@ -34,11 +34,11 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
 
 function fakeDeps(ctx: BatchContext | null, opts: {
   gen?: () => Promise<{ result: ReplyResult }>; claimResults?: boolean[]; moreAfter?: boolean[]; sendFails?: boolean;
-  newLead?: boolean; crmFails?: boolean; handoffCreated?: boolean; handoffFails?: boolean; apptCreated?: boolean; apptFails?: boolean; leadCreated?: boolean;
+  newLead?: boolean; crmFails?: boolean; handoffCreated?: boolean; handoffFails?: boolean; apptCreated?: boolean; apptFails?: boolean; leadCreated?: boolean; ticketCreated?: boolean;
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
     generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
-    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[] };
+    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -56,6 +56,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     },
     saveReply: async (r) => void log.saved.push(r),
     saveAppointment: async (_c, _ctx, a) => { if (opts.apptFails) throw new Error("db down"); log.appts.push(a); return { created: opts.apptCreated ?? true }; },
+    saveTicket: async (_c, _ctx, t) => { log.tickets.push(t); return { created: opts.ticketCreated ?? true }; },
     saveLead: async (_c, _ctx, l) => { log.leads.push(l); return { created: opts.leadCreated ?? true }; },
     createHandoff: async (_c, _v, input) => { if (opts.handoffFails) throw new Error("db down"); log.handoffs.push(input); return { created: opts.handoffCreated ?? true }; },
     updateConversation: async (_c, _v, patch) => void log.conv.push(patch),
@@ -328,7 +329,7 @@ const APPT_SUBMIT = {
   appointment: { ...APPT_FIELDS },
   action: { type: "submit_appointment" as const, customer_confirmed: true },
 };
-const awaiting = (flow: "appointment" | "enquiry"): WorkflowState => ({ flow, stage: "awaiting_confirmation", updatedAt: NOW.toISOString() });
+const awaiting = (flow: "appointment" | "enquiry" | "issue"): WorkflowState => ({ flow, stage: "awaiting_confirmation", updatedAt: NOW.toISOString() });
 
 test("collecting an appointment: state is stored, nothing is saved, no email yet", async () => {
   const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({
@@ -403,15 +404,65 @@ test("a retried webhook (request already open): no second email and the customer
   assert.equal(f.log.sent.length, 1);
 });
 
-test("a second appointment while one is open is handed to a person with its details, never silently dropped or called 'submitted'", async () => {
-  const ctx = makeCtx({ openAppointment: { status: "pending", rescheduleNote: null } }, { workflowState: awaiting("appointment") });
-  const f = fakeDeps(ctx, { gen: async () => ({ result: reply({ reply: "Thanks! Submitted.", ...APPT_SUBMIT }) }) });
+// ---- Support tickets ----
+const TICKET = { subject: "Order not delivered", description: "Order 4521 placed 10 days ago has not arrived. Wants a replacement.", category: "delivery", reference_info: "4521", priority: "normal" as const };
+const TICKET_SUBMIT = {
+  intent: "support_issue" as const, summary: "Order 4521 not delivered; wants a replacement.",
+  workflow: { flow: "issue" as const, stage: null }, ticket: TICKET,
+  action: { type: "submit_ticket" as const, customer_confirmed: true },
+};
+
+test("confirmed support problem: ticket saved, owner emailed once, the customer is told the team logged it", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("issue") }), { gen: async () => ({ result: reply({ reply: "I've logged this and the team will look into it.", ...TICKET_SUBMIT }) }) });
   await run(f.deps);
-  assert.equal(f.log.appts.length, 0);
-  assert.deepEqual(f.log.sent, [OPEN_REQUEST_REPLY]);
+  assert.equal(f.log.tickets.length, 1);
+  const mail = f.log.owner.find((e) => e.type === "ticket_created");
+  assert.ok(mail && mail.type === "ticket_created" && mail.subject === "Order not delivered" && mail.referenceInfo === "4521");
+  assert.equal(f.log.owner.filter((e) => e.type === "needs_human").length, 0); // a ticket is not a handoff
+});
+
+test("a ticket submit without a prior summary, or with a thin description, or with support off, saves nothing", async () => {
+  const noSummary = fakeDeps(makeCtx(), { gen: async () => ({ result: reply(TICKET_SUBMIT) }) });
+  await run(noSummary.deps);
+  assert.equal(noSummary.log.tickets.length, 0);
+  const thin = fakeDeps(makeCtx({}, { workflowState: awaiting("issue") }), { gen: async () => ({ result: reply({ ...TICKET_SUBMIT, ticket: { ...TICKET, description: "bad" } }) }) });
+  await run(thin.deps);
+  assert.equal(thin.log.tickets.length, 0);
+  const off = makeCtx({}, { workflowState: awaiting("issue") });
+  off.client.workflow = { ...DEFAULT_WORKFLOW_SETTINGS, support: { ...DEFAULT_WORKFLOW_SETTINGS.support, enabled: false } };
+  const disabled = fakeDeps(off, { gen: async () => ({ result: reply(TICKET_SUBMIT) }) });
+  await run(disabled.deps);
+  assert.equal(disabled.log.tickets.length, 0);
+});
+
+test("the same open ticket again: told it is already with the team, no second email", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("issue") }), { ticketCreated: false, gen: async () => ({ result: reply(TICKET_SUBMIT) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.sent, [ALREADY_SUBMITTED_REPLY]);
+  assert.equal(f.log.owner.filter((e) => e.type === "ticket_created").length, 0);
+});
+
+test("high priority is carried through to the ticket email", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("issue") }), { gen: async () => ({ result: reply({ ...TICKET_SUBMIT, ticket: { ...TICKET, priority: "high" } }) }) });
+  await run(f.deps);
+  const mail = f.log.owner.find((e) => e.type === "ticket_created");
+  assert.ok(mail && mail.type === "ticket_created" && mail.priority === "high");
+});
+
+test("a second, DIFFERENT appointment while one is open is collected normally (several open requests are allowed)", async () => {
+  const ctx = makeCtx({ open: { appointments: [{ status: "pending", rescheduleNote: null }], tickets: 0, leads: 0 } }, { workflowState: awaiting("appointment") });
+  const f = fakeDeps(ctx, { gen: async () => ({ result: reply({ reply: "Thanks! Your appointment request has been submitted.", ...APPT_SUBMIT }) }) });
+  await run(f.deps);
+  assert.equal(f.log.appts.length, 1);
+  assert.equal(f.log.owner.filter((e) => e.type === "appointment_request").length, 1);
+  assert.equal(f.log.owner.filter((e) => e.type === "needs_human").length, 0); // no handoff: it is not a problem
+});
+
+test("the SAME open request again: the customer is told it is already with the team, not 'submitted', and nobody is emailed twice", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("appointment") }), { apptCreated: false, gen: async () => ({ result: reply({ reply: "Thanks! Submitted.", ...APPT_SUBMIT }) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.sent, [ALREADY_SUBMITTED_REPLY]);
   assert.equal(f.log.owner.filter((e) => e.type === "appointment_request").length, 0);
-  assert.match(f.log.handoffs[0].summary, /another appointment while one is still open: dental check-up, 2026-01-09 10am/);
-  assert.deepEqual(f.log.conv.at(-1), { failedAnswerCount: 0, handling: "human_active", workflowState: null });
 });
 
 test("saving fails: the customer is NOT told it was submitted, the admin is alerted and a person takes over", async () => {

@@ -31,6 +31,12 @@ export const workflowSettingsSchema = z.object({
     budgetRanges: list(10, 60).default([]),
     instructions: text(1000).default(""),
   }).prefault({}),
+  support: z.object({
+    enabled: z.boolean().default(true),
+    categories: list(10, 60).default([]),
+    responseTime: text(100).default(""),
+    instructions: text(1000).default(""),
+  }).prefault({}),
   handoff: z.object({
     enabled: z.boolean().default(true),
     availability: text(200).default(""),
@@ -109,6 +115,18 @@ export function renderWorkflowRules(s: WorkflowSettings, bookingLink: string | n
     out.push("PROJECT ENQUIRIES: not enabled. If the customer asks about a project or service, answer from the business knowledge only and offer to have a team member follow up (intent \"human_needed\").");
   }
 
+  // --- support tickets
+  if (s.support.enabled) {
+    const t = s.support;
+    out.push(`SUPPORT TICKETS: when the customer reports a problem or complaint with something they already bought or booked (for example "my order didn't arrive"), log a ticket.
+- Set intent to "support_issue" and workflow.flow to "issue". Be brief and kind. Ask one or two questions at a time, only for what the team needs: what went wrong, an order or booking reference if there is one, and what they would like us to do. Never repeat a question already answered. Never promise a refund, replacement, compensation or a resolution time, and never say the problem is fixed.${t.categories.length ? `\n- Categories you may use: ${t.categories.join("; ")}.` : ""}${t.responseTime ? `\n- Expected response time: ${t.responseTime}. You may tell the customer this.` : ""}${t.instructions ? `\n- Extra instructions from the business: ${t.instructions}` : ""}
+- Fill the ticket fields (subject, description, category, reference_info, priority) with everything known so far on EVERY turn of this flow, null for unknown. priority is "high" only if the customer says it is urgent.
+- Once you know what went wrong: set workflow.stage to "awaiting_confirmation", summarise the problem and ask the customer to confirm. Do not submit yet. Also fill "summary".
+- Only when the customer's LATEST message clearly confirms that summary: set action.type to "submit_ticket" and action.customer_confirmed to true, and reply that the team has logged the issue and will look into it. Do not promise an outcome.`);
+  } else {
+    out.push("SUPPORT TICKETS: not enabled. If the customer reports a problem, say you are sorry to hear it and, if HUMAN HANDOFF is enabled, that a team member will follow up (intent \"human_needed\").");
+  }
+
   // --- handoff
   if (s.handoff.enabled) {
     const h = s.handoff;
@@ -142,6 +160,12 @@ export function formToWorkflowInput(get: (name: string) => string | null): unkno
       questions: linesToList(text("questions"), 10, 200),
       budgetRanges: linesToList(text("budget_ranges"), 10, 60),
       instructions: text("enquiry_instructions"),
+    },
+    support: {
+      enabled: on("support_enabled"),
+      categories: linesToList(text("support_categories"), 10, 60),
+      responseTime: text("support_response_time"),
+      instructions: text("support_instructions"),
     },
     handoff: {
       enabled: on("handoff_enabled"),

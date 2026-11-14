@@ -4,10 +4,12 @@ import {
   allowedActions, appointmentFormSchema, customerMessage, formProblem, isUpcoming, nextStatus, overview, rescheduleNote,
   APPOINTMENT_ACTIONS, APPOINTMENT_STATUSES,
 } from "../lib/appointments";
+import { TICKET_STATUSES, cleanAssignedTo, isOpenTicket, resolvedAtFor, resolutionMessage, ticketFormSchema, ticketOverview, ticketRef } from "../lib/tickets";
 import { LEAD_STATUSES, leadFormSchema, leadOverview, projectBrief } from "../lib/leads";
 import { eventCategory, parseEmails, parseOneEmail, recipientsFor, type NotificationSettings } from "../lib/notify-settings";
-import { CONFIRMATION_TTL_MS, decideAction, leadDedupeKey, nextWorkflowState, parseWorkflowState, validateAppointment, validateLead, validPreferredDate } from "../lib/workflow";
+import { CONFIRMATION_TTL_MS, appointmentDedupeKey, decideAction, leadDedupeKey, validateTicket, nextWorkflowState, parseWorkflowState, validateAppointment, validateLead, validPreferredDate } from "../lib/workflow";
 import { bookingMode, DEFAULT_WORKFLOW_SETTINGS, formToWorkflowInput, linesToList, parseWorkflowSettings, renderWorkflowRules, workflowSettingsSchema } from "../lib/workflow-settings";
+import { buildTimeline } from "../lib/timeline";
 import { baseReply } from "./fixtures";
 
 const NOW = new Date("2026-01-02T12:00:00Z");
@@ -100,7 +102,7 @@ test("lead: qualified only with budget AND timeline; thin descriptions are refus
   assert.notEqual(leadDedupeKey("website", "a shop"), leadDedupeKey("app", "a shop"));
 });
 
-const awaiting = (flow: "appointment" | "enquiry", ageMs = 0) => ({ flow, stage: "awaiting_confirmation" as const, updatedAt: new Date(NOW.getTime() - ageMs).toISOString() });
+const awaiting = (flow: "appointment" | "enquiry" | "issue", ageMs = 0) => ({ flow, stage: "awaiting_confirmation" as const, updatedAt: new Date(NOW.getTime() - ageMs).toISOString() });
 const submitAppt = baseReply({
   workflow: { flow: "appointment", stage: null },
   appointment: { purpose: "check-up", preferred_date: "2026-01-09", preferred_time: "10am", timezone: null, appointment_type: null, notes: null, customer_name: "Asha" },
@@ -170,7 +172,7 @@ test("prompt rules follow the settings and never promise availability", () => {
 
 // ---- notifications ----
 test("recipients: switches per category, primary falls back to the owner email, extras de-duplicated", () => {
-  const s: NotificationSettings = { primaryEmail: "boss@x.com", additionalEmails: ["a@x.com", "BOSS@x.com"], appointments: true, leads: false, handoffs: true };
+  const s: NotificationSettings = { primaryEmail: "boss@x.com", additionalEmails: ["a@x.com", "BOSS@x.com"], appointments: true, leads: false, handoffs: true, tickets: true };
   assert.deepEqual(recipientsFor(s, "owner@x.com", "appointment"), ["boss@x.com", "a@x.com"]);
   assert.deepEqual(recipientsFor(s, "owner@x.com", "lead"), []);            // lead emails switched off
   assert.deepEqual(recipientsFor(s, "owner@x.com", "always"), ["boss@x.com", "a@x.com"]); // onboarding mail ignores the switches
@@ -232,4 +234,92 @@ test("settings form -> validated settings (unchecked boxes are off, lists come f
   assert.equal(workflowSettingsSchema.safeParse(formToWorkflowInput((n) => (n === "appointment_duration" ? "9999" : n === "appointments_enabled" ? "on" : null))).success, false);
   assert.equal(workflowSettingsSchema.safeParse(formToWorkflowInput((n) => (n === "open_time" ? "25:00" : null))).success, false);
   assert.equal(workflowSettingsSchema.safeParse(formToWorkflowInput(() => null)).success, true);
+});
+
+// ---- several open appointments + support tickets ----
+test("appointment duplicate key: the same request is the same key, a different purpose or time is not", () => {
+  const a = { purpose: "Check-up", preferredDate: "2026-01-09", preferredTime: "10am" };
+  assert.equal(appointmentDedupeKey(a), appointmentDedupeKey({ purpose: " check-up ", preferredDate: "2026-01-09", preferredTime: "10AM" }));
+  assert.notEqual(appointmentDedupeKey(a), appointmentDedupeKey({ ...a, purpose: "Whitening" }));   // same slot, different purpose: allowed
+  assert.notEqual(appointmentDedupeKey(a), appointmentDedupeKey({ ...a, preferredTime: "11am" }));
+  assert.notEqual(appointmentDedupeKey(a), appointmentDedupeKey({ ...a, preferredDate: null }));
+});
+
+test("ticket needs a subject and a real description; priority defaults to normal", () => {
+  const t = { subject: "Order not delivered", description: "Order 4521 has not arrived after 10 days", category: " delivery ", reference_info: "4521", priority: null };
+  const ok = validateTicket(t, "Order 4521 not delivered.", "Asha");
+  assert.ok(ok.ok && ok.value.priority === "normal" && ok.value.category === "delivery" && ok.value.customerName === "Asha");
+  assert.ok(validateTicket({ ...t, priority: "high" }, null, null).ok);
+  assert.ok(!validateTicket({ ...t, subject: null }, null, null).ok);
+  assert.ok(!validateTicket({ ...t, description: "bad" }, null, null).ok);
+  const high = validateTicket({ ...t, priority: "high" }, null, null);
+  assert.ok(high.ok && high.value.priority === "high" && high.value.summary.startsWith("Order not delivered"));
+});
+
+test("decideAction: a ticket needs support switched on, a shown summary and confirmation", () => {
+  const submit = baseReply({
+    intent: "support_issue", workflow: { flow: "issue", stage: null },
+    ticket: { subject: "Order not delivered", description: "Order 4521 has not arrived after 10 days", category: null, reference_info: null, priority: null },
+    action: { type: "submit_ticket", customer_confirmed: true },
+  });
+  const base = { mode: "collect" as const, settings: DEFAULT_WORKFLOW_SETTINGS, contactName: "Asha", now: NOW };
+  assert.equal(decideAction({ ...base, prev: awaiting("issue"), result: submit }).kind, "ticket");
+  assert.equal(decideAction({ ...base, prev: null, result: submit }).kind, "rejected");
+  assert.equal(decideAction({ ...base, prev: awaiting("appointment"), result: submit }).kind, "rejected"); // wrong flow
+  assert.equal(decideAction({ ...base, settings: parseWorkflowSettings({ support: { enabled: false } }), prev: awaiting("issue"), result: submit }).kind, "rejected");
+  // a ticket works even when appointments are off (they are separate features)
+  assert.equal(decideAction({ ...base, mode: "handoff", prev: awaiting("issue"), result: submit }).kind, "ticket");
+});
+
+test("ticket status rules, reference and form validation", () => {
+  assert.equal(TICKET_STATUSES.length, 5);
+  assert.deepEqual(TICKET_STATUSES.filter(isOpenTicket), ["open", "in_progress", "waiting_on_customer"]);
+  assert.match(ticketRef("7c9e6679-7425-40de-944b-e07fc1f90ae7"), /^T-7C9E66$/);
+  const now = new Date("2026-02-01T00:00:00Z");
+  assert.equal(resolvedAtFor("resolved", "open", null, now), now.toISOString());
+  assert.equal(resolvedAtFor("closed", "resolved", "2026-01-15T00:00:00Z", now), "2026-01-15T00:00:00Z"); // resolved -> closed keeps the first date
+  assert.equal(resolvedAtFor("open", "resolved", "2026-01-15T00:00:00Z", now), null);                         // reopened
+  const id = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  assert.ok(ticketFormSchema.safeParse({ id, status: "resolved", assigned_to: "", notes: "", message: "" }).success);
+  assert.ok(!ticketFormSchema.safeParse({ id, status: "deleted", assigned_to: "", notes: "", message: "" }).success);
+  assert.equal(cleanAssignedTo("  Priya\u0000  S "), "Priya S");
+  assert.equal(cleanAssignedTo("x".repeat(101)), null);
+  assert.deepEqual(ticketOverview([{ status: "open", priority: "high" }, { status: "waiting_on_customer", priority: "normal" }, { status: "closed", priority: "high" }]), { open: 1, inProgress: 1, urgent: 1, done: 1 });
+});
+
+test("the resolution message names the issue and reference and cannot carry internal notes", () => {
+  const m = resolutionMessage("Biz", "Order not delivered", "T-1A2B3C", "A replacement ships today.");
+  assert.match(m, /Order not delivered/);
+  assert.match(m, /T-1A2B3C/);
+  assert.match(m, /replacement ships today/);
+  assert.equal(resolutionMessage.length, 4); // only customer-facing inputs: there is no parameter for internal notes
+});
+
+test("settings: the support section has defaults, the form maps to it, and the prompt follows it", () => {
+  assert.equal(DEFAULT_WORKFLOW_SETTINGS.support.enabled, true);
+  const parsed = parseWorkflowSettings(formToWorkflowInput((n) => ({ support_enabled: "on", support_categories: "delivery\nbilling", support_response_time: "2 days" } as Record<string, string>)[n] ?? null));
+  assert.deepEqual(parsed.support.categories, ["delivery", "billing"]);
+  assert.equal(parsed.support.responseTime, "2 days");
+  const rules = renderWorkflowRules(parsed, null, "2026-01-02");
+  assert.match(rules, /SUPPORT TICKETS: when the customer reports a problem/);
+  assert.match(rules, /Never promise a refund/);
+  assert.match(rules, /delivery; billing/);
+  assert.match(renderWorkflowRules(parseWorkflowSettings({ support: { enabled: false } }), null, "2026-01-02"), /SUPPORT TICKETS: not enabled/);
+});
+
+test("customer timeline merges every kind of record, newest first, with links and open flags", () => {
+  const tl = buildTimeline({
+    leads: [{ id: "L1", project_type: "website", budget: "$3k", status: "qualified", created_at: "2026-01-01T10:00:00Z" }],
+    appointments: [{ id: "A1", purpose: "check-up", preferred_date: "2026-02-01", preferred_time: "10am", scheduled_date: null, scheduled_time: null, status: "pending", created_at: "2026-01-03T10:00:00Z" }],
+    tickets: [{ id: "7c9e6679-7425-40de-944b-e07fc1f90ae7", subject: "Order not delivered", priority: "high", status: "resolved", created_at: "2026-01-02T10:00:00Z" }],
+    handoffs: [{ id: "H1", conversation_id: "C1", reason: "asked for a person", status: "requested", created_at: "2026-01-04T10:00:00Z" }],
+  });
+  assert.deepEqual(tl.map((t) => t.kind), ["handoff", "appointment", "ticket", "lead"]);
+  assert.equal(tl[1].href, "/dashboard/appointments/A1");
+  assert.equal(tl[1].detail, "2026-02-01 10am");
+  assert.equal(tl[2].open, false);          // resolved ticket
+  assert.equal(tl[0].open, true);
+  assert.match(tl[2].title, /T-7C9E66: Order not delivered/);
+  assert.equal(tl[3].href, "/dashboard/leads/L1");
+  assert.deepEqual(buildTimeline({ leads: [], appointments: [], tickets: [], handoffs: [] }), []);
 });

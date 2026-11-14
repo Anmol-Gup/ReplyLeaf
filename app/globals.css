@@ -298,3 +298,8 @@ a.stat:hover { border-color: var(--brand); }
 .check input[type=checkbox] { flex: none; }
 fieldset.field { border: 0; padding: 0; margin: 0; }
 fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-size: 0.88rem; }
+
+.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.timeline li { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--border); }
+.timeline li:first-child { border-top: 0; }
+.timeline li > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }

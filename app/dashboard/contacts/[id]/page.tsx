@@ -4,6 +4,8 @@ import Icon from "../../../../components/Icon";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Alert, Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
+import { fmtDay } from "../../../../lib/dashboard";
+import { buildTimeline } from "../../../../lib/timeline";
 import Notice from "../../Notice";
 import { deleteContact, resolveSuggestion, updateContact } from "../../actions";
 
@@ -17,6 +19,17 @@ export default async function ContactPage({
   if (!c) notFound();
   const suggested = (c.suggested ?? {}) as Record<string, string>;
   const { data: conv } = await db.from("conversations").select("id").eq("contact_id", id).maybeSingle();
+  // Everything this customer has raised, across leads, appointments, tickets and handoffs (RLS limits all of it to this business).
+  const [leads, appts, tickets, handoffs] = await Promise.all([
+    db.from("leads").select("id, project_type, budget, status, created_at").eq("contact_id", id),
+    db.from("appointments").select("id, purpose, preferred_date, preferred_time, scheduled_date, scheduled_time, status, created_at").eq("contact_id", id),
+    db.from("tickets").select("id, subject, priority, status, created_at").eq("contact_id", id),
+    conv ? db.from("handoff_requests").select("id, conversation_id, reason, status, created_at").eq("conversation_id", conv.id) : Promise.resolve({ data: [] }),
+  ]);
+  const timeline = buildTimeline({
+    leads: (leads.data ?? []) as never[], appointments: (appts.data ?? []) as never[],
+    tickets: (tickets.data ?? []) as never[], handoffs: (handoffs.data ?? []) as never[],
+  });
 
   return (
     <>
@@ -42,6 +55,20 @@ export default async function ContactPage({
           </div>
         </Alert>
       ))}
+
+      <Card title="Activity" description="Everything this customer has asked for or reported, newest first.">
+        {timeline.length === 0 ? <p className="muted">Nothing yet: no enquiries, appointments, tickets or handoffs.</p> : (
+          <ul className="timeline">
+            {timeline.map((t) => (
+              <li key={`${t.kind}-${t.id}`}>
+                <span className="muted">{fmtDay(t.at)}</span>
+                <span><Link href={t.href}>{t.title}</Link>{t.detail && <span className="muted"> · {t.detail}</span>}</span>
+                <Badge tone={t.tone}>{t.statusLabel}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card title="Details">
         <form action={updateContact} className="stack">

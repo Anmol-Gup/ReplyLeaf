@@ -66,13 +66,13 @@ export async function notifyOwner(clientId: string, event: OwnerEvent): Promise<
   const [client, settings] = await Promise.all([
     db.from("clients").select("name, owner_email").eq("id", clientId).single(),
     db.from("notification_settings")
-      .select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications")
+      .select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications")
       .eq("client_id", clientId).maybeSingle(),
   ]);
   if (client.error) throw new Error(`owner lookup failed: ${client.error.message}`);
   const s = settings.data;
   const to = recipientsFor(
-    s ? { primaryEmail: s.primary_email, additionalEmails: s.additional_emails ?? [], appointments: s.appointment_notifications, leads: s.lead_notifications, handoffs: s.handoff_notifications } : null,
+    s ? { primaryEmail: s.primary_email, additionalEmails: s.additional_emails ?? [], appointments: s.appointment_notifications, leads: s.lead_notifications, handoffs: s.handoff_notifications, tickets: s.ticket_notifications } : null,
     client.data.owner_email, eventCategory(event),
   );
   const mailer = getMailer();

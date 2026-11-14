@@ -12,7 +12,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const { db, clientId } = await requireClient();
   const { data: c } = await db.from("clients")
     .select("name, business_info, business_hours, booking_link, ai_provider, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step, workflow_settings").eq("id", clientId).single();
-  const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications").eq("client_id", clientId).maybeSingle();
+  const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications").eq("client_id", clientId).maybeSingle();
   const w = parseWorkflowSettings(c?.workflow_settings);
   return (
     <>
@@ -76,6 +76,20 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             </label>
           </div>
         </Card>
+        <Card title="Support tickets" description="When a customer reports a problem (for example an order that didn't arrive), the assistant collects the details, shows a summary, and logs a ticket after the customer confirms. It never promises a refund or a fix.">
+          <div className="stack">
+            <label className="check"><input type="checkbox" name="support_enabled" defaultChecked={w.support.enabled} /> Log support tickets</label>
+            <label className="field">Categories <span className="hint">One per line, for example "Delivery" or "Billing". The assistant picks one if it fits.</span>
+              <textarea name="support_categories" rows={3} defaultValue={w.support.categories.join("\n")} />
+            </label>
+            <label className="field">Expected response time <span className="hint">The assistant may tell customers this. Leave empty and it promises no time.</span>
+              <input name="support_response_time" maxLength={100} defaultValue={w.support.responseTime} placeholder="within 2 business days" />
+            </label>
+            <label className="field">Instructions for the assistant <span className="hint">For example: always ask for the order number.</span>
+              <textarea name="support_instructions" rows={3} maxLength={1000} defaultValue={w.support.instructions} />
+            </label>
+          </div>
+        </Card>
         <Card title="Human handoff" description="When a customer asks for a person, the assistant steps aside for that chat and you are emailed. Turn this off only if nobody can follow up.">
           <div className="stack">
             <label className="check"><input type="checkbox" name="handoff_enabled" defaultChecked={w.handoff.enabled} /> Hand chats over to my team</label>
@@ -100,6 +114,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             </label>
             <label className="check"><input type="checkbox" name="appointment_notifications" defaultChecked={n?.appointment_notifications ?? true} /> Appointment requests and changes</label>
             <label className="check"><input type="checkbox" name="lead_notifications" defaultChecked={n?.lead_notifications ?? true} /> New leads</label>
+            <label className="check"><input type="checkbox" name="ticket_notifications" defaultChecked={n?.ticket_notifications ?? true} /> Support tickets</label>
             <label className="check"><input type="checkbox" name="handoff_notifications" defaultChecked={n?.handoff_notifications ?? true} /> Chats that need a person</label>
           </div>
         </Card>

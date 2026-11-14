@@ -9,6 +9,7 @@ export type NotificationSettings = {
   appointments: boolean;
   leads: boolean;
   handoffs: boolean;
+  tickets: boolean;
 };
 
 export const MAX_ADDITIONAL_EMAILS = 5;
@@ -34,19 +35,20 @@ export const parseOneEmail = (raw: unknown): string | null => {
   return r.success ? r.data : null;
 };
 
-export type EventCategory = "appointment" | "lead" | "handoff" | "always";
+export type EventCategory = "appointment" | "lead" | "handoff" | "ticket" | "always";
 export function eventCategory(e: OwnerEvent): EventCategory {
   switch (e.type) {
     case "appointment_request": case "appointment_update": return "appointment";
     case "new_lead": case "lead_created": return "lead";
     case "needs_human": return "handoff";
+    case "ticket_created": return "ticket";
     default: return "always"; // "your number is connected": always sent
   }
 }
 
 /** The addresses to email for this kind of event. Empty when that category is switched off or nobody is configured. */
 export function recipientsFor(s: NotificationSettings | null, fallbackOwnerEmail: string | null, category: EventCategory): string[] {
-  const on = !s || category === "always" || (category === "appointment" ? s.appointments : category === "lead" ? s.leads : s.handoffs);
+  const on = !s || category === "always" || (category === "appointment" ? s.appointments : category === "lead" ? s.leads : category === "ticket" ? s.tickets : s.handoffs);
   if (!on) return [];
   const primary = s?.primaryEmail ?? fallbackOwnerEmail;
   const all = [primary, ...(s?.additionalEmails ?? [])].filter((x): x is string => Boolean(x));

@@ -5,20 +5,20 @@ import type { BookingMode, WorkflowSettings } from "./workflow-settings";
 // Server-side rules for the assistant's multi-step workflows. The model PROPOSES an action; this file DECIDES.
 // Pure and unit-tested. Nothing is saved because a model said so: it must pass every check below.
 
-export type FlowName = "appointment" | "enquiry";
+export type FlowName = "appointment" | "enquiry" | "issue";
 export type WorkflowState = { flow: FlowName; stage: "collecting" | "awaiting_confirmation"; updatedAt: string };
 
 /** A confirmation prompt older than this is treated as stale: the customer must be shown a summary again. */
 export const CONFIRMATION_TTL_MS = 48 * 60 * 60 * 1000;
 
 export const REJECTED_SUBMIT_REPLY = "Thanks! Before I pass this to our team, could you please confirm the details are correct?";
-export const OPEN_REQUEST_REPLY = "You already have an appointment request waiting for our team. I've passed this one on as well, and someone will follow up with you.";
+export const ALREADY_SUBMITTED_REPLY = "That request is already with our team. We'll get back to you as soon as we can.";
 export const ACTION_FAILED_REPLY = "Sorry, I couldn't submit that just now. I've let our team know and someone will follow up with you.";
 
 export function parseWorkflowState(raw: unknown): WorkflowState | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  if ((r.flow !== "appointment" && r.flow !== "enquiry") || (r.stage !== "collecting" && r.stage !== "awaiting_confirmation")) return null;
+  if ((r.flow !== "appointment" && r.flow !== "enquiry" && r.flow !== "issue") || (r.stage !== "collecting" && r.stage !== "awaiting_confirmation")) return null;
   return { flow: r.flow, stage: r.stage, updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : new Date(0).toISOString() };
 }
 
@@ -42,6 +42,10 @@ export type AppointmentInput = {
   customerName: string; purpose: string; preferredDate: string | null; preferredTime: string | null;
   timezone: string | null; appointmentType: "online" | "in_person" | null; notes: string | null;
 };
+export type TicketInput = {
+  customerName: string | null; subject: string; description: string; category: string | null; referenceInfo: string | null;
+  priority: "normal" | "high"; summary: string; dedupeKey: string;
+};
 export type LeadInput = {
   customerName: string | null; projectType: string; description: string; budget: string | null; timeline: string | null;
   requirements: { key: string; value: string }[]; status: "new" | "qualified"; summary: string; dedupeKey: string;
@@ -63,6 +67,10 @@ export function validateAppointment(a: ReplyResult["appointment"], contactName: 
     value: { customerName: name, purpose, preferredDate: date, preferredTime: time, timezone: clean(a.timezone, 60), appointmentType: a.appointment_type, notes: clean(a.notes, 500) },
   };
 }
+
+/** The same appointment request twice while it is open = same key, so it is stored once (several DIFFERENT ones are fine). */
+export const appointmentDedupeKey = (a: { purpose: string; preferredDate: string | null; preferredTime: string | null }) =>
+  createHash("md5").update(`${a.purpose.trim().toLowerCase()}|${a.preferredDate ?? ""}|${(a.preferredTime ?? "").trim().toLowerCase()}`).digest("hex");
 
 /** Same enquiry sent twice = same key, so it is stored once. */
 export const leadDedupeKey = (projectType: string, description: string) =>
@@ -93,8 +101,28 @@ export function validateLead(l: ReplyResult["lead"], summary: string | null, con
   };
 }
 
+/** Required: a subject and a real description. */
+export function validateTicket(t: ReplyResult["ticket"], summary: string | null, contactName: string | null): { ok: true; value: TicketInput } | { ok: false; missing: string[] } {
+  const subject = clean(t.subject, 150);
+  const description = clean(t.description, 1500);
+  const missing: string[] = [];
+  if (!subject) missing.push("subject");
+  if (!description || description.length < 10) missing.push("description");
+  if (missing.length || !subject || !description) return { ok: false, missing };
+  return {
+    ok: true,
+    value: {
+      customerName: clean(contactName, 100), subject, description, category: clean(t.category, 60), referenceInfo: clean(t.reference_info, 100),
+      priority: t.priority === "high" ? "high" : "normal",
+      summary: clean(summary, 600) ?? `${subject}: ${description}`.slice(0, 600),
+      dedupeKey: createHash("sha256").update(`${subject.toLowerCase()}\n${description.toLowerCase()}`.replace(/\s+/g, " ")).digest("hex").slice(0, 32),
+    },
+  };
+}
+
 export type Decision =
   | { kind: "none" }
+  | { kind: "ticket"; value: TicketInput }
   | { kind: "appointment"; value: AppointmentInput }
   | { kind: "lead"; value: LeadInput }
   | { kind: "rejected"; flow: FlowName; reason: string };
@@ -113,8 +141,8 @@ export type DecideInput = {
 export function decideAction({ prev, result, mode, settings, contactName, now }: DecideInput): Decision {
   const t = result.action.type;
   if (t === "none") return { kind: "none" };
-  const flow: FlowName = t === "submit_appointment" ? "appointment" : "enquiry";
-  const enabled = flow === "appointment" ? mode === "collect" : settings.enquiries.enabled;
+  const flow: FlowName = t === "submit_appointment" ? "appointment" : t === "submit_ticket" ? "issue" : "enquiry";
+  const enabled = flow === "appointment" ? mode === "collect" : flow === "issue" ? settings.support.enabled : settings.enquiries.enabled;
   if (!enabled) return { kind: "rejected", flow, reason: "feature_off" };
   if (!result.action.customer_confirmed) return { kind: "rejected", flow, reason: "not_confirmed" };
   const fresh = prev && prev.flow === flow && prev.stage === "awaiting_confirmation" && now.getTime() - new Date(prev.updatedAt).getTime() <= CONFIRMATION_TTL_MS;
@@ -123,24 +151,30 @@ export function decideAction({ prev, result, mode, settings, contactName, now }:
     const v = validateAppointment(result.appointment, contactName, now);
     return v.ok ? { kind: "appointment", value: v.value } : { kind: "rejected", flow, reason: `missing: ${v.missing.join(", ")}` };
   }
+  if (flow === "issue") {
+    const v = validateTicket(result.ticket, result.summary, contactName);
+    return v.ok ? { kind: "ticket", value: v.value } : { kind: "rejected", flow, reason: `missing: ${v.missing.join(", ")}` };
+  }
   const v = validateLead(result.lead, result.summary, contactName);
   return v.ok ? { kind: "lead", value: v.value } : { kind: "rejected", flow, reason: `missing: ${v.missing.join(", ")}` };
 }
 
 /** The state to store after this turn (null clears it). */
 export function nextWorkflowState({ prev, result, decision, mode, settings, contactName, now }: DecideInput & { decision: Decision }): WorkflowState | null {
-  if (decision.kind === "appointment" || decision.kind === "lead") return null; // done
+  if (decision.kind === "appointment" || decision.kind === "lead" || decision.kind === "ticket") return null; // done
   const at = now.toISOString();
   if (decision.kind === "rejected") return { flow: decision.flow, stage: "collecting", updatedAt: at };
   const flow = result.workflow.flow;
   if (!flow) return null;
   if (flow === "appointment" && mode !== "collect") return null;
   if (flow === "enquiry" && !settings.enquiries.enabled) return null;
+  if (flow === "issue" && !settings.support.enabled) return null;
   let stage = result.workflow.stage ?? "collecting";
   // "awaiting_confirmation" is only believed when the details are already complete enough to submit.
   if (stage === "awaiting_confirmation") {
     const complete = flow === "appointment"
       ? validateAppointment(result.appointment, contactName, now).ok
+      : flow === "issue" ? validateTicket(result.ticket, result.summary, contactName).ok
       : validateLead(result.lead, result.summary, contactName).ok;
     if (!complete) stage = "collecting";
   }

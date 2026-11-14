@@ -4,13 +4,15 @@ import { z } from "zod";
 // we never act on unvalidated model output. Even valid output is only a PROPOSAL: lib/workflow.ts decides
 // whether a request may be saved (feature switched on, the customer confirmed, required fields present).
 //
-// Intents: question (general question), appointment_request, project_enquiry, human_needed (handoff), other.
+// Intents: question (general question), appointment_request, project_enquiry, support_issue (a problem to raise),
+// human_needed (handoff), other.
 // Note: `answered` goes beyond the original spec. It is the signal we need for
 // "two failed answers => human takeover" and for logging unanswered questions.
-export const INTENTS = ["question", "appointment_request", "project_enquiry", "human_needed", "other"] as const;
-export const FLOWS = ["appointment", "enquiry"] as const;
+export const INTENTS = ["question", "appointment_request", "project_enquiry", "support_issue", "human_needed", "other"] as const;
+export const FLOWS = ["appointment", "enquiry", "issue"] as const;
 export const STAGES = ["collecting", "awaiting_confirmation"] as const;
-export const ACTION_TYPES = ["none", "submit_appointment", "submit_lead"] as const;
+export const ACTION_TYPES = ["none", "submit_appointment", "submit_lead", "submit_ticket"] as const;
+export const PRIORITIES = ["normal", "high"] as const;
 export const APPOINTMENT_TYPES = ["online", "in_person"] as const;
 
 const short = (max: number) => z.string().trim().max(max).nullable();
@@ -48,6 +50,14 @@ export const ReplySchema = z.object({
     timeline: short(100),
     requirements: z.array(z.object({ key: z.string().trim().min(1).max(60), value: z.string().trim().min(1).max(300) })).max(15),
   }),
+  // Everything known so far about a support problem the customer wants to raise.
+  ticket: z.object({
+    subject: short(150),
+    description: short(1500),
+    category: short(60),
+    reference_info: short(100), // an order or invoice number, if they gave one
+    priority: z.enum(PRIORITIES).nullable(),
+  }),
   // The ONLY way a request gets saved. Needs customer_confirmed AND the server-side checks.
   action: z.object({
     type: z.enum(ACTION_TYPES),
@@ -75,9 +85,9 @@ export const REPLY_JSON_SCHEMA = obj({
     name: nullableString("Customer's name only if they clearly stated it, else null."),
     email: nullableString("Customer's email only if they clearly stated it, else null."),
   }),
-  summary: nullableString("One or two plain sentences telling the team what the customer needs (handoffs, and project enquiries in progress), based only on this conversation. Otherwise null."),
+  summary: nullableString("One or two plain sentences telling the team what the customer needs (handoffs, project enquiries and support problems), based only on this conversation. Otherwise null."),
   workflow: obj({
-    flow: nullableEnum(FLOWS, "The multi-step flow in progress: appointment or enquiry, else null."),
+    flow: nullableEnum(FLOWS, "The multi-step flow in progress: appointment, enquiry or issue, else null."),
     stage: nullableEnum(STAGES, "collecting while details are missing; awaiting_confirmation once you have shown the customer a summary and asked them to confirm; else null."),
   }),
   appointment: obj({
@@ -99,6 +109,13 @@ export const REPLY_JSON_SCHEMA = obj({
       description: "Other structured details as key/value pairs, for example {key: 'platform', value: 'Shopify'}. Empty list if none.",
       items: obj({ key: { type: "string" }, value: { type: "string" } }),
     },
+  }),
+  ticket: obj({
+    subject: nullableString("A short title for the problem, for example 'Order not delivered', else null."),
+    description: nullableString("What went wrong and what the customer wants, in a few sentences, else null."),
+    category: nullableString("A short category such as delivery, billing, product or account, else null."),
+    reference_info: nullableString("An order or invoice number the customer gave, else null."),
+    priority: nullableEnum(PRIORITIES, "high only if the customer says it is urgent or time-critical, otherwise normal."),
   }),
   action: obj({
     type: { type: "string", enum: [...ACTION_TYPES], description: "none unless the customer has just confirmed the summary you showed them." },

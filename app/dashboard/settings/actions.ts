@@ -33,6 +33,7 @@ export async function updateNotifications(formData: FormData) {
     appointment_notifications: formData.get("appointment_notifications") !== null,
     lead_notifications: formData.get("lead_notifications") !== null,
     handoff_notifications: formData.get("handoff_notifications") !== null,
+    ticket_notifications: formData.get("ticket_notifications") !== null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "client_id" });
   if (error) return back("invalid");

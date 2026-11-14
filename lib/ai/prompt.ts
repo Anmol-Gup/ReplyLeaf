@@ -19,7 +19,7 @@ export type PromptClient = {
 export type PromptContext = {
   today: string; // YYYY-MM-DD (UTC)
   flowState: WorkflowState | null;
-  openAppointment: { status: "pending" | "reschedule_requested"; rescheduleNote: string | null } | null;
+  open: { appointments: { status: "pending" | "reschedule_requested"; rescheduleNote: string | null }[]; tickets: number; leads: number };
 };
 
 export type RetrievedChunk = { heading: string | null; content: string };
@@ -40,17 +40,25 @@ function renderRetrieved(chunks: RetrievedChunk[]): string {
   return parts.length ? parts.join("\n\n---\n\n") : "(no additional documents matched this question)";
 }
 
-export function buildSystemPrompt(c: PromptClient, retrieved: RetrievedChunk[] = [], ctx: PromptContext = { today: new Date().toISOString().slice(0, 10), flowState: null, openAppointment: null }): string {
+export function buildSystemPrompt(c: PromptClient, retrieved: RetrievedChunk[] = [], ctx: PromptContext = { today: new Date().toISOString().slice(0, 10), flowState: null, open: { appointments: [], tickets: 0, leads: 0 } }): string {
   const context: string[] = [];
   if (ctx.flowState) {
     context.push(ctx.flowState.stage === "awaiting_confirmation"
       ? `You have already shown this customer a summary of their ${ctx.flowState.flow === "appointment" ? "appointment request" : "enquiry"} and asked them to confirm. Look at their latest message: if it clearly confirms, submit; if they change something, update and summarise again.`
       : `This customer is part-way through ${ctx.flowState.flow === "appointment" ? "an appointment request" : "a project enquiry"}. Carry on collecting what is missing.`);
   }
-  if (ctx.openAppointment?.status === "pending") {
-    context.push("This customer already has an appointment request waiting for the team's confirmation. Do not collect another one. If they ask, tell them it is awaiting confirmation.");
-  } else if (ctx.openAppointment?.status === "reschedule_requested") {
-    context.push(`The team asked this customer to reschedule${ctx.openAppointment.rescheduleNote ? ` (the team suggested: ${ctx.openAppointment.rescheduleNote})` : ""}. If the customer replies about it, thank them, say you have passed their reply to the team, and set intent to "human_needed" with a summary of what they answered (if handoff is enabled). Never confirm or change an appointment yourself.`);
+  const waiting = ctx.open.appointments.filter((a) => a.status === "pending").length;
+  if (waiting > 0) {
+    context.push(`This customer already has ${waiting} appointment request${waiting > 1 ? "s" : ""} waiting for the team's confirmation. A DIFFERENT appointment (another purpose, date or time) is fine to collect, but never submit the same one again. If they ask about an existing one, tell them it is awaiting confirmation.`);
+  }
+  for (const a of ctx.open.appointments.filter((x) => x.status === "reschedule_requested")) {
+    context.push(`The team asked this customer to reschedule an appointment${a.rescheduleNote ? ` (the team suggested: ${a.rescheduleNote})` : ""}. If the customer replies about it, thank them, say you have passed their reply to the team, and set intent to "human_needed" with a summary of what they answered (if handoff is enabled). Never confirm or change an appointment yourself.`);
+  }
+  if (ctx.open.tickets > 0) {
+    context.push(`This customer has ${ctx.open.tickets} open support ticket${ctx.open.tickets > 1 ? "s" : ""}. If they ask about an existing problem, tell them the team is looking into it and that you will pass on any new details. Never promise a resolution. A different, new problem can be logged as another ticket.`);
+  }
+  if (ctx.open.leads > 0) {
+    context.push(`${ctx.open.leads} project enquir${ctx.open.leads > 1 ? "ies" : "y"} from this customer ${ctx.open.leads > 1 ? "are" : "is"} already with the team. A different project is a new enquiry; never submit the same one again.`);
   }
   const workflowRules = renderWorkflowRules(c.workflow, c.bookingLink, ctx.today);
 

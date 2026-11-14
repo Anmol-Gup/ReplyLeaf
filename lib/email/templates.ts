@@ -10,6 +10,7 @@ export type OwnerEvent =
   | { type: "appointment_request"; contactName: string | null; phone: string; purpose: string; preferredDate: string | null; preferredTime: string | null; appointmentType: "online" | "in_person" | null; notes: string | null }
   | { type: "appointment_update"; status: "confirmed" | "reschedule_requested" | "cancelled" | "rejected"; contactName: string | null; phone: string; purpose: string; when: string | null; note: string | null }
   | { type: "lead_created"; contactName: string | null; phone: string; projectType: string; budget: string | null; timeline: string | null; summary: string; status: "new" | "qualified" }
+  | { type: "ticket_created"; contactName: string | null; phone: string; subject: string; category: string | null; referenceInfo: string | null; priority: "normal" | "high"; summary: string }
   | { type: "onboarded"; businessName: string }
   | { type: "needs_human"; contactName: string | null; phone: string; reason: HandoffSource; lastMessage: string; summary: string };
 
@@ -48,6 +49,12 @@ export function ownerEmail(
         to: o.to,
         subject: oneLine(`New ${event.status === "qualified" ? "qualified " : ""}lead: ${event.projectType}`),
         text: `${o.businessName} has a new project enquiry (${event.status === "qualified" ? "qualified: budget and timeline given" : "new: some details still missing"}).\n\nCustomer: ${who(event.contactName, event.phone)}\nProject: ${clip(event.projectType, 200)}\nBudget: ${event.budget ?? "not given"}\nTimeline: ${event.timeline ?? "not given"}\n\nSummary: ${clip(event.summary, 600)}\n\nNext step: open Leads, review the details and get in touch.${o.appUrl ? `\n\nOpen Leads: ${o.appUrl.replace(/\/$/, "")}/dashboard/leads` : ""}`,
+      };
+    case "ticket_created":
+      return {
+        to: o.to,
+        subject: oneLine(`${event.priority === "high" ? "URGENT support ticket" : "New support ticket"}: ${event.subject}`),
+        text: `${o.businessName} has a new support ticket${event.priority === "high" ? " marked URGENT by the customer" : ""}.\n\nCustomer: ${who(event.contactName, event.phone)}\nIssue: ${clip(event.subject, 200)}${event.category ? `\nCategory: ${event.category}` : ""}${event.referenceInfo ? `\nReference: ${event.referenceInfo}` : ""}\n\nSummary: ${clip(event.summary, 600)}\n\nThe customer was told the team has logged it and will look into it. Next step: open Support tickets, look into it and keep the customer updated.${o.appUrl ? `\n\nOpen Support tickets: ${o.appUrl.replace(/\/$/, "")}/dashboard/tickets` : ""}`,
       };
     case "onboarded":
       return {
