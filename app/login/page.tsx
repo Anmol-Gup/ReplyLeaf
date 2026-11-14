@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getUserOrNull } from "../../lib/auth/session";
 import Logo from "../../components/Logo";
 import { PRODUCT_NAME } from "../../lib/brand";
 import { safeNext } from "../../lib/auth-links";
@@ -6,6 +8,9 @@ import { signupMode } from "../../lib/signup";
 import LoginForm from "./LoginForm";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; next?: string }> }) {
+  // Already signed in (for example after pressing Back from the dashboard or onboarding): no sign-in form.
+  const user = await getUserOrNull();
+  if (user) redirect(user.app_metadata?.is_admin === true ? "/admin/signups" : "/dashboard");
   const { error, next } = await searchParams;
   const target = safeNext(next);
   return (

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getUserOrNull } from "../../lib/auth/session";
 import Logo from "../../components/Logo";
 import PasswordField from "../../components/PasswordField";
 import SignupSentDialog from "../../components/SignupSentDialog";
@@ -20,6 +21,8 @@ const ERRORS: Record<string, string> = {
 export default async function SignupPage({ searchParams }: { searchParams: Promise<{ error?: string; sent?: string }> }) {
   const mode = signupMode();
   if (mode === "off") redirect("/login");
+  const user = await getUserOrNull();
+  if (user && !(await searchParams).sent) redirect(user.app_metadata?.is_admin === true ? "/admin/signups" : "/dashboard");
   const { error, sent } = await searchParams;
   const privacy = privacyUrl();
   const terms = termsUrl();
