@@ -21,7 +21,7 @@ export default function AutoConfirm({ tokenHash, type }: { tokenHash: string; ty
       <input type="hidden" name="token_hash" value={tokenHash} />
       <input type="hidden" name="type" value={type} />
       <noscript><SubmitButton pendingText="Confirming...">Confirm my email</SubmitButton></noscript>
-      <p className="muted" role="status"><span className="spinner" aria-hidden="true" /> Verifying your email...</p>
+      <p className="muted" role="status"><span className="spinner" aria-hidden="true" /> This only takes a moment...</p>
     </form>
   );
 }
