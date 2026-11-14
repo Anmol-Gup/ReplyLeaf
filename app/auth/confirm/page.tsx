@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import Icon from "../../../components/Icon";
 import Logo from "../../../components/Logo";
@@ -24,6 +25,8 @@ export default async function ConfirmPage({ searchParams }: { searchParams: Prom
             <input type="hidden" name="type" value={type} />
             <SubmitButton pendingText="Confirming...">Confirm my email</SubmitButton>
           </form>
+          {/* The link is single-use and this page cannot tell whether it was already used until the button is pressed. */}
+          <p className="muted">Already confirmed your email? <Link href="/login">Sign in</Link></p>
         </div>
       </div>
     </main>
