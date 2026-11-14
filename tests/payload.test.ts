@@ -42,3 +42,19 @@ test("garbage and other fields yield no events and never throw", () => {
     assert.equal(r.messages.length + r.statuses.length, 0);
   }
 });
+
+test("smb_message_echoes: owner replies become echoes; edits, revokes and user-less echoes are ignored", () => {
+  const env = (echoes: unknown[]) => ({
+    object: "whatsapp_business_account",
+    entry: [{ id: "WABA", changes: [{ field: "smb_message_echoes", value: { messaging_product: "whatsapp", metadata: { display_phone_number: "1", phone_number_id: "PNID" }, message_echoes: echoes } }] }],
+  });
+  const r = parseWebhookPayload(env([
+    { from: "1", to: "919800000001", id: "wamid.a", timestamp: "1700000000", type: "text", text: { body: "hi" } },
+    { from: "1", to: "919800000001", id: "wamid.b", timestamp: "1700000001", type: "image" },
+    { from: "1", to: "919800000001", id: "wamid.c", timestamp: "1700000002", type: "revoke", revoke: { original_message_id: "wamid.a" } },
+    { from: "1", to: "919800000001", id: "wamid.d", timestamp: "1700000003", type: "edit", edit: { original_message_id: "wamid.a" } },
+    { from: "1", id: "wamid.e", timestamp: "1700000004", type: "text", text: { body: "no recipient" } },
+  ]));
+  assert.deepEqual(r.echoes.map((e) => [e.waMessageId, e.to, e.phoneNumberId, e.text]), [["wamid.a", "919800000001", "PNID", "hi"], ["wamid.b", "919800000001", "PNID", null]]);
+  assert.equal(r.messages.length, 0);
+});

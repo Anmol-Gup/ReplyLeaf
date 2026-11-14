@@ -1,4 +1,4 @@
-import type { AccountEvent, InboundMessage, ParsedEvents } from "./whatsapp/payload";
+import type { AccountEvent, InboundMessage, OwnerEcho, ParsedEvents } from "./whatsapp/payload";
 
 // Recording phase of the webhook: fast, DB-only, runs BEFORE we answer Meta.
 // It stores each message (deduped) and says which conversations need a batch.
@@ -18,6 +18,11 @@ export interface InboundDeps {
   findClientByPhoneNumberId(phoneNumberId: string): Promise<ClientRef | null>;
   /** Atomically upserts contact + conversation, inserts the message and queues it for batching. Dedupes on wamid. */
   recordInbound(clientId: string, msg: InboundMessage): Promise<RecordResult>;
+  /**
+   * Coexistence: the owner replied from the WhatsApp Business app. Stores it as a human message and, if the
+   * assistant was still handling that chat, silences it (opens a human_active handoff). Dedupes on wamid.
+   */
+  recordOwnerEcho(clientId: string, echo: OwnerEcho): Promise<{ duplicate: boolean }>;
   updateMessageStatus(waMessageId: string, status: string, error: string | null): Promise<void>;
   /** account_update from Meta: records it and updates the matching client's onboarding status. */
   applyAccountEvent(wabaId: string, event: string): Promise<void>;
@@ -32,7 +37,7 @@ export type RecordOutcome = {
 };
 
 export async function recordEvents(
-  events: Omit<ParsedEvents, "accountEvents"> & { accountEvents?: AccountEvent[] },
+  events: Omit<ParsedEvents, "accountEvents" | "echoes"> & { accountEvents?: AccountEvent[]; echoes?: OwnerEcho[] },
   deps: InboundDeps,
 ): Promise<RecordOutcome> {
   for (const s of events.statuses) {
@@ -53,6 +58,18 @@ export async function recordEvents(
     } catch (e) {
       failed++;
       console.error("account_update failed", errorText(e));
+    }
+  }
+
+  // Replies the owner sent from the WhatsApp Business app. A failure counts as failed so Meta retries.
+  for (const echo of events.echoes ?? []) {
+    try {
+      const client = await deps.findClientByPhoneNumberId(echo.phoneNumberId);
+      if (!client) continue; // not ours (or not onboarded yet); retrying will not help
+      await deps.recordOwnerEcho(client.id, echo);
+    } catch (e) {
+      failed++;
+      console.error("recording owner reply failed", errorText(e));
     }
   }
 

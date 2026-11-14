@@ -9,8 +9,8 @@ import { verifyState } from "../../../lib/onboarding-state";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { notifyOwner, raiseAlert } from "../../../lib/supabase-deps";
 import {
-  ASSUMED_TOKEN_LIFETIME_SECONDS, exchangeCodeForToken, OnboardingError, registerPhoneNumber,
-  subscribeAppToWaba, verifyPhoneAccess,
+  ASSUMED_TOKEN_LIFETIME_SECONDS, exchangeCodeForToken, findPhoneNumberId, OnboardingError, registerPhoneNumber,
+  requestAppDataSync, subscribeAppToWaba, verifyPhoneAccess, type IssuedToken,
 } from "../../../lib/whatsapp/onboarding";
 
 // ============================ TECH PROVIDER APPROVAL REQUIRED ============================
@@ -39,7 +39,9 @@ export const maxDuration = 60;
 const body = z.object({
   code: z.string().min(1).max(1000),
   wabaId: z.string().regex(/^\d{5,30}$/),
-  phoneNumberId: z.string().regex(/^\d{5,30}$/),
+  // Absent for coexistence (a number still used in the WhatsApp Business app): Meta then reports
+  // only the WABA, and we look the number up with the token below.
+  phoneNumberId: z.string().regex(/^\d{5,30}$/).optional(),
   name: z.string().trim().min(1).max(100),
   state: z.string().max(200),
 });
@@ -68,6 +70,20 @@ export async function POST(req: Request) {
   const graphVersion = env().GRAPH_API_VERSION;
   const key = env().ENCRYPTION_KEY;
 
+  // ---- 0. Coexistence reports no phone number id. The one-time code is exchanged now (it lives ~30s,
+  //         so it is reused for step 3) and the number is looked up from the WABA.
+  let prefetched: IssuedToken | null = null;
+  let phoneNumberId = b.phoneNumberId ?? "";
+  if (!phoneNumberId) {
+    try {
+      prefetched = await exchangeCodeForToken({ graphVersion, appId, appSecret: env().WHATSAPP_APP_SECRET, code: b.code });
+      phoneNumberId = await findPhoneNumberId({ graphVersion, token: prefetched.token, wabaId: b.wabaId });
+    } catch {
+      console.error("onboarding failed while looking up the phone number"); // never the error body
+      return fail(502, STEP_REASONS.phone_access);
+    }
+  }
+
   // ---- 1. Decide what to do (create, resume, or refuse) BEFORE talking to Meta.
   const { data: link } = await db.from("client_users").select("client_id").eq("user_id", user.id).limit(1);
   // The page hides this for unapproved sign-ups, but the endpoint can be called directly.
@@ -75,7 +91,7 @@ export async function POST(req: Request) {
   const [mine, wabaOwner, phoneOwner] = await Promise.all([
     link?.[0] ? db.from("clients").select(COLUMNS).eq("id", link[0].client_id).single() : Promise.resolve({ data: null }),
     db.from("clients").select(COLUMNS).eq("wa_waba_id", b.wabaId).maybeSingle(),
-    db.from("clients").select(COLUMNS).eq("wa_phone_number_id", b.phoneNumberId).maybeSingle(),
+    db.from("clients").select(COLUMNS).eq("wa_phone_number_id", phoneNumberId).maybeSingle(),
   ]);
   const plan = planOnboarding({ mine: toRow(mine.data as Row | null), wabaOwner: toRow(wabaOwner.data as Row | null), phoneOwner: toRow(phoneOwner.data as Row | null) });
   if (plan.action === "conflict") return fail(409, "This WhatsApp account is already connected to a different business.");
@@ -85,7 +101,7 @@ export async function POST(req: Request) {
   // ---- 2. Create the client row first (or reuse the failed one), so every failure has somewhere to be recorded.
   const now = () => new Date().toISOString();
   const fields = {
-    name: b.name, wa_phone_number_id: b.phoneNumberId, wa_waba_id: b.wabaId,
+    name: b.name, wa_phone_number_id: phoneNumberId, wa_waba_id: b.wabaId,
     status: "paused", onboarding_status: "pending", onboarding_step: "started", onboarding_updated_at: now(),
   };
   let clientId: string;
@@ -110,35 +126,49 @@ export async function POST(req: Request) {
   try {
     // ---- 3. code -> business token (the code lives ~30 seconds, so this comes first)
     await step(current);
-    const issued = await exchangeCodeForToken({ graphVersion, appId, appSecret: env().WHATSAPP_APP_SECRET, code: b.code });
+    const issued = prefetched ?? await exchangeCodeForToken({ graphVersion, appId, appSecret: env().WHATSAPP_APP_SECRET, code: b.code });
     const token = issued.token;
     const expiryAssumed = issued.expiresInSeconds === undefined; // DOCS UNCLEAR: see exchangeCodeForToken
     const expiresAt = new Date(Date.now() + (issued.expiresInSeconds ?? ASSUMED_TOKEN_LIFETIME_SECONDS) * 1000);
 
     // ---- 4. the token must be able to reach this number, or the client is claiming someone else's
     current = "phone_access"; await step(current);
-    await verifyPhoneAccess({ graphVersion, token, phoneNumberId: b.phoneNumberId });
+    const { isOnBizApp } = await verifyPhoneAccess({ graphVersion, token, phoneNumberId });
 
     // ---- 5. send this customer's webhooks to us
     current = "subscribe"; await step(current);
     await subscribeAppToWaba({ graphVersion, token, wabaId: b.wabaId });
 
-    // ---- 6. register the number. Reuse the PIN from an earlier attempt: re-registering with a
-    //         different PIN could be refused. A failure here is not fatal (the number may already
-    //         be registered), so keep going and tell the admin.
+    // ---- 6. A COEXISTENCE number (still used in the WhatsApp Business app) is already registered and must
+    //         not be registered again, and has no PIN. Instead Meta requires us to request its contacts and
+    //         chat history within 24 hours (each can be requested once; the data arrives as webhooks that we
+    //         accept and ignore). Failures there are not fatal: the admin is alerted.
+    //         Any other number: register it. Reuse the PIN from an earlier attempt (a different PIN could be
+    //         refused). A register failure is not fatal either (it may already be registered).
     current = "register"; await step(current);
-    const { data: existingSecret } = await db.from("client_secrets").select("wa_pin_enc").eq("client_id", clientId).maybeSingle();
-    const pin = existingSecret?.wa_pin_enc ? decryptSecret(existingSecret.wa_pin_enc, key) : String(randomInt(100000, 1000000));
-    try {
-      await registerPhoneNumber({ graphVersion, token, phoneNumberId: b.phoneNumberId, pin });
-    } catch (e) {
-      await raiseAlert(clientId, "onboarding_register_failed", e instanceof Error ? e.message : "register failed").catch(() => {});
+    let pin: string | null = null;
+    if (isOnBizApp) {
+      for (const syncType of ["smb_app_state_sync", "history"] as const) {
+        try {
+          await requestAppDataSync({ graphVersion, token, phoneNumberId, syncType });
+        } catch (e) {
+          await raiseAlert(clientId, "coexistence_sync_failed", `${syncType}: ${e instanceof Error ? e.message.slice(0, 200) : "failed"}`).catch(() => {});
+        }
+      }
+    } else {
+      const { data: existingSecret } = await db.from("client_secrets").select("wa_pin_enc").eq("client_id", clientId).maybeSingle();
+      pin = existingSecret?.wa_pin_enc ? decryptSecret(existingSecret.wa_pin_enc, key) : String(randomInt(100000, 1000000));
+      try {
+        await registerPhoneNumber({ graphVersion, token, phoneNumberId, pin });
+      } catch (e) {
+        await raiseAlert(clientId, "onboarding_register_failed", e instanceof Error ? e.message : "register failed").catch(() => {});
+      }
     }
 
     // ---- 7. store the encrypted token (with its expiry) and PIN. Never logged, never sent to the browser.
     current = "save"; await step(current);
     const { error: secretErr } = await db.from("client_secrets").upsert({
-      client_id: clientId, wa_access_token_enc: encryptSecret(token, key), wa_pin_enc: encryptSecret(pin, key),
+      client_id: clientId, wa_access_token_enc: encryptSecret(token, key), wa_pin_enc: pin ? encryptSecret(pin, key) : null,
       wa_token_expires_at: expiresAt.toISOString(), wa_token_expiry_assumed: expiryAssumed,
     }, { onConflict: "client_id" });
     if (secretErr) throw new Error("saving secrets failed"); // recorded under step 'save' by the catch below

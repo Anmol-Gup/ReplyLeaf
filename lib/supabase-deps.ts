@@ -139,6 +139,20 @@ export function supabaseInboundDeps(): InboundDeps {
       };
     },
 
+    async recordOwnerEcho(clientId, echo) {
+      const { data, error } = await db.rpc("record_owner_echo", {
+        p_client_id: clientId,
+        p_phone: echo.to,
+        p_wa_message_id: echo.waMessageId,
+        p_type: echo.type,
+        p_body: echo.text,
+        p_sent_at: echo.sentAt.toISOString(),
+      });
+      if (error) throw new Error(`record_owner_echo failed: ${error.message}`);
+      const row = (Array.isArray(data) ? data[0] : data) as { out_duplicate: boolean };
+      return { duplicate: row.out_duplicate };
+    },
+
     async updateMessageStatus(waMessageId, status, error) {
       const { error: dbErr } = await db
         .from("messages")

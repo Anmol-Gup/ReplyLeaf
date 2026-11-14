@@ -15,6 +15,7 @@ function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boole
   const alerts: string[] = [];
   const statuses: string[] = [];
   const accountEvents: string[] = [];
+  const echoes: string[] = [];
   const deps: InboundDeps = {
     findClientByPhoneNumberId: async () => (opts.knownClient === false ? null : { id: "c1", name: "Biz" }),
     recordInbound: async (_c, m): Promise<RecordResult> => {
@@ -23,11 +24,17 @@ function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boole
       if (!duplicate) stored.push(m.waMessageId);
       return { duplicate, conversationId: "conv1", handling: opts.handling ?? "bot", lastCustomerMessageAt: m.sentAt };
     },
+    recordOwnerEcho: async (_c, e) => {
+      if (opts.dbFails) throw new Error("db down");
+      const duplicate = echoes.includes(e.waMessageId);
+      if (!duplicate) echoes.push(e.waMessageId);
+      return { duplicate };
+    },
     updateMessageStatus: async (id, s) => void statuses.push(`${id}:${s}`),
     applyAccountEvent: async (waba, event) => { if (opts.dbFails) throw new Error("db down"); accountEvents.push(`${waba}:${event}`); },
     raiseAlert: async (_c, kind) => void alerts.push(kind),
   };
-  return { deps, stored, alerts, statuses, accountEvents };
+  return { deps, stored, alerts, statuses, accountEvents, echoes };
 }
 
 test("stores each message once and schedules its conversation once", async () => {
@@ -82,4 +89,23 @@ test("account_update events are applied; a failure asks Meta to retry", async ()
   const bad = fakeDeps({ dbFails: true });
   const out = await recordEvents({ statuses: [], messages: [], accountEvents: [{ wabaId: "12345", event: "PARTNER_ADDED" }] }, bad.deps);
   assert.equal(out.failed, 1);
+});
+
+test("coexistence: an owner reply from the Business app is recorded and never schedules the assistant", async () => {
+  const f = fakeDeps();
+  const echo = { phoneNumberId: "PNID", waMessageId: "wamid.e1", to: "911", sentAt: NOW, type: "text", text: "On my way" };
+  const out = await recordEvents({ statuses: [], messages: [], echoes: [echo] }, f.deps);
+  assert.deepEqual(f.echoes, ["wamid.e1"]);
+  assert.deepEqual(out.conversationIds, []);
+  await recordEvents({ statuses: [], messages: [], echoes: [echo] }, f.deps); // Meta retry
+  assert.deepEqual(f.echoes, ["wamid.e1"]);
+});
+
+test("coexistence: an echo for an unknown number is skipped; a storage failure asks Meta to retry", async () => {
+  const unknown = fakeDeps({ knownClient: false });
+  const echo = { phoneNumberId: "PNID", waMessageId: "wamid.e2", to: "911", sentAt: NOW, type: "text", text: "x" };
+  assert.equal((await recordEvents({ statuses: [], messages: [], echoes: [echo] }, unknown.deps)).failed, 0);
+  assert.deepEqual(unknown.echoes, []);
+  const down = fakeDeps({ dbFails: true });
+  assert.equal((await recordEvents({ statuses: [], messages: [], echoes: [echo] }, down.deps)).failed, 1);
 });

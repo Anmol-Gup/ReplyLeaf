@@ -16,7 +16,9 @@ type FB = {
 };
 declare global { interface Window { FB?: FB } }
 
-type Assets = { wabaId: string; phoneNumberId: string };
+// phoneNumberId is absent when the owner keeps using the WhatsApp Business app (coexistence):
+// Meta reports only the WABA then, and the server looks the number up.
+type Assets = { wabaId: string; phoneNumberId?: string };
 
 export default function EmbeddedSignup(p: { appId: string; configId: string; graphVersion: string; state: string; defaultName: string }) {
   const [name, setName] = useState(p.defaultName);
@@ -53,6 +55,8 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (d?.type === "WA_EMBEDDED_SIGNUP" && d.event === "FINISH" && d.data?.waba_id && d.data?.phone_number_id) {
           assets.current = { wabaId: String(d.data.waba_id), phoneNumberId: String(d.data.phone_number_id) };
+        } else if (d?.type === "WA_EMBEDDED_SIGNUP" && d.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" && d.data?.waba_id) {
+          assets.current = { wabaId: String(d.data.waba_id) };
         } else if (d?.type === "WA_EMBEDDED_SIGNUP" && (d.event === "CANCEL" || d.event === "ERROR")) {
           setStatus("error"); setMessage("The setup was cancelled before it finished.");
         }
@@ -69,7 +73,7 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
           if (!code) { window.removeEventListener("message", onMessage); setStatus("error"); setMessage("The setup was not completed."); return; }
           void finish(code, onMessage);
         },
-        { config_id: p.configId, response_type: "code", override_default_response_type: true, extras: { setup: {} } },
+        { config_id: p.configId, response_type: "code", override_default_response_type: true, extras: { setup: {}, featureType: "whatsapp_business_app_onboarding", sessionInfoVersion: "3" } },
       );
     } catch {
       window.removeEventListener("message", onMessage);
@@ -97,6 +101,7 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
   return (
     <div className="stack">
       <p className="muted">Connect the WhatsApp Business number your customers will message. You will sign in to WhatsApp in a pop-up; we never see your password.</p>
+      <p className="muted">Already use the WhatsApp Business app on your phone? Choose that number in the pop-up and keep using the app: you can reply to customers yourself, and the assistant steps aside for that chat when you do.</p>
       <label className="field">Business name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></label>
       {message && <p className={`notice ${status === "error" ? "error" : status === "done" ? "ok" : ""}`} role={status === "error" ? "alert" : "status"}>{message}</p>}
       <div>

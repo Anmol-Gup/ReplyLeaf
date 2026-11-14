@@ -31,6 +31,20 @@ const accountUpdateSchema = z.object({
   waba_info: z.object({ waba_id: z.string() }).optional(),
 });
 
+// smb_message_echoes (coexistence): a message the owner sent from the WhatsApp Business app or a linked
+// device. `to` is the customer's number and is omitted when only a username/BSUID is known.
+// Edits and revokes arrive in the same array (type "edit" / "revoke") and are ignored.
+const echoValueSchema = z.object({
+  metadata: z.object({ phone_number_id: z.string() }),
+  message_echoes: z.array(z.object({
+    id: z.string(),
+    to: z.string().optional(),
+    timestamp: z.string(),
+    type: z.string(),
+    text: z.object({ body: z.string() }).optional(),
+  })).optional(),
+});
+
 const payloadSchema = z.object({
   object: z.string(),
   entry: z.array(
@@ -57,12 +71,22 @@ export type StatusUpdate = {
   error: string | null;
 };
 
+/** A reply the owner typed in the WhatsApp Business app. */
+export type OwnerEcho = {
+  phoneNumberId: string;
+  waMessageId: string;
+  to: string; // customer phone, digits only
+  sentAt: Date;
+  type: string;
+  text: string | null;
+};
+
 export type AccountEvent = { wabaId: string; event: string };
 
-export type ParsedEvents = { messages: InboundMessage[]; statuses: StatusUpdate[]; accountEvents: AccountEvent[] };
+export type ParsedEvents = { messages: InboundMessage[]; statuses: StatusUpdate[]; accountEvents: AccountEvent[]; echoes: OwnerEcho[] };
 
 export function parseWebhookPayload(json: unknown): ParsedEvents {
-  const out: ParsedEvents = { messages: [], statuses: [], accountEvents: [] };
+  const out: ParsedEvents = { messages: [], statuses: [], accountEvents: [], echoes: [] };
   const payload = payloadSchema.safeParse(json);
   if (!payload.success || payload.data.object !== "whatsapp_business_account") return out;
 
@@ -72,6 +96,18 @@ export function parseWebhookPayload(json: unknown): ParsedEvents {
         const u = accountUpdateSchema.safeParse(change.value);
         const wabaId = u.success ? (u.data.waba_info?.waba_id ?? entry.id) : undefined;
         if (u.success && wabaId && /^\d{5,30}$/.test(wabaId)) out.accountEvents.push({ wabaId, event: u.data.event });
+        continue;
+      }
+      if (change.field === "smb_message_echoes") {
+        const e = echoValueSchema.safeParse(change.value);
+        if (!e.success) continue;
+        for (const m of e.data.message_echoes ?? []) {
+          if (m.type === "edit" || m.type === "revoke" || !m.to || !/^\d{5,20}$/.test(m.to)) continue;
+          out.echoes.push({
+            phoneNumberId: e.data.metadata.phone_number_id, waMessageId: m.id, to: m.to,
+            sentAt: new Date(Number(m.timestamp) * 1000), type: m.type, text: m.type === "text" ? (m.text?.body ?? null) : null,
+          });
+        }
         continue;
       }
       if (change.field !== "messages") continue;

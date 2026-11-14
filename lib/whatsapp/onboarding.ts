@@ -2,7 +2,9 @@
 //   1. exchange the 30-second `code` for the customer's business token
 //   2. confirm that token can actually reach the phone number we were told about
 //   3. subscribe OUR app to the customer's WABA so its webhooks reach us
-//   4. register the number (sets its two-step-verification PIN)
+//   4. register the number (sets its two-step-verification PIN). SKIPPED for coexistence numbers
+//      (still in the WhatsApp Business app), which are already registered; for those we instead
+//      request the contacts/history sync Meta requires within 24 hours.
 //
 // !! Real customers can only complete this after Meta approves us as a Tech
 // !! Provider (App Review with advanced access to whatsapp_business_management
@@ -89,14 +91,55 @@ export async function refreshBusinessToken(
   return parseTokenResponse((await res.text()).trim(), "token_refresh");
 }
 
-/** Proves the token can read this phone number (so a client can't claim someone else's number). */
+/**
+ * Proves the token can read this phone number (so a client can't claim someone else's number).
+ * Also reports whether the number is still used in the WhatsApp Business app (coexistence).
+ * Such a number is already registered: it must NOT be registered again.
+ */
 export async function verifyPhoneAccess(
   o: { graphVersion: string; token: string; phoneNumberId: string }, f: Fetch = fetch,
-): Promise<void> {
-  const res = await f(`${base(o.graphVersion)}/${encodeURIComponent(o.phoneNumberId)}?fields=id`, {
+): Promise<{ isOnBizApp: boolean }> {
+  const res = await f(`${base(o.graphVersion)}/${encodeURIComponent(o.phoneNumberId)}?fields=id,is_on_biz_app`, {
     headers: { Authorization: `Bearer ${o.token}` }, signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new OnboardingError("phone_access", await graphError(res));
+  const j = (await res.json().catch(() => null)) as { is_on_biz_app?: boolean } | null;
+  return { isOnBizApp: j?.is_on_biz_app === true };
+}
+
+/**
+ * Coexistence onboarding reports only the WABA id (no phone number id), so look the number up.
+ * Prefers a number that is on the Business app; throws if the account has no numbers.
+ */
+export async function findPhoneNumberId(
+  o: { graphVersion: string; token: string; wabaId: string }, f: Fetch = fetch,
+): Promise<string> {
+  const res = await f(`${base(o.graphVersion)}/${encodeURIComponent(o.wabaId)}/phone_numbers?fields=id,is_on_biz_app`, {
+    headers: { Authorization: `Bearer ${o.token}` }, signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new OnboardingError("phone_access", await graphError(res));
+  const j = (await res.json().catch(() => null)) as { data?: { id?: string; is_on_biz_app?: boolean }[] } | null;
+  const numbers = (j?.data ?? []).filter((n) => typeof n.id === "string" && /^\d{5,30}$/.test(n.id));
+  const pick = numbers.find((n) => n.is_on_biz_app) ?? numbers[0];
+  if (!pick?.id) throw new OnboardingError("phone_access", "no phone number found on this WhatsApp account");
+  return pick.id;
+}
+
+/**
+ * Coexistence only: asks Meta to send the number's contacts ("smb_app_state_sync") or chat history
+ * ("history"). Meta requires both to be requested within 24 hours of onboarding and each can be
+ * requested ONCE. The data arrives later as webhooks, which we accept and ignore for now.
+ */
+export async function requestAppDataSync(
+  o: { graphVersion: string; token: string; phoneNumberId: string; syncType: "smb_app_state_sync" | "history" }, f: Fetch = fetch,
+): Promise<void> {
+  const res = await f(`${base(o.graphVersion)}/${encodeURIComponent(o.phoneNumberId)}/smb_app_data`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${o.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", sync_type: o.syncType }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new OnboardingError("subscribe", await graphError(res));
 }
 
 export async function subscribeAppToWaba(

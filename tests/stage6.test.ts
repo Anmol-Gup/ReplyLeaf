@@ -9,7 +9,7 @@ import { refreshExpiringTokens, REFRESH_WITHIN_DAYS, type RefreshDeps } from "..
 import { encryptSecret, decryptSecret } from "../lib/crypto";
 import { randomBytes } from "node:crypto";
 import {
-  exchangeCodeForToken, OnboardingError, refreshBusinessToken, registerPhoneNumber, subscribeAppToWaba, verifyPhoneAccess,
+  exchangeCodeForToken, OnboardingError, refreshBusinessToken, findPhoneNumberId, registerPhoneNumber, requestAppDataSync, subscribeAppToWaba, verifyPhoneAccess,
 } from "../lib/whatsapp/onboarding";
 
 // ------------------------------------------------------------ onboarding state
@@ -99,9 +99,9 @@ test("code exchange failure never leaks the secret, the code, or the URL", async
 });
 
 test("phone access check uses the new token as a Bearer header and rejects when it cannot read the number", async () => {
-  const ok = fakeFetch([{ json: { id: "55" } }]);
-  await verifyPhoneAccess({ ...base, token: "tok", phoneNumberId: "55" }, ok.f);
-  assert.equal(ok.calls[0].url, "https://graph.facebook.com/v26.0/55?fields=id");
+  const ok = fakeFetch([{ json: { id: "55", is_on_biz_app: true } }]);
+  assert.deepEqual(await verifyPhoneAccess({ ...base, token: "tok", phoneNumberId: "55" }, ok.f), { isOnBizApp: true });
+  assert.equal(ok.calls[0].url, "https://graph.facebook.com/v26.0/55?fields=id,is_on_biz_app");
   assert.equal((ok.calls[0].init?.headers as Record<string, string>).Authorization, "Bearer tok");
   const denied = fakeFetch([{ status: 403, json: { error: { message: "(#10) no permission" } } }]);
   await assert.rejects(verifyPhoneAccess({ ...base, token: "tok", phoneNumberId: "99" }, denied.f), (e: unknown) => e instanceof OnboardingError && e.step === "phone_access");
@@ -270,4 +270,16 @@ test("refresh job: nothing expiring is a quiet no-op", async () => {
   const { deps, log } = refreshDeps([]);
   assert.deepEqual(await refreshExpiringTokens(deps), { checked: 0, refreshed: 0, failed: 0, expired: 0 });
   assert.equal(log.alerts.length, 0);
+});
+
+test("coexistence: phone lookup prefers the Business-app number; sync requests post the right body", async () => {
+  const two = fakeFetch([{ json: { data: [{ id: "11111", is_on_biz_app: false }, { id: "22222", is_on_biz_app: true }] } }]);
+  assert.equal(await findPhoneNumberId({ ...base, token: "tok", wabaId: "777" }, two.f), "22222");
+  assert.equal(two.calls[0].url, "https://graph.facebook.com/v26.0/777/phone_numbers?fields=id,is_on_biz_app");
+  const none = fakeFetch([{ json: { data: [] } }]);
+  await assert.rejects(findPhoneNumberId({ ...base, token: "tok", wabaId: "777" }, none.f), (e: unknown) => e instanceof OnboardingError);
+  const sync = fakeFetch([{ json: { request_id: "r" } }]);
+  await requestAppDataSync({ ...base, token: "tok", phoneNumberId: "22222", syncType: "history" }, sync.f);
+  assert.equal(sync.calls[0].url, "https://graph.facebook.com/v26.0/22222/smb_app_data");
+  assert.deepEqual(JSON.parse(String(sync.calls[0].init?.body)), { messaging_product: "whatsapp", sync_type: "history" });
 });
