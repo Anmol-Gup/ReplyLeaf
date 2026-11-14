@@ -38,6 +38,7 @@ export async function updateNotifications(formData: FormData) {
     lead_notifications: formData.get("lead_notifications") !== null,
     handoff_notifications: formData.get("handoff_notifications") !== null,
     ticket_notifications: formData.get("ticket_notifications") !== null,
+    delivery: field(formData, "delivery") === "immediate" ? "immediate" : "daily",
     updated_at: new Date().toISOString(),
   }, { onConflict: "client_id" });
   if (error) return back("invalid");

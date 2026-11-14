@@ -10,6 +10,8 @@ export type NotificationSettings = {
   leads: boolean;
   handoffs: boolean;
   tickets: boolean;
+  /** "daily": one summary email a day for new contacts, leads, appointment requests and tickets. "immediate": one email each. */
+  delivery?: "daily" | "immediate";
 };
 
 export const MAX_ADDITIONAL_EMAILS = 5;
@@ -53,4 +55,14 @@ export function recipientsFor(s: NotificationSettings | null, fallbackOwnerEmail
   const primary = s?.primaryEmail ?? fallbackOwnerEmail;
   const all = [primary, ...(s?.additionalEmails ?? [])].filter((x): x is string => Boolean(x));
   return [...new Set(all.map((x) => x.toLowerCase()))];
+}
+
+/** The events that go into the daily summary instead of being emailed one by one. Handoffs, AI-key and billing emails are urgent: always immediate. */
+export function isDigestEvent(e: OwnerEvent): boolean {
+  return e.type === "new_lead" || e.type === "lead_created" || e.type === "appointment_request" || e.type === "appointment_update" || e.type === "ticket_created";
+}
+
+/** Should this event be emailed right now? Digest events only when the business chose "each one immediately". */
+export function sendNow(s: Pick<NotificationSettings, "delivery"> | null, e: OwnerEvent): boolean {
+  return !isDigestEvent(e) || s?.delivery === "immediate";
 }

@@ -20,6 +20,11 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 
 **Deviation from the spec:** the model JSON has one extra field, `answered` (boolean). It is the signal needed for "two failed answers" handoff and for logging unanswered questions. Remove it from `lib/ai/schema.ts` if you disagree.
 
+### Email notifications: one daily summary (migration 0014)
+By default a business gets **one email a day** (`/api/cron/daily-digest`, 03:45 UTC, which is 09:15 IST) listing the new contacts, project enquiries, appointment requests and support tickets from the last 24 hours, plus what is still waiting (appointment requests to confirm, open tickets with the urgent ones counted, chats waiting for a person, lead follow-ups due). Sections follow the notification switches, nothing is sent on a day with nothing new and nothing waiting, a business gets at most one per day (running the job twice is harmless), and businesses without an active subscription are skipped. If the send fails the slot is given back so the next run retries. The summary goes to the main address plus the extra recipients.
+
+**Still sent immediately:** a chat that needs a person (Human handoff), the "your AI key needs attention" email, the "WhatsApp connected" email, and every billing email. Owners can switch back to **an email for each one as it happens** under Settings > Email notifications > How often (`notification_settings.delivery`). Businesses with no settings row yet count as daily. Check that your Vercel plan allows this many cron jobs, or call the route from any scheduler with `Authorization: Bearer $CRON_SECRET`.
+
 ### Billing: Stripe subscription, 999 INR / month (migration 0013)
 One plan, **WhatsApp AI Assistant, ₹999 per month**, one subscription per business, no trial, no usage billing. The subscription covers access to Replyleaf; the business pays its own AI provider (its own key) and Meta's WhatsApp charges separately, and we never bill for AI or messages. Stripe is the source of truth: webhooks copy its state into the database, **nothing is granted because of a browser redirect or anything the browser sends**, and access is decided on the server from the stored state.
 
@@ -137,9 +142,9 @@ Requires Node 20.9+.
    npx supabase login                                  # opens a browser to authorise the CLI
    npx supabase init                                   # once only; creates supabase/config.toml, keeps supabase/migrations/
    npx supabase link --project-ref <project-ref>       # ref = the id in https://supabase.com/dashboard/project/<project-ref>
-   npx supabase db push --remote --dry-run             # preview: should list 0001 to 0013 (newer CLIs target a LOCAL stack unless you pass --remote)
+   npx supabase db push --remote --dry-run             # preview: should list 0001 to 0014 (newer CLIs target a LOCAL stack unless you pass --remote)
    npx supabase db push --remote                       # apply to the linked project (asks for the database password you set when creating the project)
-   npx supabase migration list                         # Local and Remote columns should both show 0001 to 0013
+   npx supabase migration list                         # Local and Remote columns should both show 0001 to 0014
    ```
    For non-interactive use set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` instead of answering prompts.
    **Schema rule:** all schema changes live in numbered files in `supabase/migrations/` (`npx supabase migration new <name>` creates the next one). Never edit tables, policies or functions by hand in the dashboard. Each table is created with RLS enabled in the same migration. If you applied an earlier draft of 0001/0002 (they were reorganised before the first release), reset that database first.
@@ -187,7 +192,7 @@ The app also shows a plain message on the Connect page if you open it over http,
 
 ## Manual test checklist: Embedded Signup in Development Mode
 
-Needs a deployed app with all env vars set, migrations 0001 to 0013 applied, and a Facebook account that has a role on your Meta app.
+Needs a deployed app with all env vars set, migrations 0001 to 0014 applied, and a Facebook account that has a role on your Meta app.
 
 1. **Create a login with no business:** use `/signup` (and approve it on `/admin/signups` only if you set `SIGNUP_MODE=approval`), or add a user in the Supabase dashboard (Authentication > Users > Add user, auto-confirm) and approve it the same way. Do *not* use `create-owner`, which links a business.
 2. **Sign in at `/login`.** You should land on `/onboarding` ("Connect your WhatsApp number").
@@ -212,7 +217,7 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 - [ ] **26 tables, all with RLS on**: `select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1;` gives **admin_alerts, appointments, billing_audit, billing_emails, booking_requests, client_secrets, client_users, clients, contacts, conversations, handoff_requests, invoices, kb_chunks, kb_document_versions, kb_documents, lead_requirements, leads, messages, notification_settings, pending_messages, stripe_events, subscriptions, tickets, unanswered_questions, usage_events, whatsapp_account_events, and `rowsecurity = true` on every row**.
 - [ ] **11 policies, all `SELECT` for `authenticated`**: `select tablename, policyname, cmd, roles from pg_policies where schemaname = 'public' order by 1;` gives policies on every table **except `client_secrets`, `admin_alerts`, `pending_messages` and `whatsapp_account_events`** (those four deliberately have none).
 - [ ] **No access for `anon`; browser role is read-only and never sees secrets**: `select table_name, grantee, privilege_type from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon','authenticated') order by 1, 2;` gives **only `SELECT` rows for `authenticated`, nothing for `anon`, and nothing for `client_secrets`, `admin_alerts`, `pending_messages` or `whatsapp_account_events`**.
-- [ ] **Functions locked down**: `select routine_name, grantee from information_schema.routine_privileges where routine_schema = 'public' and grantee in ('anon','authenticated','public') order by 1;` gives **only `current_client_ids` (for `authenticated`)**. Every other function (`record_inbound_message`, `claim_batch`, `complete_batch`, `find_due_batches`, `save_booking_request`, `apply_contact_details`, `mark_contact_lead`, `client_usage_summary`, `replace_document_chunks`, `save_document_version`, `search_kb`, `run_retention`, `daily_reply_check`, `apply_account_event`, `create_handoff`, `set_handoff_status`, `create_appointment`, `set_appointment_status`, `create_lead`, `create_ticket`, `claim_stripe_event`, `finish_stripe_event`, `apply_subscription_snapshot`, `upsert_invoice`, `record_checkout`, `claim_billing_email`, `release_billing_email`, `write_billing_audit`) is callable by `service_role` only.
+- [ ] **Functions locked down**: `select routine_name, grantee from information_schema.routine_privileges where routine_schema = 'public' and grantee in ('anon','authenticated','public') order by 1;` gives **only `current_client_ids` (for `authenticated`)**. Every other function (`record_inbound_message`, `claim_batch`, `complete_batch`, `find_due_batches`, `save_booking_request`, `apply_contact_details`, `mark_contact_lead`, `client_usage_summary`, `replace_document_chunks`, `save_document_version`, `search_kb`, `run_retention`, `daily_reply_check`, `apply_account_event`, `create_handoff`, `set_handoff_status`, `create_appointment`, `set_appointment_status`, `create_lead`, `create_ticket`, `claim_stripe_event`, `finish_stripe_event`, `apply_subscription_snapshot`, `upsert_invoice`, `record_checkout`, `claim_billing_email`, `release_billing_email`, `write_billing_audit`, `claim_daily_digest`, `release_daily_digest`, `mark_digest_sent`) is callable by `service_role` only.
 - [ ] **Embedding column is 768-dimensional with an HNSW index**: `select format_type(atttypid, atttypmod) from pg_attribute where attrelid = 'public.kb_chunks'::regclass and attname = 'embedding';` gives **`vector(768)`**, and `select indexname from pg_indexes where tablename = 'kb_chunks';` includes **`kb_chunks_embedding_idx`**.
 - [ ] **RLS actually blocks a browser session**:
   ```sql
@@ -223,7 +228,7 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
   rollback;
   ```
 - [ ] **Isolation test passes** (needs Docker): `npx supabase test db` runs `supabase/tests/rls_isolation.test.sql`.
-- [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0013 on both sides.
+- [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0014 on both sides.
 
 ## Commands
 - `npm test`: unit tests (signatures, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, CRM, booking hand-off, email, auth helpers, chunking, file extraction, onboarding calls and resumability rules, account_update parsing, token refresh job, retention checks). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.

@@ -1,6 +1,6 @@
 -- Smoke test for appointments, leads and notification settings (migration 0010): creation, duplicate delivery,
 -- status moves, tenant isolation and RLS. A plain SQL script (no pgTAP). Run it against a THROWAWAY Postgres that has
--- migrations 0001-0011 applied and Supabase's roles stubbed (anon, authenticated, service_role, auth.users, auth.uid()).
+-- migrations 0001-0014 applied and Supabase's roles stubbed (anon, authenticated, service_role, auth.users, auth.uid()).
 -- Never run it on a real project: it inserts fixture rows (inside a transaction that is rolled back at the end).
 \set ON_ERROR_STOP on
 begin;
@@ -74,13 +74,27 @@ insert into public.notification_settings (client_id, primary_email) values ('aaa
 select pg_temp.fails($$insert into public.notification_settings (client_id) values ('aaaaaaaa-0000-0000-0000-000000000001')$$, 'only one notification row per business');
 select pg_temp.check((select appointment_notifications and lead_notifications and handoff_notifications from public.notification_settings), 'all notification switches default to on');
 
+
+-- daily summary (migration 0014)
+select pg_temp.check((select delivery from public.notification_settings where client_id='aaaaaaaa-0000-0000-0000-000000000001')='daily', 'email delivery defaults to the daily summary');
+select pg_temp.fails($$update public.notification_settings set delivery='hourly'$$, 'delivery is restricted to daily / immediate');
+select pg_temp.check(public.claim_daily_digest('aaaaaaaa-0000-0000-0000-000000000001','2026-02-01'), 'the first run of the day wins the summary');
+select pg_temp.check(not public.claim_daily_digest('aaaaaaaa-0000-0000-0000-000000000001','2026-02-01'), 'a second run the same day is refused: one summary a day');
+select public.release_daily_digest('aaaaaaaa-0000-0000-0000-000000000001');
+select pg_temp.check(public.claim_daily_digest('aaaaaaaa-0000-0000-0000-000000000001','2026-02-01'), 'a released slot (send failed) can be claimed again');
+select pg_temp.check(public.claim_daily_digest('aaaaaaaa-0000-0000-0000-000000000001','2026-02-02'), 'the next day is a new slot');
+select pg_temp.check(public.claim_daily_digest('bbbbbbbb-0000-0000-0000-000000000001','2026-02-02'), 'a business with no settings row yet gets one created and wins its slot');
+select public.mark_digest_sent('aaaaaaaa-0000-0000-0000-000000000001','2026-02-02 03:45+00');
+select pg_temp.check((select last_digest_at='2026-02-02 03:45+00' from public.notification_settings where client_id='aaaaaaaa-0000-0000-0000-000000000001'), 'the summary window moves forward');
+
 -- handoff source added in 0010
 select pg_temp.check((select out_created from public.create_handoff('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-0000000000d1','action_failed','x',null)), 'handoff accepts the action_failed source');
 
 -- RLS: each owner sees only their own rows; nobody writes directly; privileged functions are service-role only
 insert into public.appointments (client_id, conversation_id, contact_id, customer_phone, purpose) values ('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-0000000000d1','bbbbbbbb-0000-0000-0000-0000000000c1','222','B''s request');
 select public.create_lead('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-0000000000d1','bbbbbbbb-0000-0000-0000-0000000000c1','B','222','b project','b description','','','new',null,'kb','[{"key":"a","value":"b"}]'::jsonb);
-insert into public.notification_settings (client_id, primary_email) values ('bbbbbbbb-0000-0000-0000-000000000001','b@x.com');
+insert into public.notification_settings (client_id, primary_email) values ('bbbbbbbb-0000-0000-0000-000000000001','b@x.com')
+  on conflict (client_id) do update set primary_email = excluded.primary_email;  -- the digest check above may already have created B's row
 select public.create_ticket('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-0000000000d1','bbbbbbbb-0000-0000-0000-0000000000c1','B','222','B ticket','B problem details here',null,null,'normal',null,'tb');
 grant select, insert, update, delete on public.appointments, public.tickets, public.leads, public.lead_requirements, public.notification_settings to authenticated;
 set local role authenticated;
@@ -91,6 +105,7 @@ select pg_temp.check((select count(*) from public.lead_requirements where client
 select pg_temp.check((select count(*) from public.tickets where client_id<>'aaaaaaaa-0000-0000-0000-000000000001')=0 and (select count(*) from public.tickets)=3, 'owner A sees only A''s tickets');
 with u as (update public.tickets set internal_notes='hacked' returning 1) select pg_temp.check((select count(*) from u)=0, 'owner cannot update tickets directly');
 select pg_temp.fails($$select * from public.create_ticket('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-0000000000d1','aaaaaaaa-0000-0000-0000-0000000000c1','x','1','s','d',null,null,'normal',null,'tq')$$, 'authenticated users cannot call create_ticket');
+select pg_temp.fails($$select public.claim_daily_digest('aaaaaaaa-0000-0000-0000-000000000001','2026-03-01')$$, 'authenticated users cannot call claim_daily_digest');
 select pg_temp.check((select count(*) from public.notification_settings where primary_email='b@x.com')=0, 'owner A cannot read B''s notification settings');
 with u as (update public.appointments set internal_notes='hacked' returning 1) select pg_temp.check((select count(*) from u)=0, 'owner cannot update appointments directly');
 with u as (update public.leads set internal_notes='hacked' returning 1) select pg_temp.check((select count(*) from u)=0, 'owner cannot update leads directly');

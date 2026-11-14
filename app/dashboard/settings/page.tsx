@@ -16,7 +16,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const { db, clientId } = await requireClient();
   const { data: c } = await db.from("clients")
     .select("name, business_info, business_hours, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step, workflow_settings").eq("id", clientId).single();
-  const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications").eq("client_id", clientId).maybeSingle();
+  const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications, delivery").eq("client_id", clientId).maybeSingle();
   const w = parseWorkflowSettings(c?.workflow_settings);
   const mode = (c?.ai_mode ?? "platform") as AiMode;
   const status = (c?.ai_key_status ?? "none") as KeyStatus;
@@ -162,6 +162,11 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <label className="field">Additional recipients <span className="hint">Up to 5, separated by commas or new lines.</span>
               <textarea name="additional_emails" rows={2} defaultValue={(n?.additional_emails ?? []).join("\n")} />
             </label>
+            <fieldset className="field">
+              <legend>How often <span className="hint">For new contacts, project enquiries, appointment requests and support tickets. A chat that needs a person is always emailed straight away.</span></legend>
+              <label className="check"><input type="radio" name="delivery" value="daily" defaultChecked={(n?.delivery ?? "daily") === "daily"} /> One summary a day (recommended)</label>
+              <label className="check"><input type="radio" name="delivery" value="immediate" defaultChecked={n?.delivery === "immediate"} /> An email for each one as it happens</label>
+            </fieldset>
             <label className="check"><input type="checkbox" name="appointment_notifications" defaultChecked={n?.appointment_notifications ?? true} /> Appointment requests and changes</label>
             <label className="check"><input type="checkbox" name="lead_notifications" defaultChecked={n?.lead_notifications ?? true} /> New leads</label>
             <label className="check"><input type="checkbox" name="ticket_notifications" defaultChecked={n?.ticket_notifications ?? true} /> Support tickets</label>
