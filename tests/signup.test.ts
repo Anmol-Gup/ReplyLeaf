@@ -3,15 +3,13 @@ import assert from "node:assert/strict";
 import { approvedEmail, pendingUserEmail, signupNotificationEmail } from "../lib/email/templates";
 import { hasApprovedFlag, isApproved, isExistingAccount, signupMode, signupSchema } from "../lib/signup";
 
-test("signup mode defaults to approval and never falls back to open by accident", () => {
-  assert.equal(signupMode(undefined), "approval");
-  assert.equal(signupMode(""), "approval");
-  assert.equal(signupMode("APPROVAL"), "approval");
-  assert.equal(signupMode("open"), "open");
+test("signup mode defaults to open (no manual approval); approval and off only when written exactly", () => {
+  assert.equal(signupMode(undefined), "open");
+  assert.equal(signupMode(""), "open");
   assert.equal(signupMode(" Open "), "open");
+  assert.equal(signupMode("APPROVAL"), "approval");
   assert.equal(signupMode("off"), "off");
-  assert.equal(signupMode("opne"), "approval"); // a typo must not open sign-up
-  assert.equal(signupMode("true"), "approval");
+  assert.equal(signupMode("whatever"), "open");
 });
 
 test("approved flag must be exactly true", () => {

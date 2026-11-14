@@ -2,11 +2,11 @@ import { z } from "zod";
 
 // Sign-up rules, kept pure so they are unit-tested.
 //
-//   SIGNUP_MODE=approval (default)  anyone can create an account, but sees only a
-//                                   "waiting for approval" page until the admin approves it
-//   SIGNUP_MODE=open                accounts work immediately (use once real customers can
-//                                   connect WhatsApp themselves, i.e. after Tech Provider approval)
-//   SIGNUP_MODE=off                 no public sign-up; owners are created by the admin
+//   SIGNUP_MODE=open (default)  anyone can sign up; after confirming their email they connect their own
+//                               WhatsApp through Embedded Signup. No manual approval.
+//   SIGNUP_MODE=approval        anyone can create an account, but sees only a "waiting for approval"
+//                               page until the admin approves it (an optional gate; the admin page stays)
+//   SIGNUP_MODE=off             no public sign-up; owners are created by the admin
 //
 // "Approved" is a flag in the login's app_metadata. Only the service role can write it
 // (users cannot edit app_metadata), and no database change is needed. Anyone already
@@ -14,9 +14,9 @@ import { z } from "zod";
 export type SignupMode = "approval" | "open" | "off";
 
 export function signupMode(raw: string | undefined = process.env.SIGNUP_MODE): SignupMode {
-  const v = (raw ?? "approval").trim().toLowerCase();
-  // An unrecognised value falls back to approval, never to "open".
-  return v === "open" || v === "off" ? v : "approval";
+  const v = (raw ?? "open").trim().toLowerCase();
+  // Unset or unrecognised: the default (open). "approval" and "off" are only used when written exactly.
+  return v === "approval" || v === "off" ? v : "open";
 }
 
 export type UserLike = { app_metadata?: Record<string, unknown> | null };
