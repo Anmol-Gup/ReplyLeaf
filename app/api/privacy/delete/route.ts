@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Data deletion on request: deletes ONE contact (by phone number) and all their
-// conversations, messages and booking requests for ONE client.
+// conversations, messages, leads, appointments and tickets for ONE client.
 //
 //   Owner:  POST /api/privacy/delete   { "phone": "+91 98765 43210" }   (signed-in dashboard session)
 //   Admin:  POST /api/privacy/delete   { "phone": "...", "clientId": "<uuid>" }

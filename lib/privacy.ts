@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "./supabase-admin";
 
 // Right-to-erasure: delete one contact and everything hanging off them
-// (conversations, messages, pending batches, booking requests, logged unanswered
+// (conversations, messages, pending batches, leads, appointments, tickets, logged unanswered
 // questions) via ON DELETE CASCADE. usage_events keep only anonymous token
 // counts (their message_id is set to null). Always scoped to ONE client.
 export type DeleteResult = { deleted: boolean; messages: number };
