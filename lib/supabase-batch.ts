@@ -6,6 +6,7 @@ import type { ChatTurn, Provider } from "./ai/providers";
 import type { BatchContext, BatchDeps } from "./batch";
 import { appointmentDedupeKey, parseWorkflowState } from "./workflow";
 import { KEY_EMAIL_INTERVAL_MS, type AiMode, type KeyStatus } from "./ai-keys";
+import { billingEnforced, computeAccess, type SubscriptionRow } from "./billing/access";
 import { decryptSecret } from "./crypto";
 import { env } from "./env";
 import { parseWorkflowSettings } from "./workflow-settings";
@@ -40,9 +41,9 @@ export function supabaseBatchDeps(): BatchDeps {
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 
-      const [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads] = await Promise.all([
+      const [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads, subRow] = await Promise.all([
         db.from("clients")
-          .select("id, name, wa_phone_number_id, ai_provider, ai_mode, ai_key_status, business_info, business_hours, booking_link, kb_text, monthly_message_cap, workflow_settings")
+          .select("id, name, wa_phone_number_id, ai_provider, ai_mode, ai_key_status, billing_exempt, business_info, business_hours, booking_link, kb_text, monthly_message_cap, workflow_settings")
           .eq("id", clientId).single(),
         db.from("contacts").select("id, phone, name").eq("client_id", clientId).eq("id", conv.contact_id).single(),
         db.from("pending_messages").select("id, message_id, created_at")
@@ -62,8 +63,9 @@ export function supabaseBatchDeps(): BatchDeps {
           .eq("client_id", clientId).eq("contact_id", conv.contact_id).in("status", ["open", "in_progress", "waiting_on_customer"]),
         db.from("leads").select("id", { count: "exact", head: true })
           .eq("client_id", clientId).eq("contact_id", conv.contact_id).in("status", ["new", "qualified", "contacted", "proposal_sent", "negotiation"]),
+        db.from("subscriptions").select("status, current_period_end, cancel_at_period_end, grace_ends_at").eq("client_id", clientId).maybeSingle(),
       ]);
-      for (const r of [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads]) {
+      for (const r of [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads, subRow]) {
         if (r.error) throw new Error(`batch load failed: ${r.error.message}`);
       }
 
@@ -111,6 +113,7 @@ export function supabaseBatchDeps(): BatchDeps {
           businessHours: c.business_hours, bookingLink: c.booking_link, kbText: c.kb_text,
           monthlyMessageCap: c.monthly_message_cap, workflow: parseWorkflowSettings(c.workflow_settings),
           ai: { mode: c.ai_mode as AiMode, apiKey, keyStatus: c.ai_key_status as KeyStatus },
+          billing: computeAccess((subRow.data as SubscriptionRow) ?? null, { exempt: c.billing_exempt === true, enforced: billingEnforced(), now: new Date() }),
         },
         conversation: {
           id: conv.id, handling: conv.handling, failedAnswerCount: conv.failed_answer_count,

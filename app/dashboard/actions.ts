@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { clearSessionCookies, requireClient } from "../../lib/auth/session";
+import { requirePaidAccess } from "../../lib/billing/gate";
 import { SOURCE_LABELS } from "../../lib/handoff";
 import { deleteContactData } from "../../lib/privacy";
 import { supabaseAdmin } from "../../lib/supabase-admin";
@@ -66,6 +67,7 @@ export async function handBack(formData: FormData) {
 
 export async function sendHumanMessage(formData: FormData) {
   const { clientId } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const id = uuid.parse(formData.get("id"));
   const text = z.string().trim().min(1).max(1500).safeParse(formData.get("text"));
   const back = `/dashboard/conversations/${id}`;
@@ -182,6 +184,7 @@ export async function updateSettings(formData: FormData) {
 // --------------------------------------------------------------- knowledge
 export async function updateKnowledge(formData: FormData) {
   const { clientId } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const text = z.string().max(8000).safeParse(formData.get("kb_text"));
   if (!text.success) return flash("/dashboard/knowledge", "invalid");
   await supabaseAdmin().from("clients").update({ kb_text: text.data || null }).eq("id", clientId);
@@ -197,6 +200,7 @@ const contentSchema = z.string().trim().min(1).max(200_000);
 // until the owner reviews the extracted text and confirms (publishDocumentAction).
 export async function createDocument(formData: FormData) {
   const { clientId } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const file = formData.get("file");
   let text = String(formData.get("text") ?? "");
   let title = String(formData.get("title") ?? "").trim();
@@ -230,6 +234,7 @@ export async function createDocument(formData: FormData) {
 // Step 2: the owner confirmed the (possibly edited) text. Chunk, embed, publish a new version.
 export async function publishDocumentAction(formData: FormData) {
   const { clientId, user } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const id = uuid.parse(formData.get("id"));
   const back = `${KB}/documents/${id}`;
   const t = titleSchema.safeParse(formData.get("title"));
@@ -254,6 +259,7 @@ export async function discardDraft(formData: FormData) {
 
 export async function setDocumentStatus(formData: FormData) {
   const { clientId } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const id = uuid.parse(formData.get("id"));
   const status = z.enum(["active", "archived"]).parse(formData.get("status"));
   await supabaseAdmin().from("kb_documents").update({ status, updated_at: new Date().toISOString() })
@@ -264,6 +270,7 @@ export async function setDocumentStatus(formData: FormData) {
 // Restoring creates a NEW version with the old text, so history is never rewritten.
 export async function restoreVersion(formData: FormData) {
   const { clientId, user } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const id = uuid.parse(formData.get("id"));
   const version = z.coerce.number().int().positive().parse(formData.get("version"));
   const { data: v } = await supabaseAdmin().from("kb_document_versions").select("title, content")
@@ -275,6 +282,7 @@ export async function restoreVersion(formData: FormData) {
 
 export async function reindexDocumentAction(formData: FormData) {
   const { clientId } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const id = uuid.parse(formData.get("id"));
   const back = `${KB}/documents/${id}`;
   try {

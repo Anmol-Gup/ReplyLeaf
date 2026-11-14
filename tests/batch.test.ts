@@ -23,6 +23,7 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
       id: "c1", name: "Biz", waPhoneNumberId: "PN", aiProvider: "gemini", monthlyMessageCap: 100,
       businessInfo: null, businessHours: null, bookingLink: null, kbText: "Open 9-5", workflow: DEFAULT_WORKFLOW_SETTINGS,
       ai: { mode: "platform", apiKey: null, keyStatus: "none" },
+      billing: { allowed: true, reason: "active", banner: "none", graceEndsAt: null, paidThrough: null },
     },
     conversation: { id: "conv1", handling: "bot", failedAnswerCount: 0, lastCustomerMessageAt: NOW, workflowState: null, ...conv },
     open: { appointments: [], tickets: 0, leads: 0 },
@@ -597,4 +598,50 @@ test("a platform-mode failure that mentions authentication is not blamed on a bu
   await run(f.deps);
   assert.equal(f.log.keyReports.length, 0);
   assert.deepEqual(f.log.sent, [FALLBACK_REPLY]);
+});
+
+// ---- Subscription gate (background automation) ----
+const unpaid = (reason: "none" | "grace_expired" | "canceled" | "unpaid" = "grace_expired") => {
+  const ctx = makeCtx();
+  ctx.client.billing = { allowed: false, reason, banner: "inactive", graceEndsAt: null, paidThrough: null };
+  return ctx;
+};
+
+test("inactive subscription: no AI call, no reply, no workflow, no handoff, no email; the batch is still completed (nothing is replayed later)", async () => {
+  for (const reason of ["none", "grace_expired", "canceled", "unpaid"] as const) {
+    const f = fakeDeps(unpaid(reason));
+    await run(f.deps);
+    assert.equal(f.log.generated.length, 0, reason);
+    assert.equal(f.log.sent.length, 0, reason);
+    assert.equal(f.log.saved.length, 0, reason);
+    assert.equal(f.log.handoffs.length, 0, reason);
+    assert.equal(f.log.owner.length, 0, reason);
+    assert.equal(f.log.appts.length + f.log.leads.length + f.log.tickets.length, 0, reason);
+    assert.equal(f.log.completed.length, 1, reason);          // released, so it is not retried forever or answered after payment recovers
+  }
+});
+
+test("inactive subscription: media-only messages and the monthly-cap path send nothing either", async () => {
+  const ctx = unpaid();
+  ctx.pending = [{ id: "p1", type: "image", body: null }];
+  const f = fakeDeps(ctx);
+  await run(f.deps);
+  assert.equal(f.log.sent.length, 0);
+  const capped = unpaid();
+  capped.repliesThisMonth = 100000;
+  const g = fakeDeps(capped);
+  await run(g.deps);
+  assert.equal(g.log.sent.length, 0);
+  assert.equal(g.log.alerts.length, 0);
+});
+
+test("a subscription inside the grace period still runs everything; once payment recovers the next message is answered normally", async () => {
+  const ctx = makeCtx();
+  ctx.client.billing = { allowed: true, reason: "grace", banner: "past_due_grace", graceEndsAt: new Date("2026-01-09T00:00:00Z"), paidThrough: null };
+  const f = fakeDeps(ctx);
+  await run(f.deps);
+  assert.deepEqual(f.log.sent, ["We open at 9."]);
+  const recovered = fakeDeps(makeCtx());                      // the next batch loads the (now active) subscription
+  await run(recovered.deps);
+  assert.equal(recovered.log.sent.length, 1);                 // exactly one reply: the messages sent while unpaid are not replayed
 });

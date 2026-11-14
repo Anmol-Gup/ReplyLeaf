@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requirePaidAccess } from "../../../lib/billing/gate";
 import { requireClient } from "../../../lib/auth/session";
 import { notifyCustomer } from "../../../lib/appointment-notify";
 import { cleanAssignedTo, isDone, resolvedAtFor, resolutionMessage, ticketFormSchema, ticketRef, type TicketStatus } from "../../../lib/tickets";
@@ -11,6 +12,7 @@ import { supabaseAdmin } from "../../../lib/supabase-admin";
 // service role, and the row is only matched together with that client_id. Internal notes are never sent anywhere.
 export async function updateTicket(formData: FormData) {
   const { clientId, clientName } = await requireClient();
+  if (formData.get("notify") !== null) await requirePaidAccess(clientId); // sending to the customer is a paid feature
   const parsed = ticketFormSchema.safeParse({
     id: formData.get("id"), status: formData.get("status"),
     assigned_to: String(formData.get("assigned_to") ?? ""), notes: String(formData.get("notes") ?? "").replace(/\u0000/g, "").trim(),

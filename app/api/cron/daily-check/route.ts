@@ -1,4 +1,5 @@
 import { summarizeDailyCheck, type CheckRow } from "../../../../lib/checks";
+import { paidClientIds } from "../../../../lib/billing/gate";
 import { isCronAuthorized } from "../../../../lib/cron";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
 import { raiseAlert } from "../../../../lib/supabase-deps";
@@ -18,8 +19,11 @@ export async function GET(req: Request) {
     await raiseAlert(null, "daily_check_failed", error.message).catch(() => {});
     return Response.json({ ok: false }, { status: 500 });
   }
-  const summary = summarizeDailyCheck((data ?? []) as CheckRow[]);
+  // Businesses without an active subscription have automation switched off on purpose: not a problem to alert on.
+  const all = (data ?? []) as CheckRow[];
+  const paid = await paidClientIds(all.map((r) => r.out_client_id));
+  const summary = summarizeDailyCheck(all.filter((r) => paid.has(r.out_client_id)));
   console.log(summary.text);
   if (summary.hasIssues) await raiseAlert(null, "daily_check_issues", summary.text);
-  return Response.json({ ok: true, clients: (data ?? []).length, issues: summary.issueCount });
+  return Response.json({ ok: true, clients: paid.size, skipped_unpaid: all.length - paid.size, issues: summary.issueCount });
 }

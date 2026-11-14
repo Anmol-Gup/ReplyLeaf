@@ -21,6 +21,7 @@ const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard/knowledge", label: "Knowledge base", icon: "book" },
   { href: "/dashboard/settings", label: "Settings", icon: "settings" },
   { href: "/dashboard/usage", label: "Usage", icon: "chart" },
+  { href: "/dashboard/billing", label: "Billing", icon: "card" },
 ];
 
 function Nav({ pathname, isAdmin }: { pathname: string; isAdmin: boolean }) {

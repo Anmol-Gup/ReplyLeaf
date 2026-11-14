@@ -21,6 +21,7 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   appt_done_not_sent: { kind: "warn", text: "Appointment updated, but the customer could NOT be reached: the 24-hour WhatsApp window has closed and we have no email for them. Copy the message below and send it another way." },
   appt_need_alternative: { kind: "error", text: "Tell the customer what you suggest instead (a date, a time or a note)." },
   appt_failed: { kind: "error", text: "That change was not allowed (the appointment may already have changed). Refresh and try again." },
+  subscription_required: { kind: "warn", text: "That needs an active subscription. Subscribe or update your payment method below. You can still view and export your data." },
   ai_key_saved: { kind: "ok", text: "Your AI key is saved and working. Chats that were waiting because of the key were handed back to the assistant." },
   ai_key_saved_unverified: { kind: "warn", text: "Your AI key is saved, but we couldn't check it just now (the provider didn't answer). It will be used on the next message; if it is wrong you will be emailed." },
   ai_key_refused: { kind: "error", text: "The provider refused that key, so nothing was saved. Check that you copied it completely, that it belongs to the provider you chose, and that it hasn't been revoked." },

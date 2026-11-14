@@ -20,6 +20,42 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 
 **Deviation from the spec:** the model JSON has one extra field, `answered` (boolean). It is the signal needed for "two failed answers" handoff and for logging unanswered questions. Remove it from `lib/ai/schema.ts` if you disagree.
 
+### Billing: Stripe subscription, 999 INR / month (migration 0013)
+One plan, **WhatsApp AI Assistant, ₹999 per month**, one subscription per business, no trial, no usage billing. The subscription covers access to Replyleaf; the business pays its own AI provider (its own key) and Meta's WhatsApp charges separately, and we never bill for AI or messages. Stripe is the source of truth: webhooks copy its state into the database, **nothing is granted because of a browser redirect or anything the browser sends**, and access is decided on the server from the stored state.
+
+**Switching it on.** Billing is enforced only when `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID` are set; without them the app behaves as before (every feature available). Businesses that existed when migration 0013 ran are **exempt** (`clients.billing_exempt = true`) so nothing breaks; new businesses are not. Grant or remove a complimentary account in SQL: `update clients set billing_exempt = true where id = '...'`.
+
+**Stripe Dashboard setup (test mode first)**
+1. Create a Product "WhatsApp AI Assistant" with ONE recurring Price: 999 INR, monthly. Put its id in `STRIPE_PRICE_ID` and your keys in `STRIPE_SECRET_KEY` (server only).
+2. Webhooks > Add endpoint: `https://YOUR-DOMAIN/api/billing/webhook` with events `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+3. Settings > Billing > Customer portal: switch on update payment method, invoice history and cancel subscription (cancel at the end of the billing period is the default we use). Save.
+4. Settings > Billing > Retries: use Smart Retries or a schedule that ends within about 7 days, and set "if all retries fail" to leave the subscription **past due** (not cancel it): the app gives 7 days of grace itself.
+5. Run `supabase db push` (migration 0013) and deploy. The daily job `/api/cron/billing-reconcile` (05:00 UTC, in `vercel.json`) re-checks stale subscriptions; check that your Vercel plan allows this many cron jobs, or call the route from any scheduler with `Authorization: Bearer $CRON_SECRET`.
+
+**What the customer sees.** Dashboard > Billing: plan and price, status, next payment date, current period, payment history (with Stripe's invoice links), Subscribe, Manage billing (Stripe's portal) and Cancel (at the end of the paid period). A banner on every page warns about a failed payment (with the days left) or an inactive subscription. The Billing page, settings, viewing data and **Export my data** (`/api/account/export`) always work.
+
+**Access rules (`lib/billing/access.ts`, one function, unit-tested)**
+
+| State | Access |
+|---|---|
+| Active, within the paid period (a plain renewal gets 24h of slack while the payment settles) | Full |
+| Past due, inside the 7-day grace (fixed at the FIRST failure; retries do not extend it) | Full, with a warning banner |
+| Past due, grace over | Restricted |
+| Cancelled at period end, period not over | Full until the paid-through date |
+| Cancelled and ended, unpaid, incomplete, paused, or no subscription | Restricted |
+
+**Restricted means:** no AI replies, no new leads, appointments or tickets from WhatsApp, no automation or background work for that business (the batch worker skips it, the daily check ignores it), and the paid dashboard actions are blocked: sending WhatsApp messages from the dashboard, knowledge-base changes, and appointment or ticket updates that message the customer. Customers are not sent any message; messages received meanwhile are stored (the owner can read them) but are **not replayed** after payment recovers, so nothing is answered twice. Token refresh and data retention still run for everyone. **Nothing is ever deleted** for non-payment. When Stripe confirms payment, access returns immediately.
+
+**Webhook handling (`lib/billing/service.ts`).** The signature is verified over the raw body (5 minute window) before anything is parsed. Every event id is processed once (`claim_stripe_event`); a failure answers 5xx so Stripe retries. Subscription state is always **re-read from Stripe's API** instead of trusted from the event, so stale and out-of-order events cannot overwrite newer state; an older subscription can't overwrite a live one; the tenant comes from Stripe metadata that we set at checkout and is cross-checked against the stored customer. Each billing email (first subscription, failed renewal, action required, grace reminder, cancellation, ended, expired, recovered; renewals optional) is sent once per key. Checkout reuses a still-open session instead of creating another, and an active customer is sent to the billing page.
+
+**Testing it (Stripe test mode, no real money)**
+- *First payment:* Billing > Subscribe, pay with `4242 4242 4242 4242`, any future date and CVC. Locally run `stripe listen --forward-to localhost:3000/api/billing/webhook` and use the printed signing secret as `STRIPE_WEBHOOK_SECRET`. Access starts when the webhook (or the post-checkout read from Stripe) confirms it.
+- *Renewal failure and grace:* Dashboard > Billing > Test clocks: create a clock, create the customer on it by subscribing with the card `4000 0000 0000 0341` (it attaches, but later charges fail), then advance the clock past the first renewal. You get `invoice.payment_failed`, the subscription becomes past due, the banner and the email appear, and replies continue. Advance 7 more days: access stops, the reconcile job (`GET /api/cron/billing-reconcile` with your `CRON_SECRET`) sends the expiry email.
+- *Recovery:* in the portal, or by paying the invoice, with a working card. `invoice.paid` makes it active and clears the grace.
+- `stripe trigger ...` fixtures carry no business id, so they are acknowledged and ignored by design. The automated tests cover all 16 scenarios without Stripe (`tests/billing*.test.ts`, `supabase/tests/billing_smoke.sql`).
+
+**India.** Stripe INR recurring payments require the customer to authorise a mandate. Before going live, confirm in Stripe that your account can take recurring INR payments, which payment methods support recurring in India, and review the mandate and notification rules. The billing page states ₹999 per month and that it renews automatically; the subscription only starts once Stripe confirms the authorisation, and we do not promise renewal beyond what Stripe confirms.
+
 ### AI keys: bring your own, or the platform's (migration 0012)
 Each business has an AI mode (`clients.ai_mode`):
 - **`byok` (bring your own key), the default for businesses that sign up and connect through Embedded Signup.** The business pastes its own Gemini or OpenAI key in Settings > AI. The key is checked with the provider (a free "list models" call), then **encrypted with AES-256-GCM and stored in `client_secrets.ai_api_key_enc`**, which owners cannot read through the API (RLS with no policy). Only a status and the last four characters are shown. The provider bills the business directly, and its usage still shows on the Usage page. The monthly reply cap is not applied (it exists to protect the platform's AI bill). In this mode the platform's keys are **never** used, even as a fallback.
@@ -40,7 +76,7 @@ There is no calendar connection. The assistant never says anything is booked or 
 - **Settings** (Settings page): per business, appointment requests (on/off, working days and hours, length, notice, instructions), project enquiries (on/off, services, custom questions, budget ranges, instructions), support tickets (on/off, categories, response time, instructions), human handoff (on/off, availability, response time, extra escalation cases) and email notifications (main address, up to 5 more, switches for appointments, leads, tickets and handoffs). Stored in `clients.workflow_settings` and `notification_settings`; bad values fall back to defaults. If handoff is off the assistant never promises a person. Recipients are shared by all three workflows (there are no per-workflow recipients).
 - **Emails** go through `notifyOwner`, which applies the recipients and switches, sends to each address separately (one bad address does not block the others) and alerts the admin only if nobody could be emailed. Each is sent once: a retried webhook finds the open request or lead and sends nothing.
 - **Cost note:** the workflow rules roughly double the input tokens of each AI call compared with a plain Q&A prompt.
-- **Checks:** `npm run eval:flows` runs the multi-turn flows (appointment, enquiry, support ticket, a prompt-injection attempt, booking link, appointments off) against a real model with the same server rules. `supabase/tests/workflows_smoke.sql` (appointments, leads, tickets, notification settings), `handoff_smoke.sql` and `ai_keys_smoke.sql` (the key can never be read back) test the SQL against a throwaway Postgres.
+- **Checks:** `npm run eval:flows` runs the multi-turn flows (appointment, enquiry, support ticket, a prompt-injection attempt, booking link, appointments off) against a real model with the same server rules. `supabase/tests/workflows_smoke.sql` (appointments, leads, tickets, notification settings), `handoff_smoke.sql`, `ai_keys_smoke.sql` (the key can never be read back) and `billing_smoke.sql` test the SQL against a throwaway Postgres.
 
 ### Human handoff
 A handoff silences the assistant for ONE conversation (`conversations.handling = 'human_active'`; other chats are untouched) and writes a `handoff_requests` row: why it happened, a short model-written summary, who has it, internal notes, and a status of `requested` > `assigned` > `human_active` > `resolved` (migration 0009, functions `create_handoff` and `set_handoff_status`). It starts when the customer asks for a person or is upset or has a sensitive request (the model sets `human_needed`), after two unanswered questions in a row, when a customer wants to book and no booking link is set, or when the owner clicks Take over. The owner is emailed once per handoff (a retried webhook finds the open request and sends nothing). Only one handoff can be open per conversation.
@@ -101,9 +137,9 @@ Requires Node 20.9+.
    npx supabase login                                  # opens a browser to authorise the CLI
    npx supabase init                                   # once only; creates supabase/config.toml, keeps supabase/migrations/
    npx supabase link --project-ref <project-ref>       # ref = the id in https://supabase.com/dashboard/project/<project-ref>
-   npx supabase db push --remote --dry-run             # preview: should list 0001 to 0012 (newer CLIs target a LOCAL stack unless you pass --remote)
+   npx supabase db push --remote --dry-run             # preview: should list 0001 to 0013 (newer CLIs target a LOCAL stack unless you pass --remote)
    npx supabase db push --remote                       # apply to the linked project (asks for the database password you set when creating the project)
-   npx supabase migration list                         # Local and Remote columns should both show 0001 to 0012
+   npx supabase migration list                         # Local and Remote columns should both show 0001 to 0013
    ```
    For non-interactive use set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` instead of answering prompts.
    **Schema rule:** all schema changes live in numbered files in `supabase/migrations/` (`npx supabase migration new <name>` creates the next one). Never edit tables, policies or functions by hand in the dashboard. Each table is created with RLS enabled in the same migration. If you applied an earlier draft of 0001/0002 (they were reorganised before the first release), reset that database first.
@@ -151,7 +187,7 @@ The app also shows a plain message on the Connect page if you open it over http,
 
 ## Manual test checklist: Embedded Signup in Development Mode
 
-Needs a deployed app with all env vars set, migrations 0001 to 0012 applied, and a Facebook account that has a role on your Meta app.
+Needs a deployed app with all env vars set, migrations 0001 to 0013 applied, and a Facebook account that has a role on your Meta app.
 
 1. **Create a login with no business:** use `/signup` (and approve it on `/admin/signups` only if you set `SIGNUP_MODE=approval`), or add a user in the Supabase dashboard (Authentication > Users > Add user, auto-confirm) and approve it the same way. Do *not* use `create-owner`, which links a business.
 2. **Sign in at `/login`.** You should land on `/onboarding` ("Connect your WhatsApp number").
@@ -173,10 +209,10 @@ Needs a deployed app with all env vars set, migrations 0001 to 0012 applied, and
 Run these in the Supabase SQL editor (read-only). Expected results are in bold.
 
 - [ ] **Extensions**: `select extname from pg_extension where extname in ('vector','pgcrypto');` gives **2 rows**.
-- [ ] **21 tables, all with RLS on**: `select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1;` gives **admin_alerts, appointments, booking_requests, client_secrets, client_users, clients, contacts, conversations, handoff_requests, kb_chunks, kb_document_versions, kb_documents, lead_requirements, leads, messages, notification_settings, pending_messages, tickets, unanswered_questions, usage_events, whatsapp_account_events, and `rowsecurity = true` on every row**.
+- [ ] **26 tables, all with RLS on**: `select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1;` gives **admin_alerts, appointments, billing_audit, billing_emails, booking_requests, client_secrets, client_users, clients, contacts, conversations, handoff_requests, invoices, kb_chunks, kb_document_versions, kb_documents, lead_requirements, leads, messages, notification_settings, pending_messages, stripe_events, subscriptions, tickets, unanswered_questions, usage_events, whatsapp_account_events, and `rowsecurity = true` on every row**.
 - [ ] **11 policies, all `SELECT` for `authenticated`**: `select tablename, policyname, cmd, roles from pg_policies where schemaname = 'public' order by 1;` gives policies on every table **except `client_secrets`, `admin_alerts`, `pending_messages` and `whatsapp_account_events`** (those four deliberately have none).
 - [ ] **No access for `anon`; browser role is read-only and never sees secrets**: `select table_name, grantee, privilege_type from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon','authenticated') order by 1, 2;` gives **only `SELECT` rows for `authenticated`, nothing for `anon`, and nothing for `client_secrets`, `admin_alerts`, `pending_messages` or `whatsapp_account_events`**.
-- [ ] **Functions locked down**: `select routine_name, grantee from information_schema.routine_privileges where routine_schema = 'public' and grantee in ('anon','authenticated','public') order by 1;` gives **only `current_client_ids` (for `authenticated`)**. Every other function (`record_inbound_message`, `claim_batch`, `complete_batch`, `find_due_batches`, `save_booking_request`, `apply_contact_details`, `mark_contact_lead`, `client_usage_summary`, `replace_document_chunks`, `save_document_version`, `search_kb`, `run_retention`, `daily_reply_check`, `apply_account_event`, `create_handoff`, `set_handoff_status`, `create_appointment`, `set_appointment_status`, `create_lead`, `create_ticket`) is callable by `service_role` only.
+- [ ] **Functions locked down**: `select routine_name, grantee from information_schema.routine_privileges where routine_schema = 'public' and grantee in ('anon','authenticated','public') order by 1;` gives **only `current_client_ids` (for `authenticated`)**. Every other function (`record_inbound_message`, `claim_batch`, `complete_batch`, `find_due_batches`, `save_booking_request`, `apply_contact_details`, `mark_contact_lead`, `client_usage_summary`, `replace_document_chunks`, `save_document_version`, `search_kb`, `run_retention`, `daily_reply_check`, `apply_account_event`, `create_handoff`, `set_handoff_status`, `create_appointment`, `set_appointment_status`, `create_lead`, `create_ticket`, `claim_stripe_event`, `finish_stripe_event`, `apply_subscription_snapshot`, `upsert_invoice`, `record_checkout`, `claim_billing_email`, `release_billing_email`, `write_billing_audit`) is callable by `service_role` only.
 - [ ] **Embedding column is 768-dimensional with an HNSW index**: `select format_type(atttypid, atttypmod) from pg_attribute where attrelid = 'public.kb_chunks'::regclass and attname = 'embedding';` gives **`vector(768)`**, and `select indexname from pg_indexes where tablename = 'kb_chunks';` includes **`kb_chunks_embedding_idx`**.
 - [ ] **RLS actually blocks a browser session**:
   ```sql
@@ -187,7 +223,7 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
   rollback;
   ```
 - [ ] **Isolation test passes** (needs Docker): `npx supabase test db` runs `supabase/tests/rls_isolation.test.sql`.
-- [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0012 on both sides.
+- [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0013 on both sides.
 
 ## Commands
 - `npm test`: unit tests (signatures, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, CRM, booking hand-off, email, auth helpers, chunking, file extraction, onboarding calls and resumability rules, account_update parsing, token refresh job, retention checks). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.

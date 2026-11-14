@@ -77,3 +77,20 @@ export async function getUserOrNull() {
   const { data, error } = await anonClient().auth.getUser(token);
   return error || !data.user ? null : data.user;
 }
+
+/**
+ * For route handlers (no redirects): the signed-in user and THEIR client, resolved on the server from the membership
+ * table under RLS. Never from the request body. Null when not signed in or not linked to a business.
+ */
+export async function getClientOrNull() {
+  const token = (await cookies()).get(ACCESS_COOKIE)?.value;
+  if (!token) return null;
+  const { data, error } = await anonClient().auth.getUser(token);
+  if (error || !data.user) return null;
+  const db = anonClient(token);
+  const { data: link } = await db.from("client_users").select("client_id").limit(1);
+  const clientId = link?.[0]?.client_id as string | undefined;
+  if (!clientId) return null;
+  const { data: client } = await db.from("clients").select("name").eq("id", clientId).single();
+  return { user: data.user, db, clientId, clientName: (client?.name as string | undefined) ?? "Your business" };
+}

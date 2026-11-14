@@ -5,6 +5,7 @@ import {
 } from "./workflow";
 import { bookingMode, type WorkflowSettings } from "./workflow-settings";
 import { isAuthFailure, keyProblem, type AiMode, type KeyStatus } from "./ai-keys";
+import type { Access } from "./billing/access";
 import { z } from "zod";
 import { errorText } from "./inbound";
 import type { OwnerEvent } from "./email/templates";
@@ -32,6 +33,8 @@ export type BatchClient = PromptClient & {
   id: string;
   /** How the AI is paid for. In "byok" mode `apiKey` is the business's own (decrypted) key and the platform key is NEVER used. */
   ai: { mode: AiMode; apiKey: string | null; keyStatus: KeyStatus };
+  /** The subscription state (from our database, kept in step with Stripe). When not allowed, no automation runs for this business. */
+  billing: Access;
   workflow: WorkflowSettings;
   waPhoneNumberId: string;
   aiProvider: Provider;
@@ -163,6 +166,14 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
   const { client, conversation } = ctx;
   if (conversation.handling === "human_active") return; // a person took over meanwhile
   if (ctx.pending.length === 0) return;
+
+  // Subscription inactive (no plan, payment overdue past the grace period, or ended): NO automation for this business.
+  // No AI call, no reply, no leads, appointments or tickets. The message itself is already stored, so the owner can
+  // read it, and it is not replayed later (the batch is completed), so nothing is answered twice after payment recovers.
+  if (!client.billing.allowed) {
+    console.warn("batch skipped: subscription inactive", { clientId: client.id, reason: client.billing.reason });
+    return;
+  }
 
   // Per-customer rate limit: past it, stop spending money. Nothing is sent.
   if (ctx.recentInboundCount > CUSTOMER_MESSAGES_PER_HOUR) {

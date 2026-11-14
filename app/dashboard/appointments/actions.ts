@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { requirePaidAccess } from "../../../lib/billing/gate";
 import { requireClient } from "../../../lib/auth/session";
 import { notifyCustomer } from "../../../lib/appointment-notify";
 import { appointmentFormSchema, customerMessage, formProblem, rescheduleNote, whenText } from "../../../lib/appointments";
@@ -18,6 +19,7 @@ const go = (id: string, notice: string): never => redirect(`${detail(id)}?notice
 
 export async function appointmentTransition(formData: FormData) {
   const { clientId, clientName } = await requireClient();
+  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const rawId = String(formData.get("id") ?? "");
   const parsed = appointmentFormSchema.safeParse({
     id: formData.get("id"), action: formData.get("action"),
