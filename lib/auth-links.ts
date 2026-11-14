@@ -45,3 +45,16 @@ export function safeNext(raw: unknown): string | null {
   if (!/^\/(admin|dashboard|onboarding|pending)(\/[A-Za-z0-9._~%!$&'()*+,;=:@-]+)*(\?[A-Za-z0-9._~%!$&'()*+,;=:@/?-]*)?$/.test(raw)) return null;
   return raw;
 }
+
+/**
+ * Supabase answers "expired" for a link that is old AND for one already used, so it cannot tell us
+ * "already verified". Instead, when a link verifies successfully we remember a hash of it in a short-lived
+ * httpOnly cookie on THAT browser. Opening the same link again there shows "already verified". Nothing about
+ * other accounts is revealed, and the token itself is never stored.
+ */
+export const VERIFIED_COOKIE = "rl_verified";
+export const VERIFIED_COOKIE_SECONDS = 24 * 60 * 60;
+export async function verifiedMarker(tokenHash: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(tokenHash));
+  return Array.from(new Uint8Array(d)).slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+}

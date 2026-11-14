@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Icon from "../../components/Icon";
 import Logo from "../../components/Logo";
+import RedirectAfter from "../../components/RedirectAfter";
 import SubmitButton from "../../components/SubmitButton";
 import { PRODUCT_NAME } from "../../lib/brand";
 import { signupMode } from "../../lib/signup";
@@ -8,8 +9,8 @@ import { resendVerification } from "./actions";
 
 // The result of clicking the verification link: success, a bad or expired link, or "sent again".
 // It carries no privileges. It only shows a message, so anyone may open it.
-export default async function Verified({ searchParams }: { searchParams: Promise<{ error?: string; resent?: string }> }) {
-  const { error, resent } = await searchParams;
+export default async function Verified({ searchParams }: { searchParams: Promise<{ error?: string; resent?: string; already?: string }> }) {
+  const { error, resent, already } = await searchParams;
   const approval = signupMode() === "approval";
 
   let view: React.ReactNode;
@@ -20,6 +21,16 @@ export default async function Verified({ searchParams }: { searchParams: Promise
         <h1 style={{ fontSize: "1.25rem" }}>Check your email</h1>
         <p className="muted">If that address belongs to an account that still needs verifying, we&apos;ve sent a new link. Check your spam folder too.</p>
         <Link className="btn btn-primary" href="/login">Back to sign in</Link>
+      </div>
+    );
+  } else if (already === "1" && !error) {
+    view = (
+      <div className="empty">
+        <span className="empty-icon"><Icon name="check" size={22} /></span>
+        <h1 style={{ fontSize: "1.25rem" }}>Your email is already verified</h1>
+        <p className="muted">Taking you to sign in...</p>
+        <Link className="btn btn-primary" href="/login">Sign in now</Link>
+        <RedirectAfter to="/login" seconds={3} />
       </div>
     );
   } else if (error) {

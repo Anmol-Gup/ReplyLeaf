@@ -1,8 +1,9 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { anonClient } from "../../../lib/auth/anon";
-import { isEmailOtpType, isValidTokenHash } from "../../../lib/auth-links";
+import { isEmailOtpType, isValidTokenHash, VERIFIED_COOKIE, VERIFIED_COOKIE_SECONDS, verifiedMarker } from "../../../lib/auth-links";
 
 // Verifies the email on the SERVER from the link in our email. It runs when the confirm page
 // submits itself in a real browser (AutoConfirm), so link scanners that only fetch the HTML cannot use up the one-time link.
@@ -11,6 +12,11 @@ export async function confirmEmail(formData: FormData) {
   const tokenHash = formData.get("token_hash");
   const type = formData.get("type");
   if (!isValidTokenHash(tokenHash) || !isEmailOtpType(type)) redirect("/verified?error=invalid");
+
+  const jar = await cookies();
+  const marker = await verifiedMarker(tokenHash);
+  // Same link opened again in this browser after it already worked: say so instead of "expired".
+  if (jar.get(VERIFIED_COOKIE)?.value === marker) redirect("/verified?already=1");
 
   let failure: "expired" | "invalid" | "server" | null = null;
   try {
@@ -23,6 +29,9 @@ export async function confirmEmail(formData: FormData) {
   } catch {
     console.error("email verification request failed"); // network error; never the token
     failure = "server";
+  }
+  if (!failure) {
+    jar.set(VERIFIED_COOKIE, marker, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: VERIFIED_COOKIE_SECONDS, path: "/" });
   }
   // redirect() works by throwing, so it stays outside the try block.
   redirect(failure ? `/verified?error=${failure}` : "/verified");

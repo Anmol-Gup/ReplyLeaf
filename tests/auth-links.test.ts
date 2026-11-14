@@ -81,3 +81,11 @@ test("safeNext refuses anything that could leave the site or reach other pages (
     assert.equal(safeNext(bad), null, String(bad));
   }
 });
+
+test("verifiedMarker: stable per link, different per link, never contains the token", async () => {
+  const { verifiedMarker } = await import("../lib/auth-links");
+  const a = await verifiedMarker("abcdefghij1234567890");
+  assert.equal(a, await verifiedMarker("abcdefghij1234567890"));
+  assert.notEqual(a, await verifiedMarker("abcdefghij1234567891"));
+  assert.match(a, /^[0-9a-f]{24}$/);
+});

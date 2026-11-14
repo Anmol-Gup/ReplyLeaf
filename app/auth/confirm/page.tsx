@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Icon from "../../../components/Icon";
 import Logo from "../../../components/Logo";
-import { isEmailOtpType, isValidTokenHash } from "../../../lib/auth-links";
+import { isEmailOtpType, isValidTokenHash, VERIFIED_COOKIE, verifiedMarker } from "../../../lib/auth-links";
 import { PRODUCT_NAME } from "../../../lib/brand";
 import AutoConfirm from "./AutoConfirm";
 
@@ -10,6 +11,9 @@ import AutoConfirm from "./AutoConfirm";
 export default async function ConfirmPage({ searchParams }: { searchParams: Promise<{ token_hash?: string; type?: string }> }) {
   const { token_hash, type } = await searchParams;
   if (!isValidTokenHash(token_hash) || !isEmailOtpType(type)) redirect("/verified?error=invalid");
+
+  // This browser already verified with this very link: no need to submit anything again.
+  if ((await cookies()).get(VERIFIED_COOKIE)?.value === (await verifiedMarker(token_hash))) redirect("/verified?already=1");
 
   return (
     <main className="auth" id="main">
