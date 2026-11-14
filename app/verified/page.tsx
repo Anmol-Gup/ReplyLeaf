@@ -27,12 +27,14 @@ export default async function Verified({ searchParams }: { searchParams: Promise
       <div className="stack">
         <div className="empty">
           <span className="empty-icon danger"><Icon name="alert" size={22} /></span>
-          <h1 style={{ fontSize: "1.25rem" }}>{error === "expired" ? "This link has expired" : "This link isn't valid"}</h1>
+          <h1 style={{ fontSize: "1.25rem" }}>{error === "server" ? "We couldn't verify right now" : error === "expired" ? "This link has expired or was already used" : "This link isn't valid"}</h1>
           <p className="muted">
-            {error === "expired"
-              ? "Verification links only work for a limited time, and only once."
-              : "It may have already been used, or it was copied incorrectly."}{" "}
-            Enter your email and we&apos;ll send you a new one.
+            {error === "server"
+              ? "Something went wrong on our side or with the connection. Please try the link again in a minute, or"
+              : error === "expired"
+                ? "Verification links only work for a limited time, and only once. If you already verified, just sign in. Otherwise"
+                : "It may have been copied incorrectly. If you already verified, just sign in. Otherwise"}{" "}
+            enter your email and we&apos;ll send you a new one.
           </p>
         </div>
         <form action={resendVerification} className="stack">
@@ -46,7 +48,7 @@ export default async function Verified({ searchParams }: { searchParams: Promise
     view = (
       <div className="empty">
         <span className="empty-icon"><Icon name="check" size={22} /></span>
-        <h1 style={{ fontSize: "1.25rem" }}>Your email is verified</h1>
+        <h1 style={{ fontSize: "1.25rem" }}>Your email has been verified successfully.</h1>
         <p className="muted">Thanks! You can sign in now.{approval ? " We'll review your account and email you when your access is approved." : ""}</p>
         <Link className="btn btn-primary" href="/login">Sign in</Link>
       </div>
