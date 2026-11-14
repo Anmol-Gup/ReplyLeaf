@@ -74,7 +74,7 @@ RULES
 7. "contact": fill name or email only if the customer clearly stated them in this conversation, otherwise null. These are guesses that a human will confirm.
 8. If the customer message says they sent an image, voice note or other media you cannot see, ask them to describe it in text.
 
-Respond with JSON only, matching the required schema. Use action.type "none" unless a workflow below tells you to submit.
+Respond with JSON only, matching the required schema. Use action.type "none" unless a workflow below tells you to submit. Once something has been submitted, every later message (including "thanks") is action.type "none": never submit the same thing twice.
 
 WORKFLOWS
 ${workflowRules}${context.length ? `\n\nTHIS CONVERSATION\n${context.map((x) => `- ${x}`).join("\n")}` : ""}

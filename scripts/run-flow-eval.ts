@@ -112,7 +112,7 @@ async function main() {
       const decision = decideAction(dctx);
       const sent = decision.kind === "rejected" ? REJECTED_SUBMIT_REPLY : r.reply;
       decisions.push(decision); replies.push(sent);
-      if (decision.kind === "appointment" || decision.kind === "lead") saved.push(decision);
+      if (decision.kind === "appointment" || decision.kind === "lead" || decision.kind === "ticket") saved.push(decision);
       console.log(`  customer: ${line}`);
       console.log(`  assistant [intent=${r.intent} flow=${r.workflow.flow} stage=${r.workflow.stage} action=${r.action.type}/${r.action.customer_confirmed} -> ${decision.kind}]: ${sent}`);
       state = nextWorkflowState({ ...dctx, decision });
@@ -121,6 +121,7 @@ async function main() {
     }
     for (const d of saved) {
       if (d.kind === "appointment") console.log("  SAVED appointment:", JSON.stringify(d.value));
+      if (d.kind === "ticket") console.log("  SAVED ticket:", JSON.stringify({ ...d.value, summary: d.value.summary.slice(0, 120) }));
       if (d.kind === "lead") console.log("  SAVED lead:", JSON.stringify({ ...d.value, summary: d.value.summary.slice(0, 120) }));
     }
     const problem = sc.expect({ decisions, saved, replies });
