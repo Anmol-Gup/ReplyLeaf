@@ -10,7 +10,7 @@ import type { ReplyResult } from "../lib/ai/schema";
 import type { OwnerEvent } from "../lib/email/templates";
 import { WINDOW_MS } from "../lib/whatsapp/window";
 import { DEFAULT_WORKFLOW_SETTINGS } from "../lib/workflow-settings";
-import { ACTION_FAILED_REPLY, REJECTED_SUBMIT_REPLY, type WorkflowState } from "../lib/workflow";
+import { ACTION_FAILED_REPLY, OPEN_REQUEST_REPLY, REJECTED_SUBMIT_REPLY, type WorkflowState } from "../lib/workflow";
 import { baseReply } from "./fixtures";
 
 const NOW = new Date("2026-01-02T12:00:00Z");
@@ -401,6 +401,17 @@ test("a retried webhook (request already open): no second email and the customer
   assert.equal(f.log.appts.length, 1);
   assert.equal(f.log.owner.filter((e) => e.type === "appointment_request").length, 0);
   assert.equal(f.log.sent.length, 1);
+});
+
+test("a second appointment while one is open is handed to a person with its details, never silently dropped or called 'submitted'", async () => {
+  const ctx = makeCtx({ openAppointment: { status: "pending", rescheduleNote: null } }, { workflowState: awaiting("appointment") });
+  const f = fakeDeps(ctx, { gen: async () => ({ result: reply({ reply: "Thanks! Submitted.", ...APPT_SUBMIT }) }) });
+  await run(f.deps);
+  assert.equal(f.log.appts.length, 0);
+  assert.deepEqual(f.log.sent, [OPEN_REQUEST_REPLY]);
+  assert.equal(f.log.owner.filter((e) => e.type === "appointment_request").length, 0);
+  assert.match(f.log.handoffs[0].summary, /another appointment while one is still open: dental check-up, 2026-01-09 10am/);
+  assert.deepEqual(f.log.conv.at(-1), { failedAnswerCount: 0, handling: "human_active", workflowState: null });
 });
 
 test("saving fails: the customer is NOT told it was submitted, the admin is alerted and a person takes over", async () => {

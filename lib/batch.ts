@@ -1,6 +1,6 @@
 import { summaryOrFallback, SOURCE_LABELS, type HandoffSource } from "./handoff";
 import {
-  ACTION_FAILED_REPLY, decideAction, nextWorkflowState, REJECTED_SUBMIT_REPLY,
+  ACTION_FAILED_REPLY, decideAction, nextWorkflowState, OPEN_REQUEST_REPLY, REJECTED_SUBMIT_REPLY,
   type AppointmentInput, type Decision, type LeadInput, type WorkflowState,
 } from "./workflow";
 import { bookingMode, type WorkflowSettings } from "./workflow-settings";
@@ -189,9 +189,18 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
   let replyText = gen.result.reply;
   let created = false;
   let failedSource: HandoffSource | null = null;
+  let handoffSummary: string | undefined;
   if (decision.kind === "rejected") {
     console.warn("workflow action rejected", { clientId: client.id, flow: decision.flow, reason: decision.reason });
     replyText = REJECTED_SUBMIT_REPLY;
+  } else if (decision.kind === "appointment" && ctx.openAppointment) {
+    // One open request per chat. A second one is NOT silently dropped: a person gets it, with the details.
+    const v = decision.value;
+    const when = [v.preferredDate, v.preferredTime].filter(Boolean).join(" ");
+    handoffSummary = `Asked for another appointment while one is still open: ${v.purpose}${when ? `, ${when}` : ""}${v.notes ? `. Notes: ${v.notes}` : ""}.`.slice(0, 400);
+    replyText = OPEN_REQUEST_REPLY;
+    failedSource = "action_failed";
+    decision = { kind: "none" };
   } else if (decision.kind === "appointment" || decision.kind === "lead") {
     try {
       const saved = decision.kind === "appointment"
@@ -210,14 +219,14 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
 
   // The customer has their reply. Everything below is bookkeeping: a failure
   // here is alerted but must NOT trigger the "something went wrong" fallback.
-  await afterReply(ctx, deps, gen.result, lines, { decision, created, failedSource, mode, now });
+  await afterReply(ctx, deps, gen.result, lines, { decision, created, failedSource, handoffSummary, mode, now });
 }
 
-type AfterInfo = { decision: Decision; created: boolean; failedSource: HandoffSource | null; mode: ReturnType<typeof bookingMode>; now: Date };
+type AfterInfo = { decision: Decision; created: boolean; failedSource: HandoffSource | null; handoffSummary?: string; mode: ReturnType<typeof bookingMode>; now: Date };
 
 async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResult, lines: string[], info: AfterInfo): Promise<void> {
   const { client, conversation, contact } = ctx;
-  const { decision, created, failedSource, mode, now } = info;
+  const { decision, created, failedSource, handoffSummary, mode, now } = info;
   const lastMessage = lines.join(" / ");
 
   // CRM: model-extracted details are guesses; validate, then store as suggestions.
@@ -275,7 +284,7 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
   }));
   if (handoff) {
     await safely(deps, client.id, "handoff", async () => {
-      const summary = summaryOrFallback(result.summary, lastMessage);
+      const summary = handoffSummary ?? summaryOrFallback(result.summary, lastMessage);
       // Idempotent: a retried webhook finds the open request and gets created=false, so no second email.
       const { created: opened } = await deps.createHandoff(client.id, conversation.id, { source, reason: SOURCE_LABELS[source], summary });
       if (opened) {

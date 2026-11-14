@@ -12,6 +12,7 @@ export type WorkflowState = { flow: FlowName; stage: "collecting" | "awaiting_co
 export const CONFIRMATION_TTL_MS = 48 * 60 * 60 * 1000;
 
 export const REJECTED_SUBMIT_REPLY = "Thanks! Before I pass this to our team, could you please confirm the details are correct?";
+export const OPEN_REQUEST_REPLY = "You already have an appointment request waiting for our team. I've passed this one on as well, and someone will follow up with you.";
 export const ACTION_FAILED_REPLY = "Sorry, I couldn't submit that just now. I've let our team know and someone will follow up with you.";
 
 export function parseWorkflowState(raw: unknown): WorkflowState | null {
