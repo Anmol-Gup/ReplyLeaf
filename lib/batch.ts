@@ -4,6 +4,7 @@ import {
   type AppointmentInput, type Decision, type LeadInput, type TicketInput, type WorkflowState,
 } from "./workflow";
 import { bookingMode, type WorkflowSettings } from "./workflow-settings";
+import { isAuthFailure, keyProblem, type AiMode, type KeyStatus } from "./ai-keys";
 import { z } from "zod";
 import { errorText } from "./inbound";
 import type { OwnerEvent } from "./email/templates";
@@ -29,6 +30,8 @@ export const CAP_REPLY = "Thanks for your message! Our team will get back to you
 
 export type BatchClient = PromptClient & {
   id: string;
+  /** How the AI is paid for. In "byok" mode `apiKey` is the business's own (decrypted) key and the platform key is NEVER used. */
+  ai: { mode: AiMode; apiKey: string | null; keyStatus: KeyStatus };
   workflow: WorkflowSettings;
   waPhoneNumberId: string;
   aiProvider: Provider;
@@ -91,6 +94,8 @@ export interface BatchDeps {
   /** True only for the call that flipped the contact from 'new' to 'lead'. */
   markLead(clientId: string, contactId: string): Promise<boolean>;
   notifyOwner(clientId: string, event: OwnerEvent): Promise<void>;
+  /** The business's own AI key is missing or was refused. Optionally marks it invalid, and emails the owner at most once a day. */
+  reportAiKeyProblem(clientId: string, problem: "missing" | "invalid", opts?: { markInvalid?: boolean }): Promise<void>;
   /** Records a question the assistant could not answer, so the owner can add it to the knowledge base. */
   logUnanswered(clientId: string, conversationId: string, question: string): Promise<void>;
   findDueBatches(limit: number): Promise<string[]>;
@@ -174,8 +179,16 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
     return;
   }
 
-  // Monthly usage cap: checked BEFORE the model call.
-  if (ctx.repliesThisMonth >= client.monthlyMessageCap) {
+  // Bring-your-own-key: with no usable key the assistant is off for this business (the platform's key is never borrowed).
+  const problem = keyProblem(client.ai.mode, Boolean(client.ai.apiKey), client.ai.keyStatus);
+  if (problem) {
+    await aiUnavailable(ctx, deps, now, problem, lines.join(" / "));
+    return;
+  }
+
+  // Monthly usage cap: checked BEFORE the model call. It protects the platform's AI bill, so it only applies when the
+  // platform pays (a business using its own key is billed by its provider).
+  if (client.ai.mode === "platform" && ctx.repliesThisMonth >= client.monthlyMessageCap) {
     await deps.raiseAlert(client.id, "monthly_cap_reached", `Cap of ${client.monthlyMessageCap} replies reached`, { oncePerMonth: true });
     await sendGuarded(ctx, deps, now, CAP_REPLY);
     return;
@@ -337,9 +350,31 @@ async function sendGuarded(
 }
 
 // Any failure: alert the admin and, only when it is safe, send a fallback.
+/** The business's own AI key is missing or bad: tell the customer the team will reply, put the chat in Human handoff
+ *  (so nothing is lost and the owner sees it), and email the owner once a day. */
+async function aiUnavailable(ctx: BatchContext, deps: BatchDeps, now: Date, problem: "missing" | "invalid", lastMessage: string, markInvalid = false): Promise<void> {
+  const { client, conversation } = ctx;
+  await safely(deps, client.id, "ai_key", () => deps.reportAiKeyProblem(client.id, problem, { markInvalid }));
+  await sendGuarded(ctx, deps, now, CAP_REPLY);
+  await safely(deps, client.id, "conversation", () => deps.updateConversation(client.id, conversation.id, { handling: "human_active" }));
+  await safely(deps, client.id, "handoff", () => deps.createHandoff(client.id, conversation.id, {
+    source: "ai_unavailable", reason: SOURCE_LABELS.ai_unavailable, summary: summaryOrFallback(null, lastMessage),
+  }));
+}
+
 async function handleFailure(e: unknown, ctx: BatchContext | null, deps: BatchDeps, now: Date): Promise<void> {
   const detail = errorText(e);
   console.error("batch processing failed", detail);
+  // Their own key was refused by the provider: that is not a platform fault. Mark it, tell the owner, hand the chat over.
+  if (ctx && ctx.client.ai.mode === "byok" && isAuthFailure(e) && ctx.conversation.handling === "bot") {
+    try {
+      const lines = ctx.pending.filter((p) => p.type === "text" && p.body).map((p) => p.body as string);
+      await aiUnavailable(ctx, deps, now, "invalid", lines.join(" / "), true);
+    } catch (err) {
+      console.error("could not handle a refused AI credential", errorText(err));
+    }
+    return;
+  }
   try {
     if (e instanceof InvalidModelOutputError && ctx) {
       await deps.recordFailedUsage(ctx.client.id, e.usage, e.provider, e.model);

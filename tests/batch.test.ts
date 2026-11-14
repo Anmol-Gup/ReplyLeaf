@@ -22,6 +22,7 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
     client: {
       id: "c1", name: "Biz", waPhoneNumberId: "PN", aiProvider: "gemini", monthlyMessageCap: 100,
       businessInfo: null, businessHours: null, bookingLink: null, kbText: "Open 9-5", workflow: DEFAULT_WORKFLOW_SETTINGS,
+      ai: { mode: "platform", apiKey: null, keyStatus: "none" },
     },
     conversation: { id: "conv1", handling: "bot", failedAnswerCount: 0, lastCustomerMessageAt: NOW, workflowState: null, ...conv },
     open: { appointments: [], tickets: 0, leads: 0 },
@@ -34,11 +35,11 @@ function makeCtx(over: Partial<BatchContext> = {}, conv: Partial<BatchContext["c
 
 function fakeDeps(ctx: BatchContext | null, opts: {
   gen?: () => Promise<{ result: ReplyResult }>; claimResults?: boolean[]; moreAfter?: boolean[]; sendFails?: boolean;
-  newLead?: boolean; crmFails?: boolean; handoffCreated?: boolean; handoffFails?: boolean; apptCreated?: boolean; apptFails?: boolean; leadCreated?: boolean; ticketCreated?: boolean;
+  newLead?: boolean; crmFails?: boolean; handoffCreated?: boolean; handoffFails?: boolean; apptCreated?: boolean; apptFails?: boolean; leadCreated?: boolean; ticketCreated?: boolean; genThrows?: unknown;
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
     generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
-    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[] };
+    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[], keyReports: [] as { problem: string; markInvalid?: boolean }[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -47,6 +48,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     complete: async (_c, ids) => { log.completed.push(ids); return more.length ? more.shift()! : false; },
     generate: async (_ctx, lines) => {
       log.generated.push(lines);
+      if (opts.genThrows) throw opts.genThrows;
       const g = await (opts.gen ?? (async () => ({ result: reply() })))();
       return { result: g.result, usage: { inputTokens: 10, outputTokens: 5 }, provider: "gemini", model: "m" };
     },
@@ -56,6 +58,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     },
     saveReply: async (r) => void log.saved.push(r),
     saveAppointment: async (_c, _ctx, a) => { if (opts.apptFails) throw new Error("db down"); log.appts.push(a); return { created: opts.apptCreated ?? true }; },
+    reportAiKeyProblem: async (_c, problem, o) => void log.keyReports.push({ problem, markInvalid: o?.markInvalid }),
     saveTicket: async (_c, _ctx, t) => { log.tickets.push(t); return { created: opts.ticketCreated ?? true }; },
     saveLead: async (_c, _ctx, l) => { log.leads.push(l); return { created: opts.leadCreated ?? true }; },
     createHandoff: async (_c, _v, input) => { if (opts.handoffFails) throw new Error("db down"); log.handoffs.push(input); return { created: opts.handoffCreated ?? true }; },
@@ -529,4 +532,69 @@ test("duplicate enquiry delivery: no second email", async () => {
   await run(f.deps);
   assert.equal(f.log.leads.length, 1);
   assert.equal(f.log.owner.filter((e) => e.type === "lead_created").length, 0);
+});
+
+// ---- Bring your own AI key ----
+const byok = (over: Partial<BatchContext["client"]["ai"]> = {}) => {
+  const ctx = makeCtx();
+  ctx.client.ai = { mode: "byok", apiKey: "sk-test-own-key-1234567890", keyStatus: "valid", ...over };
+  return ctx;
+};
+
+test("BYOK with a working key: the AI is used and the monthly reply cap does NOT apply (the business pays its provider)", async () => {
+  const ctx = byok();
+  ctx.repliesThisMonth = 100000;
+  const f = fakeDeps(ctx);
+  await run(f.deps);
+  assert.equal(f.log.generated.length, 1);
+  assert.deepEqual(f.log.sent, ["We open at 9."]);
+});
+
+test("platform mode: the monthly cap still applies (the platform pays)", async () => {
+  const ctx = makeCtx();
+  ctx.repliesThisMonth = 100;
+  const f = fakeDeps(ctx);
+  await run(f.deps);
+  assert.equal(f.log.generated.length, 0);
+  assert.deepEqual(f.log.sent, [CAP_REPLY]);
+});
+
+test("BYOK with no key: no AI call at all, the customer is told the team will reply, the chat goes to Human handoff, the owner is told", async () => {
+  const f = fakeDeps(byok({ apiKey: null, keyStatus: "none" }));
+  await run(f.deps);
+  assert.equal(f.log.generated.length, 0);                                   // the platform key is never borrowed
+  assert.deepEqual(f.log.sent, [CAP_REPLY]);
+  assert.deepEqual(f.log.keyReports, [{ problem: "missing", markInvalid: false }]);
+  assert.deepEqual(f.log.handoffs.map((h) => h.source), ["ai_unavailable"]);
+  assert.deepEqual(f.log.conv.at(-1), { handling: "human_active" });
+});
+
+test("BYOK with a key already known to be refused: same, reported as invalid", async () => {
+  const f = fakeDeps(byok({ keyStatus: "invalid" }));
+  await run(f.deps);
+  assert.equal(f.log.generated.length, 0);
+  assert.equal(f.log.keyReports[0].problem, "invalid");
+});
+
+test("BYOK, the provider refuses the key mid-conversation: the key is marked invalid, the customer is NOT told 'something went wrong'", async () => {
+  const f = fakeDeps(byok(), { genThrows: Object.assign(new Error("API key not valid. Please pass a valid API key."), { status: 400 }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.sent, [CAP_REPLY]);
+  assert.deepEqual(f.log.keyReports, [{ problem: "invalid", markInvalid: true }]);
+  assert.deepEqual(f.log.handoffs.map((h) => h.source), ["ai_unavailable"]);
+});
+
+test("BYOK, a provider outage or quota error is NOT treated as a bad key", async () => {
+  const f = fakeDeps(byok(), { genThrows: Object.assign(new Error("RESOURCE_EXHAUSTED: quota exceeded"), { status: 429 }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.sent, [FALLBACK_REPLY]);
+  assert.equal(f.log.keyReports.length, 0);
+  assert.equal(f.log.handoffs.length, 0);
+});
+
+test("a platform-mode failure that mentions authentication is not blamed on a business key", async () => {
+  const f = fakeDeps(makeCtx(), { genThrows: Object.assign(new Error("401 Unauthorized"), { status: 401 }) });
+  await run(f.deps);
+  assert.equal(f.log.keyReports.length, 0);
+  assert.deepEqual(f.log.sent, [FALLBACK_REPLY]);
 });

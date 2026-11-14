@@ -11,6 +11,7 @@ export type OwnerEvent =
   | { type: "appointment_update"; status: "confirmed" | "reschedule_requested" | "cancelled" | "rejected"; contactName: string | null; phone: string; purpose: string; when: string | null; note: string | null }
   | { type: "lead_created"; contactName: string | null; phone: string; projectType: string; budget: string | null; timeline: string | null; summary: string; status: "new" | "qualified" }
   | { type: "ticket_created"; contactName: string | null; phone: string; subject: string; category: string | null; referenceInfo: string | null; priority: "normal" | "high"; summary: string }
+  | { type: "ai_key_problem"; problem: "missing" | "invalid" }
   | { type: "onboarded"; businessName: string }
   | { type: "needs_human"; contactName: string | null; phone: string; reason: HandoffSource; lastMessage: string; summary: string };
 
@@ -55,6 +56,12 @@ export function ownerEmail(
         to: o.to,
         subject: oneLine(`${event.priority === "high" ? "URGENT support ticket" : "New support ticket"}: ${event.subject}`),
         text: `${o.businessName} has a new support ticket${event.priority === "high" ? " marked URGENT by the customer" : ""}.\n\nCustomer: ${who(event.contactName, event.phone)}\nIssue: ${clip(event.subject, 200)}${event.category ? `\nCategory: ${event.category}` : ""}${event.referenceInfo ? `\nReference: ${event.referenceInfo}` : ""}\n\nSummary: ${clip(event.summary, 600)}\n\nThe customer was told the team has logged it and will look into it. Next step: open Support tickets, look into it and keep the customer updated.${o.appUrl ? `\n\nOpen Support tickets: ${o.appUrl.replace(/\/$/, "")}/dashboard/tickets` : ""}`,
+      };
+    case "ai_key_problem":
+      return {
+        to: o.to,
+        subject: oneLine(event.problem === "missing" ? "Your assistant is switched off: add your AI key" : "Your assistant is switched off: your AI key was refused"),
+        text: `${o.businessName}: your WhatsApp assistant can't reply right now because ${event.problem === "missing" ? "no AI key has been added yet" : "the AI provider refused your key (it may have been revoked or have no credit)"}.\n\nUntil it is fixed, customers who message you get a short "our team will reply" message and their chats appear in Human handoff so nothing is lost.\n\nNext step: open Settings, then AI, and add or replace your key. After that, open Human handoff and click Resume assistant on the chats you want the assistant to take back.${o.appUrl ? `\n\nOpen Settings: ${o.appUrl.replace(/\/$/, "")}/dashboard/settings` : ""}`,
       };
     case "onboarded":
       return {

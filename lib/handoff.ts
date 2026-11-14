@@ -7,7 +7,7 @@ type Tone = "brand" | "success" | "warn" | "danger" | "muted"; // same names as 
 export const HANDOFF_STATUSES = ["requested", "assigned", "human_active", "resolved"] as const;
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
 
-export const HANDOFF_SOURCES = ["customer_request", "failed_answers", "booking_without_link", "owner", "action_failed"] as const;
+export const HANDOFF_SOURCES = ["customer_request", "failed_answers", "booking_without_link", "owner", "action_failed", "ai_unavailable"] as const;
 export type HandoffSource = (typeof HANDOFF_SOURCES)[number];
 
 export const HANDOFF_ACTIONS = ["assign", "take_over", "resolve", "resume_ai"] as const;
@@ -27,6 +27,7 @@ export const SOURCE_LABELS: Record<HandoffSource, string> = {
   booking_without_link: "The customer wants to book and no booking link is set",
   owner: "Taken over by the owner",
   action_failed: "The assistant could not save the customer's request",
+  ai_unavailable: "The assistant is off because your own AI key is missing or not working",
 };
 
 /** The five conversation states: how the assistant switch and the handoff record read together. */

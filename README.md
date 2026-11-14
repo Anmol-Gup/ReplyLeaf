@@ -20,6 +20,14 @@ Rules enforced in code: human takeover (`human_active`) keeps the bot silent; au
 
 **Deviation from the spec:** the model JSON has one extra field, `answered` (boolean). It is the signal needed for "two failed answers" handoff and for logging unanswered questions. Remove it from `lib/ai/schema.ts` if you disagree.
 
+### AI keys: bring your own, or the platform's (migration 0012)
+Each business has an AI mode (`clients.ai_mode`):
+- **`byok` (bring your own key), the default for businesses that sign up and connect through Embedded Signup.** The business pastes its own Gemini or OpenAI key in Settings > AI. The key is checked with the provider (a free "list models" call), then **encrypted with AES-256-GCM and stored in `client_secrets.ai_api_key_enc`**, which owners cannot read through the API (RLS with no policy). Only a status and the last four characters are shown. The provider bills the business directly, and its usage still shows on the Usage page. The monthly reply cap is not applied (it exists to protect the platform's AI bill). In this mode the platform's keys are **never** used, even as a fallback.
+- **`platform`**: the platform's key is used and the platform pays, with the monthly reply cap applied. Existing clients and clients made with `create-client` are on this. There is no screen to grant it: change `clients.ai_mode` in the database. A business on it can switch itself to its own key by saving one.
+- **If a business on its own key has no usable key, or the provider refuses it,** the assistant is off for that business: customers get a short "our team will reply" message, the chat goes to Human handoff (source "AI key missing or not working") so nothing is lost, the key is marked invalid, and the owner is emailed once a day. Saving a working key hands those chats back to the assistant automatically. Quota and outage errors are not treated as a bad key.
+- **Not built yet (Mode B extras):** paid usage for the platform's AI, credit balances and quotas per business, and Anthropic (Claude) as a provider. Claude would need `@anthropic-ai/sdk`, which is not installed. The two columns that decide behaviour (`ai_mode`, and the key status) are where credits would plug in.
+- **Knowledge-base search embeddings still use the platform's Gemini key** for every business (a small cost, not billed to them).
+
 ### Appointment requests, project enquiries and settings (migration 0010)
 There is no calendar connection. The assistant never says anything is booked or confirmed, and working days and hours are information only (it never promises a free slot).
 
@@ -32,7 +40,7 @@ There is no calendar connection. The assistant never says anything is booked or 
 - **Settings** (Settings page): per business, appointment requests (on/off, working days and hours, length, notice, instructions), project enquiries (on/off, services, custom questions, budget ranges, instructions), support tickets (on/off, categories, response time, instructions), human handoff (on/off, availability, response time, extra escalation cases) and email notifications (main address, up to 5 more, switches for appointments, leads, tickets and handoffs). Stored in `clients.workflow_settings` and `notification_settings`; bad values fall back to defaults. If handoff is off the assistant never promises a person. Recipients are shared by all three workflows (there are no per-workflow recipients).
 - **Emails** go through `notifyOwner`, which applies the recipients and switches, sends to each address separately (one bad address does not block the others) and alerts the admin only if nobody could be emailed. Each is sent once: a retried webhook finds the open request or lead and sends nothing.
 - **Cost note:** the workflow rules roughly double the input tokens of each AI call compared with a plain Q&A prompt.
-- **Checks:** `npm run eval:flows` runs the multi-turn flows (appointment, enquiry, support ticket, a prompt-injection attempt, booking link, appointments off) against a real model with the same server rules. `supabase/tests/workflows_smoke.sql` (appointments, leads, tickets, notification settings) and `handoff_smoke.sql` test the SQL against a throwaway Postgres.
+- **Checks:** `npm run eval:flows` runs the multi-turn flows (appointment, enquiry, support ticket, a prompt-injection attempt, booking link, appointments off) against a real model with the same server rules. `supabase/tests/workflows_smoke.sql` (appointments, leads, tickets, notification settings), `handoff_smoke.sql` and `ai_keys_smoke.sql` (the key can never be read back) test the SQL against a throwaway Postgres.
 
 ### Human handoff
 A handoff silences the assistant for ONE conversation (`conversations.handling = 'human_active'`; other chats are untouched) and writes a `handoff_requests` row: why it happened, a short model-written summary, who has it, internal notes, and a status of `requested` > `assigned` > `human_active` > `resolved` (migration 0009, functions `create_handoff` and `set_handoff_status`). It starts when the customer asks for a person or is upset or has a sensitive request (the model sets `human_needed`), after two unanswered questions in a row, when a customer wants to book and no booking link is set, or when the owner clicks Take over. The owner is emailed once per handoff (a retried webhook finds the open request and sends nothing). Only one handoff can be open per conversation.
@@ -93,9 +101,9 @@ Requires Node 20.9+.
    npx supabase login                                  # opens a browser to authorise the CLI
    npx supabase init                                   # once only; creates supabase/config.toml, keeps supabase/migrations/
    npx supabase link --project-ref <project-ref>       # ref = the id in https://supabase.com/dashboard/project/<project-ref>
-   npx supabase db push --remote --dry-run             # preview: should list 0001 to 0011 (newer CLIs target a LOCAL stack unless you pass --remote)
+   npx supabase db push --remote --dry-run             # preview: should list 0001 to 0012 (newer CLIs target a LOCAL stack unless you pass --remote)
    npx supabase db push --remote                       # apply to the linked project (asks for the database password you set when creating the project)
-   npx supabase migration list                         # Local and Remote columns should both show 0001 to 0011
+   npx supabase migration list                         # Local and Remote columns should both show 0001 to 0012
    ```
    For non-interactive use set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` instead of answering prompts.
    **Schema rule:** all schema changes live in numbered files in `supabase/migrations/` (`npx supabase migration new <name>` creates the next one). Never edit tables, policies or functions by hand in the dashboard. Each table is created with RLS enabled in the same migration. If you applied an earlier draft of 0001/0002 (they were reorganised before the first release), reset that database first.
@@ -143,7 +151,7 @@ The app also shows a plain message on the Connect page if you open it over http,
 
 ## Manual test checklist: Embedded Signup in Development Mode
 
-Needs a deployed app with all env vars set, migrations 0001 to 0011 applied, and a Facebook account that has a role on your Meta app.
+Needs a deployed app with all env vars set, migrations 0001 to 0012 applied, and a Facebook account that has a role on your Meta app.
 
 1. **Create a login with no business:** use `/signup` (and approve it on `/admin/signups` only if you set `SIGNUP_MODE=approval`), or add a user in the Supabase dashboard (Authentication > Users > Add user, auto-confirm) and approve it the same way. Do *not* use `create-owner`, which links a business.
 2. **Sign in at `/login`.** You should land on `/onboarding` ("Connect your WhatsApp number").
@@ -179,7 +187,7 @@ Run these in the Supabase SQL editor (read-only). Expected results are in bold.
   rollback;
   ```
 - [ ] **Isolation test passes** (needs Docker): `npx supabase test db` runs `supabase/tests/rls_isolation.test.sql`.
-- [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0011 on both sides.
+- [ ] **Migrations match**: `npx supabase migration list` shows 0001 to 0012 on both sides.
 
 ## Commands
 - `npm test`: unit tests (signatures, dedupe, batching, handoff rules, 24h window, caps, AI validation, prompt safety, CRM, booking hand-off, email, auth helpers, chunking, file extraction, onboarding calls and resumability rules, account_update parsing, token refresh job, retention checks). Uses Node's built-in test runner on `tsc` output, so no extra test dependency.

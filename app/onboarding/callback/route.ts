@@ -94,7 +94,8 @@ export async function POST(req: Request) {
     const { error } = await db.from("clients").update(fields).eq("id", clientId);
     if (error) return fail(error.code === "23505" ? 409 : 500, error.code === "23505" ? "This WhatsApp account is already connected." : "Could not start the connection. Please try again.");
   } else {
-    const { data: created, error } = await db.from("clients").insert({ ...fields, owner_email: user.email ?? null }).select("id").single();
+    // New self-serve businesses bring their own AI key (ai_mode "byok"); only an admin can put one on the platform's AI.
+    const { data: created, error } = await db.from("clients").insert({ ...fields, ai_mode: "byok", owner_email: user.email ?? null }).select("id").single();
     if (error || !created) return fail(error?.code === "23505" ? 409 : 500, error?.code === "23505" ? "This WhatsApp account is already connected." : "Could not start the connection. Please try again.");
     clientId = created.id;
     const { error: linkErr } = await db.from("client_users").insert({ client_id: clientId, user_id: user.id, role: "owner" });

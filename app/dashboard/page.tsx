@@ -1,10 +1,12 @@
 import { requireClient } from "../../lib/auth/session";
 import { PageHeader, Stat } from "../../components/ui";
+import AiKeyBanner from "./AiKeyBanner";
 import OnboardingBanner from "./OnboardingBanner";
+import type { AiMode, KeyStatus } from "../../lib/ai-keys";
 
 export default async function Overview() {
   const { db, clientId } = await requireClient(); // RLS limits every count to this owner's client
-  const { data: conn } = await db.from("clients").select("onboarding_status, onboarding_step").eq("id", clientId).single();
+  const { data: conn } = await db.from("clients").select("onboarding_status, onboarding_step, ai_mode, ai_key_status").eq("id", clientId).single();
   const count = async (table: string, col?: string, val?: string) => {
     let q = db.from(table).select("id", { count: "exact", head: true });
     if (col && val) q = q.eq(col, val);
@@ -19,6 +21,7 @@ export default async function Overview() {
     <>
       <PageHeader title="Overview" description="What needs your attention right now." />
       <OnboardingBanner status={conn?.onboarding_status} step={conn?.onboarding_step} />
+      <AiKeyBanner mode={(conn?.ai_mode ?? "platform") as AiMode} hasKey={(conn?.ai_key_status ?? "none") !== "none"} status={(conn?.ai_key_status ?? "none") as KeyStatus} />
       <div className="stat-grid">
         <Stat href="/dashboard/handoff" value={human} label="Chats handed to you" />
         <Stat href="/dashboard/contacts" value={leads} label="New leads" />

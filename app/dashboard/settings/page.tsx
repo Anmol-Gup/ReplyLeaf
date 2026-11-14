@@ -4,20 +4,28 @@ import { requireClient } from "../../../lib/auth/session";
 import Notice from "../Notice";
 import OnboardingBanner from "../OnboardingBanner";
 import { updateSettings } from "../actions";
-import { updateNotifications, updateWorkflows } from "./actions";
+import AiKeyBanner from "../AiKeyBanner";
+import { Badge } from "../../../components/ui";
+import { maskedKey, PROVIDER_LABELS, type AiMode, type KeyProvider, type KeyStatus } from "../../../lib/ai-keys";
+import { fmt } from "../../../lib/dashboard";
+import { removeAiKey, saveAiKey, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
 import { parseWorkflowSettings, WEEKDAYS, WEEKDAY_LABELS } from "../../../lib/workflow-settings";
 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
   const { notice } = await searchParams;
   const { db, clientId } = await requireClient();
   const { data: c } = await db.from("clients")
-    .select("name, business_info, business_hours, booking_link, ai_provider, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step, workflow_settings").eq("id", clientId).single();
+    .select("name, business_info, business_hours, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step, workflow_settings").eq("id", clientId).single();
   const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications").eq("client_id", clientId).maybeSingle();
   const w = parseWorkflowSettings(c?.workflow_settings);
+  const mode = (c?.ai_mode ?? "platform") as AiMode;
+  const status = (c?.ai_key_status ?? "none") as KeyStatus;
+  const provider = (c?.ai_provider ?? "gemini") as KeyProvider;
   return (
     <>
       <PageHeader title="Settings" description="How your business appears to the assistant and where alerts go." />
       <Notice code={notice} />
+      <AiKeyBanner mode={mode} hasKey={status !== "none"} status={status} onSettings />
       <form action={updateSettings} className="stack">
         <Card title="Business">
           <div className="stack">
@@ -26,18 +34,60 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <label className="field">Opening hours<textarea name="business_hours" maxLength={1000} defaultValue={c?.business_hours ?? ""} /></label>
           </div>
         </Card>
-        <Card title="Booking link and AI">
+        <Card title="Booking link">
           <div className="stack">
             <label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book. If not, a team member takes over those chats.</span>
               <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
-            </label>
-            <label className="field">AI provider
-              <select name="ai_provider" defaultValue={c?.ai_provider}><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select>
             </label>
           </div>
         </Card>
         <div><SubmitButton pendingText="Saving...">Save settings</SubmitButton></div>
       </form>
+
+      <section id="ai" className="stack" style={{ marginTop: 16 }}>
+        <Card title="AI" description={mode === "byok"
+          ? "Your assistant uses YOUR AI account, so your AI provider bills you directly for what it uses. Your key is stored encrypted and is never shown again."
+          : "Your assistant currently uses the platform's AI, which is included for you. You can switch to your own AI account at any time."}
+          actions={mode === "byok"
+            ? status === "valid" ? <Badge tone="success">Key working</Badge> : status === "unverified" ? <Badge tone="warn">Key saved, not checked</Badge> : status === "invalid" ? <Badge tone="danger">Key refused</Badge> : <Badge tone="danger">No key</Badge>
+            : <Badge tone="brand">Platform AI</Badge>}>
+          <div className="stack">
+            {mode === "byok" && status !== "none" && (
+              <p className="muted">Using {PROVIDER_LABELS[provider]} with the key ending <b>{maskedKey(c?.ai_key_last4)}</b>{c?.ai_key_checked_at ? ` (last checked ${fmt(c.ai_key_checked_at)})` : ""}.</p>
+            )}
+            <form action={saveAiKey} className="stack">
+              <label className="field">AI provider
+                <select name="ai_provider" defaultValue={provider}>
+                  <option value="gemini">{PROVIDER_LABELS.gemini}</option>
+                  <option value="openai">{PROVIDER_LABELS.openai}</option>
+                </select>
+              </label>
+              <label className="field">{mode === "byok" && status !== "none" ? "Replace your key" : "Your AI key"}
+                <span className="hint">Create it in your provider&apos;s dashboard (Google AI Studio for Gemini, platform.openai.com for OpenAI). We check it before saving, and it is stored encrypted.</span>
+                <input name="ai_key" type="password" autoComplete="off" spellCheck={false} maxLength={300} placeholder="Paste your key" />
+              </label>
+              <div><SubmitButton pendingText="Checking and saving...">{mode === "byok" && status !== "none" ? "Replace key" : "Save key"}</SubmitButton></div>
+            </form>
+            {mode === "byok" && status !== "none" && (
+              <form action={removeAiKey}>
+                <SubmitButton variant="danger" pendingText="Removing...">Remove my key</SubmitButton>
+                <p className="muted" style={{ marginTop: 6 }}>The assistant stops replying until you add another key.</p>
+              </form>
+            )}
+            {mode === "platform" && (
+              <form action={setPlatformProvider} className="row">
+                <label className="field">Platform AI provider
+                  <select name="ai_provider" defaultValue={provider}>
+                    <option value="gemini">{PROVIDER_LABELS.gemini}</option>
+                    <option value="openai">{PROVIDER_LABELS.openai}</option>
+                  </select>
+                </label>
+                <SubmitButton variant="secondary" pendingText="Saving...">Save provider</SubmitButton>
+              </form>
+            )}
+          </div>
+        </Card>
+      </section>
 
       <form action={updateWorkflows} className="stack" style={{ marginTop: 16 }}>
         <Card title="Appointment requests" description="Used when no booking link is set. The assistant collects a request and you confirm it on the Appointments page. If a booking link is set, it shares the link instead.">

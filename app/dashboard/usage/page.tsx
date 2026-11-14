@@ -9,12 +9,13 @@ export default async function Usage() {
   const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   const [{ data: client }, { count: replies }, summary] = await Promise.all([
-    db.from("clients").select("monthly_message_cap").eq("id", clientId).single(),
+    db.from("clients").select("monthly_message_cap, ai_mode").eq("id", clientId).single(),
     db.from("usage_events").select("id", { count: "exact", head: true }).eq("kind", "reply").gte("created_at", monthStart.toISOString()),
     // Aggregation runs in SQL; clientId comes from the verified membership.
     supabaseAdmin().rpc("client_usage_summary", { p_client_id: clientId, p_since: since.toISOString() }),
   ]);
   const rows = (summary.data ?? []) as { out_day: string; out_provider: string | null; out_model: string | null; out_kind: string; out_events: number; out_input_tokens: number; out_output_tokens: number }[];
+  const byok = client?.ai_mode === "byok";
   const cap = client?.monthly_message_cap ?? 0;
   const used = replies ?? 0;
   const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;
@@ -25,16 +26,22 @@ export default async function Usage() {
     <>
       <PageHeader title="Usage" description="What your assistant has used this month." />
       <div className="stat-grid">
-        <Stat value={`${used.toLocaleString()} / ${cap.toLocaleString()}`} label="AI replies this month" />
+        <Stat value={byok ? used.toLocaleString() : `${used.toLocaleString()} / ${cap.toLocaleString()}`} label="AI replies this month" />
         <Stat value={sum("out_input_tokens").toLocaleString()} label="Input tokens this month" />
         <Stat value={sum("out_output_tokens").toLocaleString()} label="Output tokens this month" />
       </div>
+      {byok ? (
+        <Card title="Your AI account">
+          <p className="muted">The assistant uses your own AI key, so your AI provider bills you directly for these tokens. There is no monthly reply cap from us. Check your provider&apos;s dashboard for cost and limits.</p>
+        </Card>
+      ) : (
       <Card title="Monthly cap" description="When the cap is reached the assistant stops using AI and tells customers your team will reply personally.">
         <div className="stack-sm">
           <div className="spread"><span>{pct}% used</span>{pct >= 90 && <Badge tone="warn">Close to the cap</Badge>}</div>
           <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Monthly reply cap used"><div style={{ width: `${pct}%` }} /></div>
         </div>
       </Card>
+      )}
       <Card title="Last 30 days">
         {summary.error ? <ErrorState>Usage could not be loaded.</ErrorState> : rows.length === 0 ? (
           <EmptyState icon="chart" title="No usage yet">Numbers appear after the assistant sends its first reply.</EmptyState>

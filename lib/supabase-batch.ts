@@ -5,6 +5,9 @@ import { retrieveKnowledge } from "./kb/retrieve";
 import type { ChatTurn, Provider } from "./ai/providers";
 import type { BatchContext, BatchDeps } from "./batch";
 import { appointmentDedupeKey, parseWorkflowState } from "./workflow";
+import { KEY_EMAIL_INTERVAL_MS, type AiMode, type KeyStatus } from "./ai-keys";
+import { decryptSecret } from "./crypto";
+import { env } from "./env";
 import { parseWorkflowSettings } from "./workflow-settings";
 import { notifyOwner, raiseAlert, sendClientText } from "./supabase-deps";
 import { supabaseAdmin } from "./supabase-admin";
@@ -39,7 +42,7 @@ export function supabaseBatchDeps(): BatchDeps {
 
       const [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads] = await Promise.all([
         db.from("clients")
-          .select("id, name, wa_phone_number_id, ai_provider, business_info, business_hours, booking_link, kb_text, monthly_message_cap, workflow_settings")
+          .select("id, name, wa_phone_number_id, ai_provider, ai_mode, ai_key_status, business_info, business_hours, booking_link, kb_text, monthly_message_cap, workflow_settings")
           .eq("id", clientId).single(),
         db.from("contacts").select("id, phone, name").eq("client_id", clientId).eq("id", conv.contact_id).single(),
         db.from("pending_messages").select("id, message_id, created_at")
@@ -89,12 +92,25 @@ export function supabaseBatchDeps(): BatchDeps {
           : { role: "assistant" as const, text: m.body as string });
 
       const c = client.data!;
+      // BYOK: this business's own key, decrypted only here, only for the length of this batch. It is never logged.
+      let apiKey: string | null = null;
+      if (c.ai_mode === "byok") {
+        const { data: sec } = await db.from("client_secrets").select("ai_api_key_enc").eq("client_id", clientId).maybeSingle();
+        if (sec?.ai_api_key_enc) {
+          try {
+            apiKey = decryptSecret(sec.ai_api_key_enc, env().ENCRYPTION_KEY);
+          } catch {
+            console.error("could not decrypt a stored AI credential", { clientId }); // never the value
+          }
+        }
+      }
       return {
         client: {
           id: c.id, name: c.name, waPhoneNumberId: c.wa_phone_number_id,
           aiProvider: c.ai_provider as Provider, businessInfo: c.business_info,
           businessHours: c.business_hours, bookingLink: c.booking_link, kbText: c.kb_text,
           monthlyMessageCap: c.monthly_message_cap, workflow: parseWorkflowSettings(c.workflow_settings),
+          ai: { mode: c.ai_mode as AiMode, apiKey, keyStatus: c.ai_key_status as KeyStatus },
         },
         conversation: {
           id: conv.id, handling: conv.handling, failedAnswerCount: conv.failed_answer_count,
@@ -127,9 +143,16 @@ export function supabaseBatchDeps(): BatchDeps {
     async generate(ctx, customerLines, hasUnreadableMedia) {
       // Hybrid search over THIS client's documents for what the customer just wrote.
       const retrieved = await retrieveKnowledge(ctx.client.id, customerLines.join(" "));
+      const platform = aiConfig();
+      const { mode, apiKey } = ctx.client.ai;
+      // BYOK: ONLY the business's own key, for ONLY its chosen provider. Both platform keys are blanked, so a missing
+      // or wrong key can never fall back to the platform's (which would bill you for someone else's usage).
+      const config = mode === "byok"
+        ? { ...platform, geminiApiKey: ctx.client.aiProvider === "gemini" ? apiKey ?? undefined : undefined, openaiApiKey: ctx.client.aiProvider === "openai" ? apiKey ?? undefined : undefined }
+        : platform;
       return generateReply({
         provider: ctx.client.aiProvider,
-        config: aiConfig(),
+        config,
         system: buildSystemPrompt(ctx.client, retrieved, {
           today: new Date().toISOString().slice(0, 10),
           flowState: ctx.conversation.workflowState,
@@ -138,6 +161,18 @@ export function supabaseBatchDeps(): BatchDeps {
         history: ctx.history,
         userTurn: wrapCustomerMessages(customerLines, { hasUnreadableMedia }),
       });
+    },
+
+    async reportAiKeyProblem(clientId, problem, opts) {
+      const now = new Date();
+      if (opts?.markInvalid) {
+        await db.from("clients").update({ ai_key_status: "invalid", ai_key_checked_at: now.toISOString() }).eq("id", clientId);
+      }
+      // Email at most once a day: the conditional update only succeeds for the call that wins the day.
+      const cutoff = new Date(now.getTime() - KEY_EMAIL_INTERVAL_MS).toISOString();
+      const { data } = await db.from("clients").update({ ai_key_notified_at: now.toISOString() })
+        .eq("id", clientId).or(`ai_key_notified_at.is.null,ai_key_notified_at.lt.${cutoff}`).select("id");
+      if (data?.length) await notifyOwner(clientId, { type: "ai_key_problem", problem });
     },
 
     sendText: (ctx, body) => sendClientText(ctx.client.id, ctx.client.waPhoneNumberId, ctx.phone, body),

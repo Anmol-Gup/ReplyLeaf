@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 // AI settings come from env, separate from the Supabase env so the eval script
-// can run with only an API key. Keys are platform-owned (not per-client) for now.
+// can run with only an API key. These are the PLATFORM's keys. A business on its own key ("byok" mode, see
+// lib/ai-keys.ts) never uses them: its key is stored encrypted per client and swapped in for each call.
 const schema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
