@@ -179,7 +179,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       <Card title="WhatsApp connection">
         <div className="stack">
           <OnboardingBanner status={c?.onboarding_status} step={c?.onboarding_step} />
-          <p className="muted">Phone number ID: {c?.wa_phone_number_id ?? "not connected"} · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</p>
+          <p className="muted">Phone number ID: {c?.wa_phone_number_id ?? "not connected"} {mode === "platform" && <> · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</>}</p>
         </div>
       </Card>
     </>
