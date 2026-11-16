@@ -54,8 +54,8 @@ export function ownerEmail(
     case "ticket_created":
       return {
         to: o.to,
-        subject: oneLine(`${event.priority === "high" ? "URGENT support ticket" : "New support ticket"}: ${event.subject}`),
-        text: `${o.businessName} has a new support ticket${event.priority === "high" ? " marked URGENT by the customer" : ""}.\n\nCustomer: ${who(event.contactName, event.phone)}\nIssue: ${clip(event.subject, 200)}${event.category ? `\nCategory: ${event.category}` : ""}${event.referenceInfo ? `\nReference: ${event.referenceInfo}` : ""}\n\nSummary: ${clip(event.summary, 600)}\n\nThe customer was told the team has logged it and will look into it. Next step: open Support tickets, look into it and keep the customer updated.${o.appUrl ? `\n\nOpen Support tickets: ${o.appUrl.replace(/\/$/, "")}/dashboard/tickets` : ""}`,
+        subject: oneLine(`${event.priority === "high" ? "URGENT ticket" : "New ticket"}: ${event.subject}`),
+        text: `${o.businessName} has a new ticket${event.priority === "high" ? " marked URGENT by the customer" : ""}.\n\nCustomer: ${who(event.contactName, event.phone)}\nIssue: ${clip(event.subject, 200)}${event.category ? `\nCategory: ${event.category}` : ""}${event.referenceInfo ? `\nReference: ${event.referenceInfo}` : ""}\n\nSummary: ${clip(event.summary, 600)}\n\nThe customer was told the team has logged it and will look into it. Next step: open Tickets, look into it and keep the customer updated.${o.appUrl ? `\n\nOpen Tickets: ${o.appUrl.replace(/\/$/, "")}/dashboard/tickets` : ""}`,
       };
     case "ai_key_problem":
       return {

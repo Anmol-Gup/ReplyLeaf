@@ -126,9 +126,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             </label>
           </div>
         </Card>
-        <Card title="Support tickets" description="When a customer reports a problem (for example an order that didn't arrive), the assistant collects the details, shows a summary, and logs a ticket after the customer confirms. It never promises a refund or a fix.">
+        <Card title="Tickets" description="When a customer reports a problem (for example an order that didn't arrive), the assistant collects the details, shows a summary, and logs a ticket after the customer confirms. It never promises a refund or a fix.">
           <div className="stack">
-            <label className="check"><input type="checkbox" name="support_enabled" defaultChecked={w.support.enabled} /> Log support tickets</label>
+            <label className="check"><input type="checkbox" name="support_enabled" defaultChecked={w.support.enabled} /> Log tickets</label>
             <label className="field">Categories <span className="hint">One per line, for example "Delivery" or "Billing". The assistant picks one if it fits.</span>
               <textarea name="support_categories" rows={3} defaultValue={w.support.categories.join("\n")} />
             </label>
@@ -163,13 +163,13 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <textarea name="additional_emails" rows={2} defaultValue={(n?.additional_emails ?? []).join("\n")} />
             </label>
             <fieldset className="field">
-              <legend>How often <span className="hint">For new contacts, project enquiries, appointment requests and support tickets. A chat that needs a person is always emailed straight away.</span></legend>
+              <legend>How often <span className="hint">For new contacts, project enquiries, appointment requests and tickets. A chat that needs a person is always emailed straight away.</span></legend>
               <label className="check"><input type="radio" name="delivery" value="daily" defaultChecked={(n?.delivery ?? "daily") === "daily"} /> One summary a day (recommended)</label>
               <label className="check"><input type="radio" name="delivery" value="immediate" defaultChecked={n?.delivery === "immediate"} /> An email for each one as it happens</label>
             </fieldset>
             <label className="check"><input type="checkbox" name="appointment_notifications" defaultChecked={n?.appointment_notifications ?? true} /> Appointment requests and changes</label>
             <label className="check"><input type="checkbox" name="lead_notifications" defaultChecked={n?.lead_notifications ?? true} /> New leads</label>
-            <label className="check"><input type="checkbox" name="ticket_notifications" defaultChecked={n?.ticket_notifications ?? true} /> Support tickets</label>
+            <label className="check"><input type="checkbox" name="ticket_notifications" defaultChecked={n?.ticket_notifications ?? true} /> Tickets</label>
             <label className="check"><input type="checkbox" name="handoff_notifications" defaultChecked={n?.handoff_notifications ?? true} /> Chats that need a person</label>
           </div>
         </Card>

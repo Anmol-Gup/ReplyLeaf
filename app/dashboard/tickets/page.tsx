@@ -32,7 +32,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
 
   return (
     <>
-      <PageHeader title="Support tickets" description="Problems customers raise, such as an order that didn't arrive. The assistant collects the details; you look into it and keep the customer updated." />
+      <PageHeader title="Tickets" description="Problems customers raise, such as an order that didn't arrive. The assistant collects the details; you look into it and keep the customer updated." />
       <Notice code={notice} />
       <div className="stat-grid">
         <Stat value={o.open} label="Open" />

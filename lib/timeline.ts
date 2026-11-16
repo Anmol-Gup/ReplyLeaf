@@ -30,7 +30,7 @@ export function buildTimeline(r: Raw): TimelineItem[] {
       open: a.status === "pending" || a.status === "reschedule_requested" || a.status === "confirmed",
     })),
     ...r.tickets.map((t): TimelineItem => ({
-      kind: "ticket", id: t.id, title: `Support ticket ${ticketRef(t.id)}: ${t.subject}`, detail: t.priority === "high" ? "Urgent" : "",
+      kind: "ticket", id: t.id, title: `Ticket ${ticketRef(t.id)}: ${t.subject}`, detail: t.priority === "high" ? "Urgent" : "",
       statusLabel: TICKET_LABELS[t.status], tone: TICKET_TONES[t.status], href: `/dashboard/tickets/${t.id}`, at: t.created_at,
       open: t.status === "open" || t.status === "in_progress" || t.status === "waiting_on_customer",
     })),

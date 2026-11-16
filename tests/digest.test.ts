@@ -22,7 +22,7 @@ test("the summary lists what is new and what is waiting, in HTML and text, with 
   const m = buildDigest(busy, ALL, { appUrl: "https://app.example.com/", sinceLabel: "the last 24 hours" })!;
   assert.equal(m.subject, "Your daily summary: 5 new items, some waiting for you");
   for (const part of ["New contacts (2)", "No name yet (+922)", "e-commerce website: Asha (qualified)", "check-up: Ravi, 2026-01-09 10am", "URGENT: Order not delivered: Asha",
-    "2 appointment requests waiting", "3 open support tickets (1 urgent)", "1 chat waiting for a person", "1 lead follow-up due", "https://app.example.com/dashboard"]) {
+    "2 appointment requests waiting", "3 open tickets (1 urgent)", "1 chat waiting for a person", "1 lead follow-up due", "https://app.example.com/dashboard"]) {
     assert.ok(m.text.includes(part), `text: ${part}`);
   }
   assert.ok(m.html?.includes("Your daily summary") && m.html.includes("Open your dashboard"));

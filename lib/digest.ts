@@ -40,11 +40,11 @@ export function buildDigest(d: DigestData, sw: DigestSwitches, o: { appUrl?: str
   if (sw.leads && d.contacts.length) sections.push({ title: `New contacts (${d.contacts.length})`, rows: cap(d.contacts, (c) => ({ label: "Contact", value: `${who(c.name, "No name yet")} (+${c.phone})` })) });
   if (sw.leads && d.leads.length) sections.push({ title: `New project enquiries (${d.leads.length})`, rows: cap(d.leads, (l) => ({ label: "Lead", value: `${l.projectType}: ${who(l.customer)} (${l.status})` })) });
   if (sw.appointments && d.appointments.length) sections.push({ title: `New appointment requests (${d.appointments.length})`, rows: cap(d.appointments, (a) => ({ label: "Request", value: `${a.purpose}: ${who(a.customer)}${a.when ? `, ${a.when}` : ""}` })) });
-  if (sw.tickets && d.tickets.length) sections.push({ title: `New support tickets (${d.tickets.length})`, rows: cap(d.tickets, (t) => ({ label: t.urgent ? "URGENT" : "Ticket", value: `${t.subject}: ${who(t.customer)}` })) });
+  if (sw.tickets && d.tickets.length) sections.push({ title: `New tickets (${d.tickets.length})`, rows: cap(d.tickets, (t) => ({ label: t.urgent ? "URGENT" : "Ticket", value: `${t.subject}: ${who(t.customer)}` })) });
 
   const waiting: string[] = [];
   if (sw.appointments && d.waiting.appointments) waiting.push(`${plural(d.waiting.appointments, "appointment request")} waiting for you to confirm`);
-  if (sw.tickets && d.waiting.tickets) waiting.push(`${plural(d.waiting.tickets, "open support ticket")}${d.waiting.urgentTickets ? ` (${d.waiting.urgentTickets} urgent)` : ""}`);
+  if (sw.tickets && d.waiting.tickets) waiting.push(`${plural(d.waiting.tickets, "open ticket")}${d.waiting.urgentTickets ? ` (${d.waiting.urgentTickets} urgent)` : ""}`);
   if (sw.handoffs && d.waiting.handoffs) waiting.push(`${plural(d.waiting.handoffs, "chat")} waiting for a person`);
   if (sw.leads && d.waiting.followUpsDue) waiting.push(`${plural(d.waiting.followUpsDue, "lead follow-up")} due`);
 

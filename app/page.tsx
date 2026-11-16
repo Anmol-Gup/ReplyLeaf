@@ -36,7 +36,7 @@ const USE_CASES = [
   { title: "Clinics", text: "Answer common questions and collect appointment requests for your team to confirm." },
   { title: "Real estate businesses", text: "Capture buyer and renter enquiries, and hand serious ones to an agent." },
   { title: "Coaching institutes", text: "Reply to course, schedule and fee questions, and collect enquiries from interested students." },
-  { title: "E-commerce businesses", text: "Answer shipping and returns questions, and log problems like a missing order as support tickets." },
+  { title: "E-commerce businesses", text: "Answer shipping and returns questions, and log problems like a missing order as tickets." },
   { title: "Professional service providers", text: "Handle first questions, collect enquiries and appointment requests, and pass them to the right person." },
 ];
 
@@ -44,7 +44,7 @@ const CONTROL_POINTS = [
   "See every conversation as it happens in your dashboard.",
   "Confirm, reject or reschedule appointment requests in one place.",
   "Review each lead with a summary, its requirements and a status you control.",
-  "Track customer problems as support tickets, from open to resolved.",
+  "Track customer problems as tickets, from open to resolved.",
   "Take over any chat in one click. The assistant goes quiet while you reply.",
   "Hand the chat back to the assistant when you're finished.",
   "Get an email for new leads and for chats that need a person, with a summary of what the customer wants.",

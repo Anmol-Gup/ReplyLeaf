@@ -75,7 +75,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
         <Card title="What's included">
           <ul className="stack-sm" style={{ paddingLeft: 18, margin: 0 }}>
             <li>An AI assistant that answers your customers on WhatsApp from your own information.</li>
-            <li>Appointment requests, project enquiries and support tickets, with owner emails.</li>
+            <li>Appointment requests, project enquiries and tickets, with owner emails.</li>
             <li>Human handoff with an inbox for your team.</li>
             <li>Your data stays yours: you can export it at any time, even without a subscription.</li>
           </ul>
