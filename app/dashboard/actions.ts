@@ -9,6 +9,7 @@ import { SOURCE_LABELS } from "../../lib/handoff";
 import { deleteContactData } from "../../lib/privacy";
 import { supabaseAdmin } from "../../lib/supabase-admin";
 import { sendClientText } from "../../lib/supabase-deps";
+import { MAX_DOCUMENTS } from "../../lib/kb/chunk";
 import { ExtractError, extractText, MAX_UPLOAD_BYTES } from "../../lib/kb/extract";
 import { publishDocument, reindexDocument } from "../../lib/kb/publish";
 import { isWithinWindow } from "../../lib/whatsapp/window";
@@ -198,9 +199,17 @@ const contentSchema = z.string().trim().min(1).max(200_000);
 
 // Step 1: paste text or upload a file. Creates a DRAFT only; nothing is searchable
 // until the owner reviews the extracted text and confirms (publishDocumentAction).
+/** Drafts and active documents (archived ones are not counted). */
+async function countOpenDocuments(clientId: string): Promise<number> {
+  const { count } = await supabaseAdmin().from("kb_documents").select("id", { count: "exact", head: true })
+    .eq("client_id", clientId).neq("status", "archived");
+  return count ?? 0;
+}
+
 export async function createDocument(formData: FormData) {
   const { clientId } = await requireClient();
   await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
+  if (await countOpenDocuments(clientId) >= MAX_DOCUMENTS) return flash(KB, "too_many_docs");
   const file = formData.get("file");
   let text = String(formData.get("text") ?? "");
   let title = String(formData.get("title") ?? "").trim();
@@ -262,6 +271,8 @@ export async function setDocumentStatus(formData: FormData) {
   await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const id = uuid.parse(formData.get("id"));
   const status = z.enum(["active", "archived"]).parse(formData.get("status"));
+  // Un-archiving brings a document back into the limit.
+  if (status === "active" && await countOpenDocuments(clientId) >= MAX_DOCUMENTS) return flash(`${KB}/documents/${id}`, "too_many_docs");
   await supabaseAdmin().from("kb_documents").update({ status, updated_at: new Date().toISOString() })
     .eq("id", id).eq("client_id", clientId).gt("version", 0);
   revalidatePath(`${KB}/documents/${id}`);

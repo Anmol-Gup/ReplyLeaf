@@ -4,6 +4,7 @@ import Icon from "../../../components/Icon";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, Card, EmptyState, ErrorState, PageHeader, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
+import { MAX_DOCUMENTS } from "../../../lib/kb/chunk";
 import { fmtDay } from "../../../lib/dashboard";
 import Notice from "../Notice";
 import { createDocument, resolveQuestion, updateKnowledge } from "../actions";
@@ -26,7 +27,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
       <PageHeader title="Knowledge base" description="The assistant answers ONLY from what is here. If something is missing it tells the customer it will check with your team." />
       <Notice code={notice} why={why} />
 
-      <Card title="Core knowledge" description="Always included with every message. Keep it short: opening hours, headline prices, the facts customers ask about most.">
+      <Card title="Core knowledge (optional)" description="Always included with every message. Keep it short: opening hours, headline prices, the facts customers ask about most. You can leave this empty and rely on documents, but the key facts are safest here.">
         <form action={updateKnowledge} className="stack">
           <CountedTextarea name="kb_text" max={8000} defaultValue={client?.kb_text ?? ""} label="Core knowledge" minHeight={220} />
           <div className="row">
@@ -36,7 +37,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         </form>
       </Card>
 
-      <Card title="Documents" description="Longer material such as price lists, policies and FAQs. For each question only the most relevant parts are looked up. Use # headings to keep topics separate.">
+      <Card title="Documents" description={`Longer material such as price lists, policies and FAQs. For each question only the most relevant parts are looked up. Use # headings to keep topics separate. Up to ${MAX_DOCUMENTS} documents at once (archived ones don't count).`}>
         {docsError ? <ErrorState>Your documents could not be loaded.</ErrorState> : (docs ?? []).length === 0 ? (
           <EmptyState icon="book" title="No documents yet">Upload a file or paste text below.</EmptyState>
         ) : (
@@ -64,7 +65,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
             <span className="hint">PDF, DOCX or TXT (also .md), up to 2 MB</span>
             <input name="file" type="file" accept=".pdf,.docx,.txt,.md,.markdown" />
           </label>
-          <label className="field">...or paste text<textarea name="text" style={{ minHeight: 160 }} maxLength={200000} /></label>
+          <label className="field">...or paste text <span className="hint">Ignored if you choose a file above</span><textarea name="text" style={{ minHeight: 160 }} maxLength={200000} /></label>
           <div><SubmitButton pendingText="Reading...">Continue to preview</SubmitButton></div>
         </form>
       </Card>
