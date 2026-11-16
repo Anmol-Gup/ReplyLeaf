@@ -1,3 +1,4 @@
+import Link from "next/link";
 import SubmitButton from "../../../components/SubmitButton";
 import { Card, PageHeader } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -15,7 +16,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const { notice } = await searchParams;
   const { db, clientId } = await requireClient();
   const { data: c } = await db.from("clients")
-    .select("name, business_info, business_hours, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step, workflow_settings").eq("id", clientId).single();
+    .select("name, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step, workflow_settings").eq("id", clientId).single();
   const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications, delivery").eq("client_id", clientId).maybeSingle();
   const w = parseWorkflowSettings(c?.workflow_settings);
   const mode = (c?.ai_mode ?? "platform") as AiMode;
@@ -30,8 +31,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         <Card title="Business">
           <div className="stack">
             <label className="field">Business name<input name="name" required maxLength={100} defaultValue={c?.name ?? ""} /></label>
-            <label className="field">About the business<textarea name="business_info" maxLength={4000} defaultValue={c?.business_info ?? ""} /></label>
-            <label className="field">Opening hours<textarea name="business_hours" maxLength={1000} defaultValue={c?.business_hours ?? ""} /></label>
+            <p className="hint">Describe your business, opening hours and prices on the <Link href="/dashboard/knowledge">Knowledge base</Link> page.</p>
           </div>
         </Card>
         <Card title="Booking link">

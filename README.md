@@ -96,7 +96,7 @@ The **Human handoff** page lists them with filters and search. Per request: open
 - Bookkeeping that fails *after* the customer already got their reply is alerted but never triggers the "something went wrong" fallback.
 
 ### Owner dashboard (`/dashboard`)
-Conversations (takeover / hand back / reply), leads, appointments, tickets, human handoff, contacts (edit, confirm or dismiss suggestions, delete a person's data), knowledge base, settings (business info, hours, booking link, AI provider, alert email), usage (tokens, monthly cap).
+Conversations (takeover / hand back / reply), leads, appointments, tickets, human handoff, contacts (edit, confirm or dismiss suggestions, delete a person's data), knowledge base (core text holds the business description, hours and key prices), settings (business name, booking link, AI provider, alert email), usage (tokens, monthly cap).
 - **Login:** Supabase Auth email + password, no social login.
 - **Sign-up** (`/signup`, controlled by `SIGNUP_MODE`): `open` (default) lets anyone sign up and, after confirming their email, connect their own WhatsApp through Embedded Signup, with no manual approval; `approval` is an optional gate where accounts only see a "you're on the list" page until you approve them on `/admin/signups`; `off` removes public sign-up. Anyone linked to a business counts as approved, and `create-owner` logins are approved automatically. The `/onboarding` page and its callback endpoint both refuse unapproved accounts. "Approved" is a flag in the login's `app_metadata`, which users cannot edit, so no database change is involved.
 - **The sign-up journey:**

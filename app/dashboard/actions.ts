@@ -165,8 +165,6 @@ export async function deleteContact(formData: FormData) {
 // ---------------------------------------------------------------- settings
 const settingsSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  business_info: z.string().max(4000),
-  business_hours: z.string().max(1000),
   booking_link: z.union([z.literal(""), z.string().trim().url().max(500).refine((u) => /^https?:\/\//i.test(u), "http(s) only")]),
 });
 
@@ -176,7 +174,7 @@ export async function updateSettings(formData: FormData) {
   if (!parsed.success) return flash("/dashboard/settings", "invalid");
   const v = parsed.data;
   await supabaseAdmin().from("clients").update({
-    name: v.name, business_info: v.business_info || null, business_hours: v.business_hours || null,
+    name: v.name,
     booking_link: v.booking_link || null,
   }).eq("id", clientId);
   flash("/dashboard/settings", "saved");
