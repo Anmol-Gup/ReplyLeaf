@@ -7,7 +7,7 @@ import { requireClient } from "../../../lib/auth/session";
 import { MAX_DOCUMENTS } from "../../../lib/kb/chunk";
 import { fmtDay } from "../../../lib/dashboard";
 import Notice from "../Notice";
-import { createDocument, resolveQuestion, updateKnowledge } from "../actions";
+import { createDocument, discardDraft, resolveQuestion, updateKnowledge } from "../actions";
 
 export const maxDuration = 60; // uploads are chunked and embedded inside the server action
 
@@ -43,13 +43,21 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Title</th><th>Status</th><th>Source</th><th>Version</th><th>Updated</th></tr></thead>
+              <thead><tr><th>Title</th><th>Status</th><th>Source</th><th>Version</th><th>Updated</th><th></th></tr></thead>
               <tbody>
                 {(docs ?? []).map((d) => (
                   <tr key={d.id}>
                     <td><Link href={`/dashboard/knowledge/documents/${d.id}`}>{d.title}</Link></td>
                     <td><Badge tone={TONE[d.status] ?? "muted"}>{d.status === "draft" ? "Draft: needs your confirmation" : d.status}</Badge></td>
                     <td>{d.source}</td><td>{d.version || "-"}</td><td>{fmtDay(d.updated_at)}</td>
+                    <td>
+                      {d.status === "draft" && (
+                        <form action={discardDraft}>
+                          <input type="hidden" name="id" value={d.id} />
+                          <SubmitButton variant="danger" small pendingText="Deleting...">Delete draft</SubmitButton>
+                        </form>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
