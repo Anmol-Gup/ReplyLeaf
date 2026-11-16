@@ -304,3 +304,24 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-s
 .timeline li { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--border); }
 .timeline li:first-child { border-top: 0; }
 .timeline li > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---- Settings: tabs and workflow cards ---- */
+.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border); margin-bottom: 18px; -webkit-overflow-scrolling: touch; }
+.tabs a { position: relative; flex: none; padding: 10px 14px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.92rem; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tabs a:hover { color: var(--text); }
+.tabs a[aria-current="page"] { color: var(--brand-text); border-bottom-color: var(--brand); }
+.tabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-left: 6px; vertical-align: middle; }
+.setup { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.setup li { display: flex; gap: 10px; align-items: flex-start; }
+.setup .tick { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; background: var(--surface-2); color: var(--muted); }
+.setup .tick.done { background: var(--success-soft); color: var(--success); }
+.wf-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.wf-head h2 { margin: 0; }
+.wf-head .muted { margin-top: 2px; max-width: 60ch; }
+.wf-switch { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
+.wf-switch input { flex: none; width: auto; }
+.wf-fold { margin-top: 10px; background: none; border: 0; padding: 0; color: var(--brand-text); font-weight: 600; font-size: 0.88rem; cursor: pointer; }
+.wf-off { margin-top: 10px; }
+.wf-body { margin-top: 16px; }
+.wf:not(.wf-on) { background: var(--surface-2); box-shadow: none; }
+@media (max-width: 640px) { .wf-head { flex-direction: column; } }

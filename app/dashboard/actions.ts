@@ -171,13 +171,13 @@ const settingsSchema = z.object({
 export async function updateSettings(formData: FormData) {
   const { clientId } = await requireClient();
   const parsed = settingsSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return flash("/dashboard/settings", "invalid");
+  if (!parsed.success) return redirect("/dashboard/settings?tab=business&notice=invalid");
   const v = parsed.data;
   await supabaseAdmin().from("clients").update({
     name: v.name,
     booking_link: v.booking_link || null,
   }).eq("id", clientId);
-  flash("/dashboard/settings", "saved");
+  redirect("/dashboard/settings?tab=business&notice=saved");
 }
 
 // --------------------------------------------------------------- knowledge
