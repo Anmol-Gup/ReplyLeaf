@@ -306,7 +306,7 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-s
 .timeline li > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
 
 /* ---- Settings: tabs and workflow cards ---- */
-.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border); margin-bottom: 18px; -webkit-overflow-scrolling: touch; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; border-bottom: 1px solid var(--border); margin-bottom: 18px; -webkit-overflow-scrolling: touch; }
 .tabs a { position: relative; flex: none; padding: 10px 14px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.92rem; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs a:hover { color: var(--text); }
 .tabs a[aria-current="page"] { color: var(--brand-text); border-bottom-color: var(--brand); }

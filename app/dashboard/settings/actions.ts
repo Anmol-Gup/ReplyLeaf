@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { checkKeyFormat, KEY_PROVIDERS, lastFour, type KeyProvider } from "../../../lib/ai-keys";
 import { verifyKey } from "../../../lib/ai-key-verify";
 import { requireClient } from "../../../lib/auth/session";
@@ -16,11 +17,15 @@ import { formToWorkflowInput, workflowSettingsSchema } from "../../../lib/workfl
 const back = (notice: string, tab: "ai" | "workflows" | "notifications"): never => redirect(`/dashboard/settings?tab=${tab}&notice=${notice}`);
 const field = (fd: FormData, n: string) => { const v = fd.get(n); return typeof v === "string" ? v : null; };
 
+// The booking link lives with the appointment settings: if set, the assistant shares it instead of collecting a request.
+const bookingLinkSchema = z.union([z.literal(""), z.string().trim().url().max(500).refine((u) => /^https?:\/\//i.test(u), "http(s) only")]);
+
 export async function updateWorkflows(formData: FormData) {
   const { clientId } = await requireClient();
   const parsed = workflowSettingsSchema.safeParse(formToWorkflowInput((n) => field(formData, n)));
-  if (!parsed.success) return back("invalid", "workflows");
-  await supabaseAdmin().from("clients").update({ workflow_settings: parsed.data }).eq("id", clientId);
+  const link = bookingLinkSchema.safeParse(field(formData, "booking_link") ?? "");
+  if (!parsed.success || !link.success) return back("invalid", "workflows");
+  await supabaseAdmin().from("clients").update({ workflow_settings: parsed.data, booking_link: link.data || null }).eq("id", clientId);
   return back("saved", "workflows");
 }
 

@@ -5,8 +5,8 @@ import { DEFAULT_WORKFLOW_SETTINGS, formToWorkflowInput, parseWorkflowSettings }
 
 test("parseTab: known tabs pass, anything from the URL that is not a tab falls back", () => {
   for (const t of SETTINGS_TABS) assert.equal(parseTab(t.id), t.id);
-  for (const bad of [undefined, "", "nope", "../x", "AI", ["ai"], 5]) assert.equal(parseTab(bad), "business");
-  assert.equal(parseTab("zzz", "ai"), "ai");
+  for (const bad of [undefined, "", "nope", "../x", "AI", ["ai"], 5]) assert.equal(parseTab(bad), "ai");
+  assert.equal(parseTab("zzz", "workflows"), "workflows");
 });
 
 const base = { mode: "byok" as const, hasKey: true, keyStatus: "valid" as const, hasPhone: true, onboardingStatus: "connected", clientStatus: "active" };

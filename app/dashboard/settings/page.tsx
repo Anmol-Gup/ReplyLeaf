@@ -12,7 +12,7 @@ import { assistantSetup, parseTab, SETTINGS_TABS } from "../../../lib/settings-t
 import { removeAiKey, saveAiKey, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
 import { parseWorkflowSettings, WEEKDAYS, WEEKDAY_LABELS } from "../../../lib/workflow-settings";
 
-// Settings are split into tabs (?tab=business|ai|workflows|notifications|whatsapp), each with ONE save button
+// Settings are split into tabs (?tab=ai|workflows|notifications|whatsapp), each with ONE save button
 // (the AI tab has its own small forms because the key is handled separately and never read back).
 // Every form and server action is unchanged apart from where it sends you afterwards.
 export default async function Settings({ searchParams }: { searchParams: Promise<{ notice?: string; tab?: string }> }) {
@@ -66,23 +66,19 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       </nav>
       <p className="muted" style={{ marginBottom: 16 }}>{current.blurb}</p>
 
-      {tab === "business" && (
-        <form action={updateSettings} className="stack">
-          <Card title="Business" description="Shown to the assistant so it can speak for you.">
-            <div className="stack">
-              <label className="field">Business name<input name="name" required maxLength={100} defaultValue={c?.name ?? ""} /></label>
-              <label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book. If not, it collects an appointment request (if that is on) or a team member takes over.</span>
-                <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
-              </label>
-              <p className="hint">Describe your business, opening hours and prices on the <Link href="/dashboard/knowledge">Knowledge base</Link> page.</p>
-            </div>
-          </Card>
-          <div><SubmitButton pendingText="Saving...">Save</SubmitButton></div>
-        </form>
-      )}
-
       {tab === "ai" && (
         <section className="stack">
+          <form action={updateSettings}>
+            <Card title="Assistant configuration" description="How the assistant names your business. Describe your business, opening hours and prices on the Knowledge base page.">
+              <div className="stack">
+                <label className="field">Business name<input name="name" required maxLength={100} defaultValue={c?.name ?? ""} /></label>
+                <div className="row">
+                  <SubmitButton pendingText="Saving...">Save name</SubmitButton>
+                  <Link href="/dashboard/knowledge">Open Knowledge base</Link>
+                </div>
+              </div>
+            </Card>
+          </form>
         <Card title="AI connection" description={mode === "byok"
           ? "Your assistant uses YOUR AI account, so your AI provider bills you directly for what it uses. Your key is stored encrypted and is never shown again."
           : "Your assistant currently uses the platform's AI, which is included for you. You can switch to your own AI account at any time."}
@@ -131,6 +127,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       {tab === "workflows" && (
         <form action={updateWorkflows} className="stack">
           <WorkflowCard name="appointments_enabled" title="Appointment requests" switchLabel="Collect appointment requests" defaultChecked={w.appointments.enabled}
+            always={<label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book, instead of collecting a request. Works even if appointment requests are off.</span>
+              <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
+            </label>}
             description="Used when no booking link is set. The assistant collects a request and you confirm it on the Appointments page. If a booking link is set, it shares the link instead.">
 
             <fieldset className="field"><legend>Working days <span className="hint">Information for the assistant. It never promises that a time is free: there is no calendar connection.</span></legend>

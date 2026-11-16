@@ -4,8 +4,7 @@ import { keyProblem, type AiMode, type KeyStatus } from "./ai-keys";
 // before the assistant can answer customers.
 
 export const SETTINGS_TABS = [
-  { id: "business", label: "Business", blurb: "Your business name and booking link." },
-  { id: "ai", label: "AI", blurb: "The AI provider and key that power your assistant." },
+  { id: "ai", label: "AI", blurb: "The AI provider and key that power your assistant, and how it names your business." },
   { id: "workflows", label: "Workflows", blurb: "What the assistant collects from customers, and when it hands over to your team." },
   { id: "notifications", label: "Notifications", blurb: "Who is emailed, and how often." },
   { id: "whatsapp", label: "WhatsApp", blurb: "The number your customers message." },
@@ -13,7 +12,7 @@ export const SETTINGS_TABS = [
 export type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 
 /** `?tab=` comes from the URL, so anything unknown falls back to `fallback`. */
-export function parseTab(raw: unknown, fallback: SettingsTab = "business"): SettingsTab {
+export function parseTab(raw: unknown, fallback: SettingsTab = "ai"): SettingsTab {
   return SETTINGS_TABS.some((t) => t.id === raw) ? (raw as SettingsTab) : fallback;
 }
 

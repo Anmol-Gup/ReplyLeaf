@@ -5,8 +5,8 @@ import { useState } from "react";
 // One workflow on the Settings page: a switch, and its settings below. Switched off, the settings are hidden;
 // switched on, they are shown and can be folded away. Hidden fields are only hidden with CSS, so they are
 // still submitted with the form and the saved values are never lost.
-export default function WorkflowCard({ name, title, description, switchLabel, defaultChecked, children }: {
-  name: string; title: string; description: string; switchLabel: string; defaultChecked: boolean; children: React.ReactNode;
+export default function WorkflowCard({ name, title, description, switchLabel, defaultChecked, always, children }: {
+  name: string; title: string; description: string; switchLabel: string; defaultChecked: boolean; always?: React.ReactNode; children: React.ReactNode;
 }) {
   const [on, setOn] = useState(defaultChecked);
   const [open, setOpen] = useState(true);
@@ -23,6 +23,7 @@ export default function WorkflowCard({ name, title, description, switchLabel, de
           <span>{switchLabel}</span>
         </label>
       </div>
+      {always && <div className="stack" style={{ marginTop: 16 }}>{always}</div>}
       {on && (
         <button type="button" className="wf-fold" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           {open ? "Hide settings" : "Show settings"}

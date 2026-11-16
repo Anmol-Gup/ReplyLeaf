@@ -165,19 +165,16 @@ export async function deleteContact(formData: FormData) {
 // ---------------------------------------------------------------- settings
 const settingsSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  booking_link: z.union([z.literal(""), z.string().trim().url().max(500).refine((u) => /^https?:\/\//i.test(u), "http(s) only")]),
 });
 
 export async function updateSettings(formData: FormData) {
   const { clientId } = await requireClient();
   const parsed = settingsSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return redirect("/dashboard/settings?tab=business&notice=invalid");
+  if (!parsed.success) return redirect("/dashboard/settings?tab=ai&notice=invalid");
   const v = parsed.data;
   await supabaseAdmin().from("clients").update({
-    name: v.name,
-    booking_link: v.booking_link || null,
-  }).eq("id", clientId);
-  redirect("/dashboard/settings?tab=business&notice=saved");
+    name: v.name }).eq("id", clientId);
+  redirect("/dashboard/settings?tab=ai&notice=saved");
 }
 
 // --------------------------------------------------------------- knowledge
