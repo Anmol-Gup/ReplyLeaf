@@ -123,7 +123,8 @@ td .muted { display: block; }
 
 .search { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px 4px 12px; color: var(--muted); max-width: 440px; }
 .search input { border: 0 !important; background: transparent !important; min-height: 34px !important; padding: 0 !important; outline-offset: 4px; }
-.search:focus-within { border-color: var(--ring); }
+.search input:focus-visible { outline: none; }  /* the wrapper shows the focus ring, not a second box inside it */
+.search:focus-within { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 30%, transparent); }
 
 /* ---- empty, error, skeleton ---- */
 .empty { text-align: center; padding: 36px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
