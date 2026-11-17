@@ -4,7 +4,7 @@ import CountedTextarea from "../../../components/CountedTextarea";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, Card, EmptyState, ErrorState, PageHeader, Stat, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
-import { MAX_DOCUMENTS, MAX_TOTAL_STORAGE_BYTES } from "../../../lib/kb/chunk";
+import { MAX_DOCUMENTS } from "../../../lib/kb/chunk";
 import { MAX_UPLOAD_BYTES } from "../../../lib/kb/extract";
 import { fmtDay } from "../../../lib/dashboard";
 import Notice from "../Notice";
@@ -19,13 +19,11 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
   const { db, clientId } = await requireClient();
   const [{ data: client }, { data: docs, error: docsError }, { data: questions }] = await Promise.all([
     db.from("clients").select("kb_text").eq("id", clientId).single(),
-    db.from("kb_documents").select("id, title, status, source, version, updated_at, size_bytes").order("updated_at", { ascending: false }).limit(200),
+    db.from("kb_documents").select("id, title, status, source, version, updated_at").order("updated_at", { ascending: false }).limit(200),
     db.from("unanswered_questions").select("id, question, created_at").eq("status", "open").order("created_at", { ascending: false }).limit(50),
   ]);
 
   const open = (docs ?? []).filter((d) => d.status !== "archived");
-  const usedBytes = open.reduce((n, d) => n + (typeof d.size_bytes === "number" ? d.size_bytes : 0), 0);
-  const mb = (b: number) => (b / (1024 * 1024)).toFixed(b < 10 * 1024 * 1024 ? 1 : 0);
 
   return (
     <>
@@ -73,13 +71,12 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
 
       <Card title="Add a document" description="You will see the extracted text first and must confirm it before the assistant can use it.">
         <div className="stat-grid" style={{ marginBottom: 14 }}>
-          <Stat value={`${open.length} / ${MAX_DOCUMENTS}`} label="Documents per business (initial limit)" />
-          <Stat value={`${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`} label="Maximum per file (upload size)" />
-          <Stat value={`${mb(usedBytes)} / ${MAX_TOTAL_STORAGE_BYTES / (1024 * 1024)} MB`} label="Total storage per business" />
+          <Stat value={`${open.length} / ${MAX_DOCUMENTS}`} label="Documents per business" />
+          <Stat value={`${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`} label="Maximum size per file" />
         </div>
         <p className="muted" style={{ marginBottom: 14 }}>
           <b>Supported file formats:</b> PDF (text-based, not scanned images), Word (.docx), plain text (.txt) and Markdown (.md).
-          Archived documents don&apos;t count towards the limits.
+          Archived documents don&apos;t count towards the document limit.
         </p>
         <form action={createDocument} className="stack" id="add-document">
           <label className="field">Title <span className="hint">Optional. Defaults to the file name, or the first line of the text.</span><input name="title" maxLength={200} /></label>

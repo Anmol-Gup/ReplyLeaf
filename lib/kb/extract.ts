@@ -15,7 +15,7 @@ import { MAX_DOC_CHARS } from "./chunk";
 // from a URL parameter without ever echoing arbitrary text from the URL.
 export const EXTRACT_MESSAGES = {
   empty: "The file is empty.",
-  too_large: "The file is larger than 10 MB.",
+  too_large: "The file is larger than 3 MB.",
   unsupported: "Unsupported file type. Use .txt, .md, .docx or a text PDF, or paste the text.",
   unreadable: "This file could not be read. Try pasting the text instead.",
   no_text: "No text was found in this file.",
@@ -33,7 +33,7 @@ export class ExtractError extends Error {
   }
 }
 
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
 const MAX_INFLATED = 20 * 1024 * 1024; // zip-bomb guard
 
 export type Extracted = { text: string; source: "txt" | "md" | "docx" | "pdf" };

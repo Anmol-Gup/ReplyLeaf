@@ -18,7 +18,7 @@ export default function DocumentSourceFields({ maxTextChars }: { maxTextChars: n
       </label>
       {mode === "file" ? (
         <label className="field"><span><Icon name="upload" size={15} /> File</span>
-          <span className="hint">PDF, DOCX, TXT or MD, up to 10 MB</span>
+          <span className="hint">PDF, DOCX, TXT or MD, up to 3 MB</span>
           <input name="file" type="file" required accept=".pdf,.docx,.txt,.md,.markdown" />
         </label>
       ) : (
