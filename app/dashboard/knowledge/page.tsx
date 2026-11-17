@@ -1,6 +1,6 @@
 import Link from "next/link";
+import DocumentSourceFields from "../../../components/DocumentSourceFields";
 import CountedTextarea from "../../../components/CountedTextarea";
-import Icon from "../../../components/Icon";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, Card, EmptyState, ErrorState, PageHeader, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -68,12 +68,8 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
 
       <Card title="Add a document" description="You will see the extracted text first and must confirm it before the assistant can use it.">
         <form action={createDocument} className="stack" id="add-document">
-          <label className="field">Title <span className="hint">Optional for files</span><input name="title" maxLength={200} /></label>
-          <label className="field"><span><Icon name="upload" size={15} /> Upload a file</span>
-            <span className="hint">PDF, DOCX or TXT (also .md), up to 2 MB</span>
-            <input name="file" type="file" accept=".pdf,.docx,.txt,.md,.markdown" />
-          </label>
-          <label className="field">...or paste text <span className="hint">Ignored if you choose a file above</span><textarea name="text" style={{ minHeight: 160 }} maxLength={200000} /></label>
+          <label className="field">Title <span className="hint">Optional. Defaults to the file name, or the first line of the text.</span><input name="title" maxLength={200} /></label>
+          <DocumentSourceFields maxTextChars={200000} />
           <div><SubmitButton pendingText="Reading...">Continue to preview</SubmitButton></div>
         </form>
       </Card>
