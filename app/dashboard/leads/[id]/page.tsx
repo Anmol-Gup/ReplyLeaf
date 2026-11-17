@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ChatLog from "../../../../components/ChatLog";
+import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
 import CopyButton from "../../../../components/CopyButton";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { fmt, fmtDay, fmtTime } from "../../../../lib/dashboard";
-import { LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, projectBrief, type LeadStatus } from "../../../../lib/leads";
+import { LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, projectBrief, requirementLines, type LeadStatus } from "../../../../lib/leads";
 import Notice from "../../Notice";
-import { updateLead } from "../actions";
+import { updateLead, updateLeadDetails } from "../actions";
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
@@ -32,7 +33,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       <PageHeader
         title={l.customer_name || "Project enquiry"}
         description={`+${l.customer_phone}${contact?.email ? ` · ${contact.email}` : ""} · received ${fmt(l.created_at)}`}
-        actions={<Link className="btn btn-secondary btn-sm" href="/dashboard/leads">All leads</Link>}
+        actions={<span className="row"><a className="btn btn-primary btn-sm" href="#edit">Edit details</a><Link className="btn btn-secondary btn-sm" href="/dashboard/leads">All leads</Link></span>}
       />
       <Notice code={notice} />
       <Card title={l.project_type} actions={<Badge tone={LEAD_TONES[status]}>{LEAD_LABELS[status]}</Badge>}>
@@ -55,6 +56,25 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
           </dl>
         )}
       </Card>
+
+      <div id="edit">
+        <Card title="Edit details" description="Correct or complete what the assistant collected. Put one requirement per line as  name: value  (for example  platform: Shopify).">
+          <form action={updateLeadDetails} className="stack">
+            <input type="hidden" name="id" value={l.id} />
+            <div className="row">
+              <label className="field">Customer name <input name="customer_name" maxLength={100} defaultValue={l.customer_name ?? ""} /></label>
+              <label className="field">Service / project type <input name="project_type" required maxLength={200} defaultValue={l.project_type} /></label>
+            </div>
+            <label className="field">Description <textarea name="description" required rows={4} maxLength={1500} defaultValue={l.description} /></label>
+            <div className="row">
+              <label className="field">Budget <input name="budget" maxLength={100} defaultValue={l.budget ?? ""} /></label>
+              <label className="field">Timeline <input name="timeline" maxLength={100} defaultValue={l.timeline ?? ""} /></label>
+            </div>
+            <label className="field">Requirements <textarea name="requirements" rows={5} maxLength={6000} defaultValue={requirementLines(reqs ?? [])} placeholder={"platform: Shopify\npayments: card"} /></label>
+            <div><ChangeAwareSubmit pendingText="Saving...">Save details</ChangeAwareSubmit></div>
+          </form>
+        </Card>
+      </div>
 
       <Card title="Manage" description="Your notes and follow-up date stay private. They are never sent to the customer.">
         <form action={updateLead} className="stack">

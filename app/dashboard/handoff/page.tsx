@@ -1,33 +1,27 @@
 import Link from "next/link";
+import MultiSelectFilter from "../../../components/MultiSelectFilter";
 import Pagination from "../../../components/Pagination";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { clip, fmt, matches, windowStatus } from "../../../lib/dashboard";
+import { effectiveSelection } from "../../../lib/filters";
 import {
-  allowedActions, SOURCE_LABELS, STATUS_LABELS, STATUS_TONES, type HandoffSource, type HandoffStatus,
+  allowedActions, HANDOFF_STATUSES, SOURCE_LABELS, STATUS_LABELS, STATUS_TONES, type HandoffSource, type HandoffStatus,
 } from "../../../lib/handoff";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
 import { handoffTransition, saveHandoffNote } from "./actions";
-
-const FILTERS = [
-  { key: "open", label: "Open" },
-  { key: "requested", label: "Waiting for you" },
-  { key: "assigned", label: "Assigned" },
-  { key: "human_active", label: "You are handling" },
-  { key: "resolved", label: "Resolved" },
-  { key: "all", label: "All" },
-] as const;
 
 type Handoff = {
   id: string; conversation_id: string; source: HandoffSource; reason: string | null; ai_summary: string | null;
   status: HandoffStatus; assigned_to: string | null; internal_notes: string | null; created_at: string; resolved_at: string | null;
 };
 
-export default async function HumanHandoff({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string; page?: string }> }) {
+export default async function HumanHandoff({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; page?: string }> }) {
   const { notice, q, status: statusRaw, page: pageRaw } = await searchParams;
-  const status = FILTERS.some((f) => f.key === statusRaw) ? (statusRaw as string) : "open";
+  // Nothing chosen = the requests that still need a person.
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, HANDOFF_STATUSES, HANDOFF_STATUSES.filter((s) => s !== "resolved"));
   const { db } = await requireClient(); // RLS: only this business's rows can come back
 
   const { data, error } = await db.from("handoff_requests")
@@ -56,31 +50,25 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
     return { h, conv, name: contact?.name ?? null, phone: contact?.phone ?? "", last: lastMessage.get(h.conversation_id) ?? "" };
   };
   const rows = all.map(view);
-  const counts: Record<string, number> = { all: rows.length, open: 0, requested: 0, assigned: 0, human_active: 0, resolved: 0 };
-  for (const r of rows) { counts[r.h.status]++; if (r.h.status !== "resolved") counts.open++; }
+  const options = HANDOFF_STATUSES.map((s) => ({ value: s as string, label: STATUS_LABELS[s], count: rows.filter((r) => r.h.status === s).length }));
 
   const matching = rows.filter((r) =>
-    (status === "all" || (status === "open" ? r.h.status !== "resolved" : r.h.status === status)) &&
+    statuses.includes(r.h.status) &&
     matches(q, r.name, r.phone, r.last, r.h.ai_summary, r.h.assigned_to, r.h.internal_notes));
   const paged = paginate(matching, pageRaw, 10);
-  const here = `/dashboard/handoff${buildQuery({ status: status === "open" ? null : status, q, page: paged.page > 1 ? paged.page : null })}`;
+  const here = `/dashboard/handoff${buildQuery({ status: explicit ? statuses : [], q, page: paged.page > 1 ? paged.page : null })}`;
 
   return (
     <>
       <PageHeader title="Human handoff" description="Chats where the assistant has stepped aside for a person. The assistant stays silent in each of these chats until you resume it. Your other chats are not affected." />
       <Notice code={notice} />
-      <nav className="tabs" aria-label="Filter by status">
-        {FILTERS.map((f) => (
-          <Link key={f.key} href={`/dashboard/handoff${buildQuery({ status: f.key === "open" ? null : f.key, q })}`}
-            className={`tab${status === f.key ? " active" : ""}`} aria-current={status === f.key ? "page" : undefined}>
-            {f.label} <span className="tab-count">{counts[f.key]}</span>
-          </Link>
-        ))}
-      </nav>
-      <SearchBox q={q} placeholder="Search by name, phone, message, summary or assignee" />
+      <div className="filters">
+        <MultiSelectFilter action="/dashboard/handoff" options={options} selected={statuses} hidden={{ q }} />
+        <SearchBox q={q} placeholder="Search by name, phone, message, summary or assignee" keep={{ status: explicit ? statuses : [] }} />
+      </div>
 
       {error ? <ErrorState>Your handoff requests could not be loaded.</ErrorState> : paged.items.length === 0 ? (
-        q || status !== "open"
+        q || explicit
           ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/handoff", label: "Show open requests" }}>No handoff requests match this view.</EmptyState>
           : <EmptyState icon="shield" title="No chats are waiting for you">When a customer asks for a person, or the assistant can&apos;t help, the chat appears here and you get an email.</EmptyState>
       ) : (
@@ -157,7 +145,7 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
           })}
         </ul>
       )}
-      {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ status: status === "open" ? null : status, q, page: n > 1 ? n : null })}`} />}
+      {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ status: explicit ? statuses : [], q, page: n > 1 ? n : null })}`} />}
     </>
   );
 }

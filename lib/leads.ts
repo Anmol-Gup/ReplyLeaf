@@ -67,3 +67,32 @@ export function leadOverview(rows: { status: LeadStatus; follow_up_at: string | 
     won: rows.filter((r) => r.status === "won").length,
   };
 }
+
+// ---- editing a lead's details (what the customer asked for)
+
+/** "platform: Shopify" lines -> key/value pairs. Lines without a colon or with an empty side are skipped; capped. */
+export function parseRequirementLines(raw: string): { key: string; value: string }[] {
+  const out: { key: string; value: string }[] = [];
+  for (const line of raw.replace(/\u0000/g, "").split(/\r?\n/)) {
+    const i = line.indexOf(":");
+    if (i < 1) continue;
+    const key = line.slice(0, i).trim().slice(0, 60);
+    const value = line.slice(i + 1).trim().slice(0, 300);
+    if (key && value && !out.some((o) => o.key.toLowerCase() === key.toLowerCase())) out.push({ key, value });
+    if (out.length >= 15) break;
+  }
+  return out;
+}
+export const requirementLines = (rows: { requirement_key: string; requirement_value: string }[]) =>
+  rows.map((r) => `${r.requirement_key}: ${r.requirement_value}`).join("\n");
+
+const clean = (max: number) => z.string().max(max).transform((v) => v.replace(/\u0000/g, "").trim());
+export const leadDetailsSchema = z.object({
+  id: z.string().uuid(),
+  customer_name: clean(100),
+  project_type: clean(200).refine((v) => v.length > 0, "service required"),
+  description: clean(1500).refine((v) => v.length >= 3, "description required"),
+  budget: clean(100),
+  timeline: clean(100),
+  requirements: z.string().max(6000),
+});

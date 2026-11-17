@@ -67,8 +67,9 @@ export const Stat = ({ value, label, href }: { value: React.ReactNode; label: st
   return href ? <Link className="stat" href={href}>{body}</Link> : <div className="stat">{body}</div>;
 };
 
-export const SearchBox = ({ q, placeholder }: { q?: string; placeholder: string }) => (
+export const SearchBox = ({ q, placeholder, keep = {} }: { q?: string; placeholder: string; keep?: Record<string, string | string[] | undefined> }) => (
   <form method="get" role="search" className="search">
+    {Object.entries(keep).flatMap(([k, v]) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => <input key={`${k}-${x}`} type="hidden" name={k} value={x} />))}
     <Icon name="search" size={16} />
     <input name="q" type="search" defaultValue={q ?? ""} placeholder={placeholder} aria-label={placeholder} />
     <button className="btn btn-secondary btn-sm" type="submit">Search</button>

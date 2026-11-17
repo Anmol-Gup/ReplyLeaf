@@ -1,35 +1,41 @@
 import Link from "next/link";
+import MultiSelectFilter from "../../../components/MultiSelectFilter";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { clip, fmtDay, matches } from "../../../lib/dashboard";
+import { effectiveSelection } from "../../../lib/filters";
 import { isOpenLead, LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, leadOverview, type LeadStatus } from "../../../lib/leads";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
 
 type Row = {
-  id: string; customer_name: string | null; customer_phone: string; project_type: string; budget: string | null; timeline: string | null;
+  id: string; customer_name: string | null; customer_phone: string; project_type: string; description: string | null; budget: string | null; timeline: string | null;
   status: LeadStatus; follow_up_at: string | null; created_at: string;
 };
 
-export default async function Leads({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string; page?: string }> }) {
+export default async function Leads({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; page?: string }> }) {
   const { notice, q, status: statusRaw, page: pageRaw } = await searchParams;
-  const status = statusRaw === "open" || (LEAD_STATUSES as readonly string[]).includes(statusRaw ?? "") ? (statusRaw as string) : "all";
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, LEAD_STATUSES, []); // nothing chosen = every status
   const { db } = await requireClient(); // RLS: only this business's rows can come back
   const today = new Date().toISOString().slice(0, 10);
 
   const { data, error } = await db.from("leads")
-    .select("id, customer_name, customer_phone, project_type, budget, timeline, status, follow_up_at, created_at")
+    .select("id, customer_name, customer_phone, project_type, description, budget, timeline, status, follow_up_at, created_at")
     .order("created_at", { ascending: false }).limit(500);
   const all = (data ?? []) as Row[];
   const o = leadOverview(all, today);
-  const count = (s: string) => s === "all" ? all.length : s === "open" ? all.filter((r) => isOpenLead(r.status)).length : all.filter((r) => r.status === s).length;
+  const options = LEAD_STATUSES.map((s) => ({ value: s as string, label: LEAD_LABELS[s], count: all.filter((r) => r.status === s).length }));
 
   const matching = all.filter((r) =>
-    (status === "all" || (status === "open" ? isOpenLead(r.status) : r.status === status)) &&
-    matches(q, r.customer_name, r.customer_phone, r.project_type, r.budget, r.timeline, LEAD_LABELS[r.status]));
+    (statuses.length === 0 || statuses.includes(r.status)) &&
+    matches(q, r.customer_name, r.customer_phone, r.project_type, r.description, r.budget, r.timeline, LEAD_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
-  const tabs = [{ key: "all", label: "All" }, { key: "open", label: "Open" }, ...LEAD_STATUSES.map((s) => ({ key: s as string, label: LEAD_LABELS[s] }))];
+  // What each customer asked for: the collected requirements of the leads on this page (still through the RLS client).
+  const ids = paged.items.map((r) => r.id);
+  const { data: reqRows } = ids.length ? await db.from("lead_requirements").select("lead_id, requirement_key, requirement_value").in("lead_id", ids).order("created_at") : { data: [] };
+  const reqsByLead = new Map<string, string[]>();
+  for (const r of reqRows ?? []) reqsByLead.set(r.lead_id as string, [...(reqsByLead.get(r.lead_id as string) ?? []), `${r.requirement_key}: ${r.requirement_value}`]);
 
   return (
     <>
@@ -41,24 +47,23 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
         <Stat value={o.open} label="Open leads" />
         <Stat value={o.won} label="Won" />
       </div>
-      <nav className="tabs" aria-label="Filter by status">
-        {tabs.map((t) => (
-          <Link key={t.key} href={`/dashboard/leads${buildQuery({ status: t.key === "all" ? null : t.key, q })}`}
-            className={`tab${status === t.key ? " active" : ""}`} aria-current={status === t.key ? "page" : undefined}>
-            {t.label} <span className="tab-count">{count(t.key)}</span>
-          </Link>
-        ))}
-      </nav>
-      <SearchBox q={q} placeholder="Search by name, phone, project, budget or status" />
+      <div className="filters">
+        <MultiSelectFilter action="/dashboard/leads" options={options} selected={statuses} hidden={{ q }} />
+        <SearchBox q={q} placeholder="Search by name, phone, project, requirements, budget or status" keep={{ status: explicit ? statuses : [] }} />
+      </div>
       {error ? <ErrorState>Your leads could not be loaded.</ErrorState> : (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Customer</th><th>Project</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Service and requirements</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th></tr></thead>
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
                   <td><Link href={`/dashboard/leads/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span></td>
-                  <td>{clip(r.project_type, 60)}</td>
+                  <td>
+                    <b>{clip(r.project_type, 60)}</b>
+                    {r.description && <><br /><span className="muted">{clip(r.description, 110)}</span></>}
+                    {(reqsByLead.get(r.id) ?? []).length > 0 && <><br /><span className="hint">{clip((reqsByLead.get(r.id) ?? []).slice(0, 4).join(" · "), 140)}</span></>}
+                  </td>
                   <td>{r.budget ?? "-"}</td>
                   <td>{r.timeline ?? "-"}</td>
                   <td><Badge tone={LEAD_TONES[r.status]}>{LEAD_LABELS[r.status]}</Badge></td>
@@ -68,7 +73,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
               ))}
               {paged.items.length === 0 && (
                 <tr><td colSpan={7}>
-                  {q || status !== "all"
+                  {q || explicit
                     ? <EmptyState icon="search" title="No matching leads" action={{ href: "/dashboard/leads", label: "Show all leads" }}>Nothing matches this view.</EmptyState>
                     : <EmptyState icon="users" title="No leads yet">When a customer describes a project or service they need, the assistant collects the details and the lead appears here.</EmptyState>}
                 </td></tr>
@@ -77,7 +82,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
           </table>
         </div>
       )}
-      {!error && <Pagination p={paged} label="Leads" hrefFor={(n) => `/dashboard/leads${buildQuery({ status: status === "all" ? null : status, q, page: n > 1 ? n : null })}`} />}
+      {!error && <Pagination p={paged} label="Leads" hrefFor={(n) => `/dashboard/leads${buildQuery({ status: explicit ? statuses : [], q, page: n > 1 ? n : null })}`} />}
     </>
   );
 }

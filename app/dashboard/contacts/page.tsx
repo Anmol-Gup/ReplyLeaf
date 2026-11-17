@@ -1,20 +1,27 @@
 import Link from "next/link";
+import MultiSelectFilter from "../../../components/MultiSelectFilter";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { fmtDay, matches } from "../../../lib/dashboard";
+import { effectiveSelection } from "../../../lib/filters";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
 
 const STATUS_TONE: Record<string, Tone> = { new: "muted", lead: "brand", customer: "success", lost: "danger" };
+const CONTACT_STATUSES = ["new", "lead", "customer", "lost"] as const;
+const CONTACT_LABELS: Record<string, string> = { new: "New", lead: "Lead", customer: "Customer", lost: "Lost" };
 
-export default async function Contacts({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; page?: string }> }) {
-  const { notice, q, page: pageRaw } = await searchParams;
+export default async function Contacts({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; page?: string }> }) {
+  const { notice, q, status: statusRaw, page: pageRaw } = await searchParams;
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, CONTACT_STATUSES, []); // nothing chosen = every status
   const { db } = await requireClient();
   const { data, error } = await db.from("contacts")
     .select("id, name, phone, email, status, tags, suggested, created_at")
     .order("created_at", { ascending: false }).limit(500);
-  const matching = (data ?? []).filter((c) => matches(q, c.name, c.phone, c.email, c.status, (c.tags as string[]).join(" ")));
+  const everyone = data ?? [];
+  const options = CONTACT_STATUSES.map((s) => ({ value: s as string, label: CONTACT_LABELS[s], count: everyone.filter((c) => c.status === s).length }));
+  const matching = everyone.filter((c) => (statuses.length === 0 || statuses.includes(c.status)) && matches(q, c.name, c.phone, c.email, c.status, (c.tags as string[]).join(" ")));
   const paged = paginate(matching, pageRaw, 25);
   const rows = paged.items;
 
@@ -22,11 +29,14 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
     <>
       <PageHeader title="Contacts" description="Everyone who has messaged your WhatsApp number." />
       <Notice code={notice} />
-      <SearchBox q={q} placeholder="Search by name, phone, email, status or tag" />
+      <div className="filters">
+        <MultiSelectFilter action="/dashboard/contacts" options={options} selected={statuses} hidden={{ q }} />
+        <SearchBox q={q} placeholder="Search by name, phone, email, status or tag" keep={{ status: explicit ? statuses : [] }} />
+      </div>
       {error ? <ErrorState>Your contacts could not be loaded.</ErrorState> : (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Tags</th><th>Added</th></tr></thead>
+            <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Tags</th><th>Added</th><th></th></tr></thead>
             <tbody>
               {rows.map((c) => {
                 const pending = Object.keys((c.suggested as object) ?? {}).length;
@@ -41,12 +51,13 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
                     <td><Badge tone={STATUS_TONE[c.status] ?? "muted"}>{c.status}</Badge></td>
                     <td>{(c.tags as string[]).join(", ") || "-"}</td>
                     <td>{fmtDay(c.created_at)}</td>
+                    <td><Link className="btn btn-secondary btn-sm" href={`/dashboard/contacts/${c.id}#edit`}>Edit</Link></td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={6}>
-                  {q
+                <tr><td colSpan={7}>
+                  {q || explicit
                     ? <EmptyState icon="search" title="No matching contacts" action={{ href: "/dashboard/contacts", label: "Clear search" }}>Nothing matches &quot;{q}&quot;.</EmptyState>
                     : <EmptyState icon="users" title="No contacts yet">People are added automatically when they message you.</EmptyState>}
                 </td></tr>
@@ -55,7 +66,7 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
           </table>
         </div>
       )}
-      {!error && <Pagination p={paged} label="Contacts" hrefFor={(n) => `/dashboard/contacts${buildQuery({ q, page: n > 1 ? n : null })}`} />}
+      {!error && <Pagination p={paged} label="Contacts" hrefFor={(n) => `/dashboard/contacts${buildQuery({ status: explicit ? statuses : [], q, page: n > 1 ? n : null })}`} />}
     </>
   );
 }

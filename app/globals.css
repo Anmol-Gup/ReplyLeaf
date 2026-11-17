@@ -325,3 +325,14 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-s
 .wf-body { margin-top: 16px; }
 .wf:not(.wf-on) { background: var(--surface-2); box-shadow: none; }
 @media (max-width: 640px) { .wf-head { flex-direction: column; } }
+
+/* ---- multi-select status filter ---- */
+.filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.filters .search { margin: 0; flex: 1 1 280px; }
+.msel { position: relative; }
+.msel > summary { list-style: none; cursor: pointer; }
+.msel > summary::-webkit-details-marker { display: none; }
+.msel[open] > summary { border-color: var(--ring); }
+.msel-panel { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 240px; display: grid; gap: 10px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgb(16 36 26 / 0.12); }
+.msel-panel fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.msel-panel .check input { flex: none; width: auto; }

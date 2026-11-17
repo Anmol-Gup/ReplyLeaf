@@ -70,7 +70,7 @@ export default async function ContactPage({
         )}
       </Card>
 
-      <Card title="Details">
+      <div id="edit"><Card title="Edit contact" description="Correct the name or email, set the status, add tags and private notes.">
         <form action={updateContact} className="stack">
           <input type="hidden" name="id" value={id} />
           <label className="field">Name<input name="name" defaultValue={c.name ?? ""} maxLength={100} /></label>
@@ -84,7 +84,7 @@ export default async function ContactPage({
           <label className="field">Notes<textarea name="notes" defaultValue={c.notes ?? ""} maxLength={2000} /></label>
           <div><SubmitButton pendingText="Saving...">Save changes</SubmitButton></div>
         </form>
-      </Card>
+      </Card></div>
 
       <Card title="Delete this person's data" description="Permanently deletes this contact, their conversation and messages. Use it when someone asks for their data to be erased. It cannot be undone.">
         <form action={deleteContact} className="row">

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import MultiSelectFilter from "../../../components/MultiSelectFilter";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { clip, fmtDay, matches } from "../../../lib/dashboard";
+import { effectiveSelection } from "../../../lib/filters";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import { isOpenTicket, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketOverview, ticketRef, type TicketStatus } from "../../../lib/tickets";
 import Notice from "../Notice";
@@ -12,9 +14,10 @@ type Row = {
   status: TicketStatus; assigned_to: string | null; created_at: string;
 };
 
-export default async function Tickets({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string; page?: string }> }) {
+export default async function Tickets({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; page?: string }> }) {
   const { notice, q, status: statusRaw, page: pageRaw } = await searchParams;
-  const status = statusRaw === "all" || (TICKET_STATUSES as readonly string[]).includes(statusRaw ?? "") ? (statusRaw as string) : "open_all";
+  // Nothing chosen = the tickets that still need work.
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, TICKET_STATUSES, TICKET_STATUSES.filter((s) => isOpenTicket(s)));
   const { db } = await requireClient(); // RLS: only this business's rows can come back
 
   const { data, error } = await db.from("tickets")
@@ -22,13 +25,12 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
     .order("created_at", { ascending: false }).limit(500);
   const all = (data ?? []) as Row[];
   const o = ticketOverview(all);
-  const count = (k: string) => k === "all" ? all.length : k === "open_all" ? all.filter((r) => isOpenTicket(r.status)).length : all.filter((r) => r.status === k).length;
+  const options = TICKET_STATUSES.map((s) => ({ value: s as string, label: TICKET_LABELS[s], count: all.filter((r) => r.status === s).length }));
 
   const matching = all.filter((r) =>
-    (status === "all" || (status === "open_all" ? isOpenTicket(r.status) : r.status === status)) &&
+    statuses.includes(r.status) &&
     matches(q, r.customer_name, r.customer_phone, r.subject, r.category, r.assigned_to, ticketRef(r.id), TICKET_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
-  const tabs = [{ key: "open_all", label: "All open" }, ...TICKET_STATUSES.map((s) => ({ key: s as string, label: TICKET_LABELS[s] })), { key: "all", label: "Everything" }];
 
   return (
     <>
@@ -40,15 +42,10 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
         <Stat value={o.urgent} label="Urgent and open" />
         <Stat value={o.done} label="Resolved or closed" />
       </div>
-      <nav className="tabs" aria-label="Filter by status">
-        {tabs.map((t) => (
-          <Link key={t.key} href={`/dashboard/tickets${buildQuery({ status: t.key === "open_all" ? null : t.key, q })}`}
-            className={`tab${status === t.key ? " active" : ""}`} aria-current={status === t.key ? "page" : undefined}>
-            {t.label} <span className="tab-count">{count(t.key)}</span>
-          </Link>
-        ))}
-      </nav>
-      <SearchBox q={q} placeholder="Search by name, phone, issue, category, reference or assignee" />
+      <div className="filters">
+        <MultiSelectFilter action="/dashboard/tickets" options={options} selected={statuses} hidden={{ q }} />
+        <SearchBox q={q} placeholder="Search by name, phone, issue, category, reference or assignee" keep={{ status: explicit ? statuses : [] }} />
+      </div>
       {error ? <ErrorState>Your tickets could not be loaded.</ErrorState> : (
         <div className="table-wrap">
           <table>
@@ -67,7 +64,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
               ))}
               {paged.items.length === 0 && (
                 <tr><td colSpan={7}>
-                  {q || status !== "open_all"
+                  {q || explicit
                     ? <EmptyState icon="search" title="No matching tickets" action={{ href: "/dashboard/tickets", label: "Show open tickets" }}>Nothing matches this view.</EmptyState>
                     : <EmptyState icon="shield" title="No open tickets">When a customer reports a problem, the assistant collects the details and the ticket appears here.</EmptyState>}
                 </td></tr>
@@ -76,7 +73,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
           </table>
         </div>
       )}
-      {!error && <Pagination p={paged} label="Tickets" hrefFor={(n) => `/dashboard/tickets${buildQuery({ status: status === "open_all" ? null : status, q, page: n > 1 ? n : null })}`} />}
+      {!error && <Pagination p={paged} label="Tickets" hrefFor={(n) => `/dashboard/tickets${buildQuery({ status: explicit ? statuses : [], q, page: n > 1 ? n : null })}`} />}
     </>
   );
 }

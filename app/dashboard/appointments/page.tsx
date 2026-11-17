@@ -1,29 +1,24 @@
 import Link from "next/link";
+import MultiSelectFilter from "../../../components/MultiSelectFilter";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { fmtDay, matches } from "../../../lib/dashboard";
-import { isUpcoming, overview, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentStatus } from "../../../lib/appointments";
+import { effectiveSelection } from "../../../lib/filters";
+import { APPOINTMENT_STATUSES, isUpcoming, overview, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentStatus } from "../../../lib/appointments";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
-
-const FILTERS = [
-  { key: "action", label: "Needs action" },
-  { key: "upcoming", label: "Upcoming" },
-  { key: "confirmed", label: "Confirmed" },
-  { key: "closed", label: "Rejected / cancelled" },
-  { key: "completed", label: "Completed" },
-  { key: "all", label: "All" },
-] as const;
 
 type Row = {
   id: string; customer_name: string | null; customer_phone: string; purpose: string; preferred_date: string | null; preferred_time: string | null;
   scheduled_date: string | null; scheduled_time: string | null; status: AppointmentStatus; created_at: string;
 };
 
-export default async function Appointments({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; view?: string; page?: string }> }) {
-  const { notice, q, view: viewRaw, page: pageRaw } = await searchParams;
-  const view = FILTERS.some((f) => f.key === viewRaw) ? (viewRaw as string) : "action";
+export default async function Appointments({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; upcoming?: string; page?: string }> }) {
+  const { notice, q, status: statusRaw, upcoming: upcomingRaw, page: pageRaw } = await searchParams;
+  // Nothing chosen = the requests that are waiting for you.
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, APPOINTMENT_STATUSES, ["pending", "reschedule_requested"]);
+  const onlyUpcoming = upcomingRaw === "1";
   const { db } = await requireClient(); // RLS: only this business's rows can come back
   const today = new Date().toISOString().slice(0, 10);
 
@@ -32,30 +27,12 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
     .order("created_at", { ascending: false }).limit(500);
   const all = (data ?? []) as Row[];
   const o = overview(all, today);
-  const inView = (r: Row) => {
-    switch (view) {
-      case "action": return r.status === "pending" || r.status === "reschedule_requested";
-      case "upcoming": return isUpcoming(r, today);
-      case "confirmed": return r.status === "confirmed";
-      case "closed": return r.status === "rejected" || r.status === "cancelled";
-      case "completed": return r.status === "completed";
-      default: return true;
-    }
-  };
-  const counts: Record<string, number> = {};
-  for (const f of FILTERS) counts[f.key] = f.key === "all" ? all.length : all.filter((r) => {
-    switch (f.key) {
-      case "action": return r.status === "pending" || r.status === "reschedule_requested";
-      case "upcoming": return isUpcoming(r, today);
-      case "confirmed": return r.status === "confirmed";
-      case "closed": return r.status === "rejected" || r.status === "cancelled";
-      default: return r.status === "completed";
-    }
-  }).length;
+  const options = APPOINTMENT_STATUSES.map((st) => ({ value: st as string, label: STATUS_LABELS[st], count: all.filter((r) => r.status === st).length }));
 
-  const matching = all.filter((r) => inView(r) && matches(q, r.customer_name, r.customer_phone, r.purpose, r.preferred_date, r.preferred_time, STATUS_LABELS[r.status]));
+  const matching = all.filter((r) => statuses.includes(r.status) && (!onlyUpcoming || isUpcoming(r, today)) && matches(q, r.customer_name, r.customer_phone, r.purpose, r.preferred_date, r.preferred_time, STATUS_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
-  const href = (n: number) => `/dashboard/appointments${buildQuery({ view: view === "action" ? null : view, q, page: n > 1 ? n : null })}`;
+  const keepStatus = explicit ? statuses : [];
+  const href = (n: number) => `/dashboard/appointments${buildQuery({ status: keepStatus, upcoming: onlyUpcoming ? "1" : null, q, page: n > 1 ? n : null })}`;
 
   return (
     <>
@@ -67,15 +44,12 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
         <Stat value={o.confirmed} label="Confirmed in total" />
         <Stat value={o.closed} label="Rejected or cancelled" />
       </div>
-      <nav className="tabs" aria-label="Filter appointments">
-        {FILTERS.map((f) => (
-          <Link key={f.key} href={`/dashboard/appointments${buildQuery({ view: f.key === "action" ? null : f.key, q })}`}
-            className={`tab${view === f.key ? " active" : ""}`} aria-current={view === f.key ? "page" : undefined}>
-            {f.label} <span className="tab-count">{counts[f.key]}</span>
-          </Link>
-        ))}
-      </nav>
-      <SearchBox q={q} placeholder="Search by name, phone, purpose or date" />
+      <div className="filters">
+        <MultiSelectFilter action="/dashboard/appointments" options={options} selected={statuses} hidden={{ q, upcoming: onlyUpcoming ? "1" : undefined }} />
+        <Link className={`tab${onlyUpcoming ? " active" : ""}`} aria-pressed={onlyUpcoming}
+          href={`/dashboard/appointments${buildQuery({ status: keepStatus, upcoming: onlyUpcoming ? null : "1", q })}`}>Upcoming only</Link>
+        <SearchBox q={q} placeholder="Search by name, phone, purpose or date" keep={{ status: keepStatus, upcoming: onlyUpcoming ? "1" : undefined }} />
+      </div>
       {error ? <ErrorState>Your appointments could not be loaded.</ErrorState> : (
         <div className="table-wrap">
           <table>
@@ -92,7 +66,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
               ))}
               {paged.items.length === 0 && (
                 <tr><td colSpan={5}>
-                  {q || view !== "action"
+                  {q || explicit || onlyUpcoming
                     ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/appointments", label: "Show requests that need action" }}>No appointments match this view.</EmptyState>
                     : <EmptyState icon="calendar" title="No requests waiting">When a customer asks to book and no booking link is set, the assistant collects the details and the request appears here.</EmptyState>}
                 </td></tr>

@@ -15,9 +15,12 @@ export function paginate<T>(all: T[], rawPage: unknown, size: number): Page<T> {
 }
 
 /** "?a=1&b=2", leaving out empty values. Returns "" when nothing is left. */
-export function buildQuery(params: Record<string, string | number | null | undefined>): string {
+export function buildQuery(params: Record<string, string | number | string[] | null | undefined>): string {
   const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  for (const [k, v] of Object.entries(params)) {
+    if (Array.isArray(v)) for (const item of v) { if (item !== "") q.append(k, item); } // ?status=new&status=won
+    else if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  }
   const s = q.toString();
   return s ? `?${s}` : "";
 }
