@@ -38,7 +38,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: "project enquiry",
-    lines: ["I need an e-commerce website for my handmade candle shop", "I want to sell about 30 products with card payments, on Shopify if possible. Budget is around $4000 and I need it in 6 weeks.", "Yes, that summary is right"],
+    lines: ["I need an e-commerce website for my handmade candle shop", "I want to sell about 30 products with card payments, on Shopify if possible. Budget is around $4000 and I need it in 6 weeks.", "My name is Priya", "Yes, that summary is right"],
     expect: ({ saved }) => {
       const l = saved.find((d) => d.kind === "lead");
       if (!l || l.kind !== "lead") return "no lead was saved after the customer confirmed";
