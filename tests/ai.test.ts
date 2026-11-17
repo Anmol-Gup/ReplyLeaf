@@ -125,6 +125,7 @@ test("retrieved knowledge is included, labelled, size-capped, and cannot close i
   assert.match(p, /Whitening costs \$180/);
   assert.equal(p.match(/<\/retrieved_knowledge>/g)?.length, 1);
   const huge = Array.from({ length: 50 }, (_, i) => ({ heading: null, content: `chunk ${i} ${"x".repeat(900)}` }));
-  assert.ok(buildSystemPrompt(client, huge).length < 16000);
+  // retrieved text is capped (about 7,000 characters) however much is found, whatever the size of the fixed rules
+  assert.ok(buildSystemPrompt(client, huge).length - buildSystemPrompt(client, []).length < 7500);
   assert.match(buildSystemPrompt(client, []), /no additional documents matched/);
 });

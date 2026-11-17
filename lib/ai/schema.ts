@@ -10,7 +10,7 @@ import { z } from "zod";
 // "two failed answers => human takeover" and for logging unanswered questions.
 export const INTENTS = ["question", "appointment_request", "project_enquiry", "support_issue", "human_needed", "other"] as const;
 export const FLOWS = ["appointment", "enquiry", "issue"] as const;
-export const STAGES = ["collecting", "awaiting_confirmation"] as const;
+export const STAGES = ["collecting", "awaiting_confirmation", "cancelled"] as const;
 export const ACTION_TYPES = ["none", "submit_appointment", "submit_lead", "submit_ticket"] as const;
 export const PRIORITIES = ["normal", "high"] as const;
 export const APPOINTMENT_TYPES = ["online", "in_person"] as const;
@@ -49,6 +49,7 @@ export const ReplySchema = z.object({
     budget: short(100),
     timeline: short(100),
     requirements: z.array(z.object({ key: z.string().trim().min(1).max(60), value: z.string().trim().min(1).max(300) })).max(15),
+    customer_name: short(100).optional(), // optional for the validator; the JSON schema below still asks for it
   }),
   // Everything known so far about a support problem the customer wants to raise.
   ticket: z.object({
@@ -57,6 +58,7 @@ export const ReplySchema = z.object({
     category: short(60),
     reference_info: short(100), // an order or invoice number, if they gave one
     priority: z.enum(PRIORITIES).nullable(),
+    customer_name: short(100).optional(), // optional for the validator; the JSON schema below still asks for it
   }),
   // The ONLY way a request gets saved. Needs customer_confirmed AND the server-side checks.
   action: z.object({
@@ -88,7 +90,7 @@ export const REPLY_JSON_SCHEMA = obj({
   summary: nullableString("One or two plain sentences telling the team what the customer needs (handoffs, project enquiries and support problems), based only on this conversation. Otherwise null."),
   workflow: obj({
     flow: nullableEnum(FLOWS, "The multi-step flow in progress: appointment, enquiry or issue, else null."),
-    stage: nullableEnum(STAGES, "collecting while details are missing; awaiting_confirmation once you have shown the customer a summary and asked them to confirm; else null."),
+    stage: nullableEnum(STAGES, "collecting while details are missing; awaiting_confirmation once you have shown the customer a summary and asked them to confirm; cancelled if the customer says they no longer want to go ahead; else null."),
   }),
   appointment: obj({
     purpose: nullableString("What the appointment is for, else null."),
@@ -109,13 +111,15 @@ export const REPLY_JSON_SCHEMA = obj({
       description: "Other structured details as key/value pairs, for example {key: 'platform', value: 'Shopify'}. Empty list if none.",
       items: obj({ key: { type: "string" }, value: { type: "string" } }),
     },
+    customer_name: nullableString("Customer's name if they gave it, else null."),
   }),
   ticket: obj({
     subject: nullableString("A short title for the problem, for example 'Order not delivered', else null."),
     description: nullableString("What went wrong and what the customer wants, in a few sentences, else null."),
     category: nullableString("A short category such as delivery, billing, product or account, else null."),
     reference_info: nullableString("An order or invoice number the customer gave, else null."),
-    priority: nullableEnum(PRIORITIES, "high only if the customer says it is urgent or time-critical, otherwise normal."),
+    priority: nullableEnum(PRIORITIES, "high only if the customer EXPLICITLY says it is urgent or time-critical; an ordinary complaint is normal."),
+    customer_name: nullableString("Customer's name if they gave it, else null."),
   }),
   action: obj({
     type: { type: "string", enum: [...ACTION_TYPES], description: "none unless the customer has just confirmed the summary you showed them." },

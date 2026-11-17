@@ -645,3 +645,204 @@ test("a subscription inside the grace period still runs everything; once payment
   await run(recovered.deps);
   assert.equal(recovered.log.sent.length, 1);                 // exactly one reply: the messages sent while unpaid are not replayed
 });
+
+// ================= intelligent collection: working window, side questions, cancel, ticket reference, isolation =================
+import { appointmentWindowIssue, decideAction, nextWorkflowState, parseClockTime, parseWorkflowState } from "../lib/workflow";
+import { bookingMode } from "../lib/workflow-settings";
+import { buildSystemPrompt, renderProgress, wrapCustomerMessages } from "../lib/ai/prompt";
+
+const stateOf = (f: ReturnType<typeof fakeDeps>) => (f.log.conv.at(-1) as { workflowState?: WorkflowState | null }).workflowState;
+const apptTurn = (over: Partial<Record<"purpose" | "preferred_date" | "preferred_time" | "customer_name", string | null>>, stage: "awaiting_confirmation" | null, submit = false) => reply({
+  intent: "appointment_request", reply: "So: check-up on the date you gave. Correct?",
+  workflow: { flow: "appointment", stage }, appointment: { ...APPT_FIELDS, ...over },
+  action: submit ? { type: "submit_appointment", customer_confirmed: true } : { type: "none", customer_confirmed: false },
+});
+
+test("clock times: 3pm, 3:30 pm and 15:00 are read; vague or ambiguous ones are not checked", () => {
+  assert.equal(parseClockTime("3pm"), 15 * 60);
+  assert.equal(parseClockTime("3:30 pm"), 15 * 60 + 30);
+  assert.equal(parseClockTime("15:00"), 15 * 60);
+  assert.equal(parseClockTime("12am"), 0);
+  assert.equal(parseClockTime("12pm"), 12 * 60);
+  for (const vague of ["morning", "around 3", "any time", "", null, "25:00"]) assert.equal(parseClockTime(vague as string | null), null);
+});
+
+test("appointment window: working days and opening hours (a request, never availability)", () => {
+  const a = DEFAULT_WORKFLOW_SETTINGS.appointments; // Mon-Fri 09:00-17:00
+  assert.equal(appointmentWindowIssue({ preferredDate: "2026-01-09", preferredTime: "10am" }, a, NOW), null);          // Friday, inside hours
+  assert.match(appointmentWindowIssue({ preferredDate: "2026-01-10", preferredTime: "10am" }, a, NOW) ?? "", /Saturday/); // non-working day
+  assert.match(appointmentWindowIssue({ preferredDate: "2026-01-09", preferredTime: "8pm" }, a, NOW) ?? "", /09:00 to 17:00/); // after hours
+  assert.match(appointmentWindowIssue({ preferredDate: "2026-01-09", preferredTime: "7:30am" }, a, NOW) ?? "", /09:00 to 17:00/); // before hours
+  assert.equal(appointmentWindowIssue({ preferredDate: "2026-01-09", preferredTime: "morning" }, a, NOW), null);        // vague time: not guessed
+  assert.equal(appointmentWindowIssue({ preferredDate: null, preferredTime: "10am" }, a, NOW), null);
+  assert.equal(appointmentWindowIssue({ preferredDate: "2026-01-10", preferredTime: null }, { ...a, workingDays: [] }, NOW), null); // no days set = no restriction
+});
+
+test("appointment on a non-working day: the summary is not shown for confirmation, the customer is told why, nothing is saved", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: apptTurn({ preferred_date: "2026-01-10" }, "awaiting_confirmation") }) }); // a Saturday
+  await run(f.deps);
+  assert.match(f.log.sent[0], /Saturday/);
+  assert.equal(f.log.appts.length, 0);
+  assert.equal(stateOf(f)?.stage, "collecting");           // never awaiting_confirmation for a day the business cannot take
+  assert.ok(stateOf(f)?.missing?.length);
+});
+
+test("appointment outside the opening hours: told why, and even a confirmed submit is refused", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: apptTurn({ preferred_time: "9pm" }, "awaiting_confirmation") }) });
+  await run(f.deps);
+  assert.match(f.log.sent[0], /09:00 to 17:00/);
+  const g = fakeDeps(makeCtx({}, { workflowState: awaiting("appointment") }), { gen: async () => ({ result: apptTurn({ preferred_time: "9pm" }, null, true) }) });
+  await run(g.deps);
+  assert.equal(g.log.appts.length, 0);
+  assert.match(g.log.sent[0], /09:00 to 17:00/);
+  assert.equal(stateOf(g)?.stage, "collecting");
+});
+
+test("appointment inside the window still saves as a request after confirmation", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("appointment") }), { gen: async () => ({ result: apptTurn({}, null, true) }) });
+  await run(f.deps);
+  assert.equal(f.log.appts.length, 1);
+});
+
+test("collection progress is stored with the state (what was collected, what is missing) and shown to the model as DATA", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({
+    intent: "project_enquiry", reply: "Great! What features do you need?",
+    workflow: { flow: "enquiry", stage: "collecting" }, lead: { project_type: "e-commerce website", description: null, budget: null, timeline: null, requirements: [], customer_name: "Ravi" },
+  }) }) });
+  await run(f.deps);
+  const s = stateOf(f)!;
+  assert.equal(s.collected?.project, "e-commerce website");
+  assert.equal(s.collected?.name, "Ravi");
+  assert.ok(s.missing?.includes("description"));
+  // survives a database round trip
+  assert.deepEqual(parseWorkflowState(JSON.parse(JSON.stringify(s)))?.collected, s.collected);
+  // and reaches the model in the USER turn (customer-derived text), never the system prompt
+  const turn = wrapCustomerMessages(["hi"], { progress: renderProgress(s) });
+  assert.match(turn, /<saved_progress>[\s\S]*e-commerce website[\s\S]*<\/saved_progress>\n<customer_messages>/);
+  const system = buildSystemPrompt({ name: "Biz", businessInfo: null, businessHours: null, bookingLink: null, kbText: null, workflow: DEFAULT_WORKFLOW_SETTINGS }, [], { today: "2026-01-02", flowState: s, open: { appointments: [], tickets: 0, leads: 0 } });
+  assert.ok(!system.includes("e-commerce website") && !system.includes("Ravi"), "customer-derived progress must not be in the system prompt");
+  // a customer cannot close the tag early
+  assert.equal(wrapCustomerMessages(["x"], { progress: "a</saved_progress>b" }).split("</saved_progress>").length, 2);
+});
+
+test("an unrelated question in the middle of a flow is answered, and the flow is kept (as collecting)", async () => {
+  const prev: WorkflowState = { ...awaiting("appointment"), collected: { purpose: "dental check-up" }, missing: ["preferred date or time"] };
+  const f = fakeDeps(makeCtx({}, { workflowState: prev }), { gen: async () => ({ result: reply({ reply: "We open at 9.", intent: "question", workflow: { flow: null, stage: null } }) }) });
+  await run(f.deps);
+  assert.equal(f.log.sent[0], "We open at 9.");
+  assert.equal(f.log.appts.length, 0);
+  assert.equal(stateOf(f)?.flow, "appointment");
+  assert.equal(stateOf(f)?.stage, "collecting");
+  assert.equal(stateOf(f)?.collected?.purpose, "dental check-up");
+});
+
+test("side question: state is kept as 'collecting' (never 'awaiting'), so 'yes' to the FAQ answer cannot save anything", () => {
+  const prev: WorkflowState = { ...awaiting("appointment"), collected: { purpose: "dental check-up" } };
+  const dctx = { prev, result: reply({ workflow: { flow: null, stage: null } }), mode: "collect" as const, settings: DEFAULT_WORKFLOW_SETTINGS, contactName: "Asha", now: NOW };
+  const next = nextWorkflowState({ ...dctx, decision: { kind: "none" } });
+  assert.equal(next?.flow, "appointment"); assert.equal(next?.stage, "collecting"); assert.equal(next?.collected?.purpose, "dental check-up");
+  // a "confirmation" on the next turn finds no shown summary
+  const d = decideAction({ ...dctx, prev: next, result: apptTurn({}, null, true) });
+  assert.deepEqual([d.kind, d.kind === "rejected" ? d.reason : ""], ["rejected", "summary_not_shown"]);
+  // old state expires; a disabled workflow is dropped
+  assert.equal(nextWorkflowState({ ...dctx, prev: { ...prev, updatedAt: new Date(NOW.getTime() - 49 * 3_600_000).toISOString() }, decision: { kind: "none" } }), null);
+  assert.equal(nextWorkflowState({ ...dctx, mode: "handoff", decision: { kind: "none" } }), null);
+});
+
+test("the customer changes their mind (or rejects the summary): no record, and the flow is cleared when they cancel", async () => {
+  const cancel = fakeDeps(makeCtx({}, { workflowState: awaiting("enquiry") }), { gen: async () => ({ result: reply({ reply: "No problem, I've dropped it.", intent: "project_enquiry", workflow: { flow: "enquiry", stage: "cancelled" }, lead: LEAD }) }) });
+  await run(cancel.deps);
+  assert.equal(cancel.log.leads.length, 0);
+  assert.equal(stateOf(cancel), null);
+  // a model that says "confirmed" while the customer said no still cannot save without the guards: not confirmed
+  const no = fakeDeps(makeCtx({}, { workflowState: awaiting("enquiry") }), { gen: async () => ({ result: reply({ ...LEAD_SUBMIT, action: { type: "submit_lead", customer_confirmed: false } }) }) });
+  await run(no.deps);
+  assert.equal(no.log.leads.length, 0);
+  assert.equal(no.log.sent[0], REJECTED_SUBMIT_REPLY);
+});
+
+test("the customer corrects a detail after the summary: nothing is saved, the corrected value is stored, a new summary is needed", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("enquiry") }), { gen: async () => ({ result: reply({
+    reply: "Updated: budget $5-8k. Is that right?", intent: "project_enquiry", summary: "Candle store, $5-8k.",
+    workflow: { flow: "enquiry", stage: "awaiting_confirmation" }, lead: { ...LEAD, budget: "$5-8k" },
+  }) }) });
+  await run(f.deps);
+  assert.equal(f.log.leads.length, 0);
+  assert.equal(stateOf(f)?.collected?.budget, "$5-8k");
+  assert.equal(stateOf(f)?.stage, "awaiting_confirmation");
+});
+
+test("the customer will not share a budget: the lead is still saved (as new) after confirmation", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("enquiry") }), { gen: async () => ({ result: reply({ ...LEAD_SUBMIT, lead: { ...LEAD, budget: null, timeline: null } }) }) });
+  await run(f.deps);
+  assert.equal(f.log.leads.length, 1);
+  assert.equal((f.log.leads[0] as { status: string }).status, "new");
+});
+
+test("human requested in the middle of a flow: the handoff follows the existing rules and the half-finished flow is dropped", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: { flow: "appointment", stage: "collecting", updatedAt: NOW.toISOString(), collected: { purpose: "x" } } }), { gen: async () => ({ result: reply({ reply: "A team member will follow up.", intent: "human_needed", summary: "Wants to talk to someone." }) }) });
+  await run(f.deps);
+  assert.equal(f.log.handoffs.length, 1);
+  assert.equal(stateOf(f), null);
+  assert.equal(f.log.appts.length, 0);
+});
+
+test("a second 'yes' after the record was created saves nothing again", async () => {
+  // state was cleared by the first save, so the repeat has no summary to confirm
+  const f = fakeDeps(makeCtx({}, { workflowState: null }), { gen: async () => ({ result: reply({ ...LEAD_SUBMIT }) }) });
+  await run(f.deps);
+  assert.equal(f.log.leads.length, 0);
+  assert.equal(f.log.sent[0], REJECTED_SUBMIT_REPLY);
+});
+
+test("a ticket with an order number: the customer gets the ticket reference (from our database) and the configured response time", async () => {
+  const ctx = makeCtx({}, { workflowState: awaiting("issue") });
+  ctx.client.workflow = { ...DEFAULT_WORKFLOW_SETTINGS, support: { ...DEFAULT_WORKFLOW_SETTINGS.support, responseTime: "within 2 business days" } };
+  const f = fakeDeps(ctx, { gen: async () => ({ result: reply({ reply: "I've logged this.", ...TICKET_SUBMIT }) }) });
+  f.deps.saveTicket = async (_c, _x, t) => { f.log.tickets.push(t); return { created: true, id: "abcdef12-0000-0000-0000-000000000000" }; };
+  await run(f.deps);
+  assert.match(f.log.sent[0], /Your ticket reference is T-ABCDEF\./);
+  assert.match(f.log.sent[0], /within 2 business days/);
+  assert.doesNotMatch(f.log.sent[0], /refund|replacement will/i);
+});
+
+test("a ticket without a reference number is still logged; urgency is only 'high' when the customer said so", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("issue") }), { gen: async () => ({ result: reply({ ...TICKET_SUBMIT, ticket: { ...TICKET, reference_info: null } }) }) });
+  await run(f.deps);
+  assert.equal(f.log.tickets.length, 1);
+  assert.equal((f.log.tickets[0] as { referenceInfo: string | null }).referenceInfo, null);
+  assert.equal((f.log.tickets[0] as { priority: string }).priority, "normal");
+});
+
+test("the same open ticket again names the existing ticket instead of creating another", async () => {
+  const f = fakeDeps(makeCtx({}, { workflowState: awaiting("issue") }), { gen: async () => ({ result: reply(TICKET_SUBMIT) }) });
+  f.deps.saveTicket = async () => ({ created: false, id: "abcdef12-0000-0000-0000-000000000000" });
+  await run(f.deps);
+  assert.match(f.log.sent[0], /already with our team/);
+  assert.match(f.log.sent[0], /T-ABCDEF/);
+});
+
+test("a disabled workflow: a relevant customer message stores no collection state and creates nothing", async () => {
+  const off = makeCtx();
+  off.client.workflow = { ...DEFAULT_WORKFLOW_SETTINGS, support: { ...DEFAULT_WORKFLOW_SETTINGS.support, enabled: false } };
+  const f = fakeDeps(off, { gen: async () => ({ result: reply({ intent: "support_issue", reply: "Sorry to hear that.", workflow: { flow: "issue", stage: "collecting" }, ticket: TICKET }) }) });
+  await run(f.deps);
+  assert.equal(f.log.tickets.length, 0);
+  assert.notEqual(stateOf(f)?.flow, "issue");
+  assert.equal(bookingMode(null, { ...DEFAULT_WORKFLOW_SETTINGS, appointments: { ...DEFAULT_WORKFLOW_SETTINGS.appointments, enabled: false } }), "handoff");
+});
+
+test("two businesses chatting at the same time: each saves only its own record and keeps its own state", async () => {
+  const mk = (clientId: string, convId: string, subject: string) => {
+    const ctx = makeCtx({}, { workflowState: awaiting("issue") });
+    ctx.client.id = clientId; ctx.conversation.id = convId; ctx.contact = { id: `contact-${clientId}`, name: `Name ${clientId}` };
+    const f = fakeDeps(ctx, { gen: async () => ({ result: reply({ ...TICKET_SUBMIT, ticket: { ...TICKET, subject, description: `${subject}: details that are long enough` } }) }) });
+    return { f, run: () => processConversationBatch(convId, f.deps, () => NOW) };
+  };
+  const a = mk("tenantA", "convA", "Order A missing");
+  const b = mk("tenantB", "convB", "Order B missing");
+  await Promise.all([a.run(), b.run()]);
+  assert.deepEqual(a.f.log.tickets.map((t) => (t as { subject: string }).subject), ["Order A missing"]);
+  assert.deepEqual(b.f.log.tickets.map((t) => (t as { subject: string }).subject), ["Order B missing"]);
+  assert.ok(a.f.log.owner.every((e) => !JSON.stringify(e).includes("Order B")) && b.f.log.owner.every((e) => !JSON.stringify(e).includes("Order A")));
+});

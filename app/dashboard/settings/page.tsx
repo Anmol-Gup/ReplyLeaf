@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SubmitButton from "../../../components/SubmitButton";
+import TimezoneSelect from "../../../components/TimezoneSelect";
 import WorkflowCard from "../../../components/WorkflowCard";
 import { Alert, Badge, Card, PageHeader } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -11,6 +12,10 @@ import { fmt } from "../../../lib/dashboard";
 import { assistantSetup, parseTab, SETTINGS_TABS } from "../../../lib/settings-tabs";
 import { removeAiKey, saveAiKey, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
 import { parseWorkflowSettings, WEEKDAYS, WEEKDAY_LABELS } from "../../../lib/workflow-settings";
+
+// Every IANA zone this server knows (Node 20+). A zone saved earlier that is missing here is still listed.
+// Some systems list "Asia/Calcutta" and not "Asia/Kolkata", so the common names are added explicitly.
+const TIME_ZONES = [...new Set(["UTC", "Asia/Kolkata", ...Intl.supportedValuesOf("timeZone")])].sort();
 
 // Settings are split into tabs (?tab=ai|workflows|notifications|whatsapp), each with ONE save button
 // (the AI tab has its own small forms because the key is handled separately and never read back).
@@ -130,49 +135,47 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             always={<label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book, instead of collecting a request. Works even if appointment requests are off.</span>
               <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
             </label>}
-            description="Used when no booking link is set. The assistant collects a request and you confirm it on the Appointments page. If a booking link is set, it shares the link instead.">
+            description="With no booking link, the assistant collects the appointment details from the customer by itself (what it is for, preferred date and time, name), checks them against your working days and hours, and sends you a pending request to accept or reject on the Appointments page. With a booking link, it shares the link instead.">
 
             <fieldset className="field"><legend>Working days <span className="hint">Information for the assistant. It never promises that a time is free: there is no calendar connection.</span></legend>
               <div className="row">
                 {WEEKDAYS.map((d) => <label key={d} className="check"><input type="checkbox" name={`day_${d}`} defaultChecked={w.appointments.workingDays.includes(d)} /> {WEEKDAY_LABELS[d]}</label>)}
               </div>
             </fieldset>
+            <label className="field">Time zone <span className="hint">Your opening hours and &quot;today&quot; are in this zone. The assistant uses it to understand dates like &quot;tomorrow&quot;.</span>
+              <TimezoneSelect name="timezone" defaultValue={w.appointments.timezone} zones={[...new Set([...(w.appointments.timezone ? [w.appointments.timezone] : []), ...TIME_ZONES])].sort()} />
+            </label>
             <div className="row">
               <label className="field">Opens <input type="time" name="open_time" defaultValue={w.appointments.openTime} /></label>
               <label className="field">Closes <input type="time" name="close_time" defaultValue={w.appointments.closeTime} /></label>
-              <label className="field">Appointment length (minutes) <input type="number" name="appointment_duration" min={5} max={480} defaultValue={w.appointments.durationMinutes ?? ""} /></label>
-              <label className="field">Minimum notice (hours) <input type="number" name="appointment_notice" min={0} max={720} defaultValue={w.appointments.minNoticeHours} /></label>
             </div>
-            <label className="field">Instructions for the assistant <span className="hint">For example: ask which service they want, or whether they are a new patient.</span>
+            <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
               <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
             </label>
                     </WorkflowCard>
           <WorkflowCard name="enquiries_enabled" title="Project enquiries" switchLabel="Collect project enquiries" defaultChecked={w.enquiries.enabled}
-            description="When a customer asks about a project or service, the assistant asks the relevant questions, shows a summary, and saves a lead after the customer confirms.">
+            description="When a customer asks about a project or service, the assistant works out what it needs to know (service, description, key requirements, budget and timeline when relevant), asks naturally, shows a summary, and saves a lead only after the customer confirms. You do not need to list the questions.">
 
-            <label className="field">Services you offer <span className="hint">One per line. The assistant will not offer anything that is not listed.</span>
+            <label className="field">Services you offer <span className="hint">Helps the assistant understand what your business provides. One per line. It will not offer anything that is not listed.</span>
               <textarea name="services" rows={4} defaultValue={w.enquiries.services.join("\n")} placeholder={"Website design\nMobile apps"} />
             </label>
-            <label className="field">Questions you always want answered <span className="hint">One per line, asked only where relevant.</span>
+            <label className="field">Custom questions (optional) <span className="hint">Your own qualifying questions, one per line, asked only where relevant. The assistant already knows how to collect standard project details, so you only add what is specific to your business.</span>
               <textarea name="questions" rows={3} defaultValue={w.enquiries.questions.join("\n")} />
             </label>
-            <label className="field">Budget ranges to offer <span className="hint">One per line, for example "Under $1,000".</span>
-              <textarea name="budget_ranges" rows={3} defaultValue={w.enquiries.budgetRanges.join("\n")} />
-            </label>
-            <label className="field">Instructions for the assistant
+            <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it.</span>
               <textarea name="enquiry_instructions" rows={3} maxLength={1000} defaultValue={w.enquiries.instructions} />
             </label>
                     </WorkflowCard>
           <WorkflowCard name="support_enabled" title="Tickets" switchLabel="Log tickets" defaultChecked={w.support.enabled}
-            description="When a customer reports a problem (for example an order that didn't arrive), the assistant collects the details, shows a summary, and logs a ticket after the customer confirms. It never promises a refund or a fix.">
+            description="When a customer reports a problem (for example an order that didn't arrive), the assistant collects what the team needs (what went wrong, an order or reference number, context), shows a summary, and logs a ticket after the customer confirms. It then gives the customer the ticket number. It never promises a refund or a fix, and only marks a ticket urgent if the customer says so.">
 
-            <label className="field">Categories <span className="hint">One per line, for example "Delivery" or "Billing". The assistant picks one if it fits.</span>
+            <label className="field">Categories (optional) <span className="hint">One per line, for example "Delivery" or "Billing". The assistant picks one if it fits.</span>
               <textarea name="support_categories" rows={3} defaultValue={w.support.categories.join("\n")} />
             </label>
             <label className="field">Expected response time <span className="hint">The assistant may tell customers this. Leave empty and it promises no time.</span>
               <input name="support_response_time" maxLength={100} defaultValue={w.support.responseTime} placeholder="within 2 business days" />
             </label>
-            <label className="field">Instructions for the assistant <span className="hint">For example: always ask for the order number.</span>
+            <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour. For example: always ask for the order number.</span>
               <textarea name="support_instructions" rows={3} maxLength={1000} defaultValue={w.support.instructions} />
             </label>
                     </WorkflowCard>

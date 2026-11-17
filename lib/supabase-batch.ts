@@ -1,10 +1,10 @@
 import { aiConfig } from "./ai/config";
 import { generateReply } from "./ai/generate-reply";
-import { buildSystemPrompt, wrapCustomerMessages } from "./ai/prompt";
+import { buildSystemPrompt, renderProgress, wrapCustomerMessages } from "./ai/prompt";
 import { retrieveKnowledge } from "./kb/retrieve";
 import type { ChatTurn, Provider } from "./ai/providers";
 import type { BatchContext, BatchDeps } from "./batch";
-import { appointmentDedupeKey, parseWorkflowState } from "./workflow";
+import { appointmentDedupeKey, parseWorkflowState, todayInZone } from "./workflow";
 import { KEY_EMAIL_INTERVAL_MS, type AiMode, type KeyStatus } from "./ai-keys";
 import { billingEnforced, computeAccess, type SubscriptionRow } from "./billing/access";
 import { decryptSecret } from "./crypto";
@@ -157,12 +157,12 @@ export function supabaseBatchDeps(): BatchDeps {
         provider: ctx.client.aiProvider,
         config,
         system: buildSystemPrompt(ctx.client, retrieved, {
-          today: new Date().toISOString().slice(0, 10),
+          today: todayInZone(new Date(), ctx.client.workflow.appointments.timezone),
           flowState: ctx.conversation.workflowState,
           open: ctx.open,
         }),
         history: ctx.history,
-        userTurn: wrapCustomerMessages(customerLines, { hasUnreadableMedia }),
+        userTurn: wrapCustomerMessages(customerLines, { hasUnreadableMedia, progress: renderProgress(ctx.conversation.workflowState, ctx.contact.name) }),
       });
     },
 
@@ -237,7 +237,7 @@ export function supabaseBatchDeps(): BatchDeps {
       });
       if (error) throw new Error(`create_ticket failed: ${error.message}`);
       const row = Array.isArray(data) ? data[0] : data;
-      return { created: row?.out_created === true };
+      return { created: row?.out_created === true, id: typeof row?.out_id === "string" ? row.out_id : undefined };
     },
 
     async saveLead(clientId, ctx, l) {

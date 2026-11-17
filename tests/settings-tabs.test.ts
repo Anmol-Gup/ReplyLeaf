@@ -36,13 +36,34 @@ test("workflow settings: a disabled workflow keeps its saved fields when the for
     support_categories: "Delivery\nBilling", support_response_time: "within 2 days", support_instructions: "ask for order number",
     services: "Websites\nApps", questions: "Timeline?", enquiry_instructions: "be brief",
     availability: "Mon-Fri 9-6", response_time: "1 day", escalation_instructions: "refunds",
-    open_time: "10:00", close_time: "18:00", appointment_duration: "30", appointment_notice: "4", appointment_instructions: "new patient?", day_mon: "on", day_tue: "on",
+    open_time: "10:00", close_time: "18:00", appointment_instructions: "new patient?", day_mon: "on", day_tue: "on",
   };
   const s = parseWorkflowSettings(formToWorkflowInput((n) => posted[n] ?? null));
   assert.equal(s.support.enabled, false); assert.deepEqual(s.support.categories, ["Delivery", "Billing"]); assert.equal(s.support.responseTime, "within 2 days");
   assert.equal(s.enquiries.enabled, false); assert.deepEqual(s.enquiries.services, ["Websites", "Apps"]);
   assert.equal(s.handoff.enabled, false); assert.equal(s.handoff.availability, "Mon-Fri 9-6");
-  assert.equal(s.appointments.enabled, false); assert.equal(s.appointments.openTime, "10:00"); assert.equal(s.appointments.durationMinutes, 30);
+  assert.equal(s.appointments.enabled, false); assert.equal(s.appointments.openTime, "10:00");
   assert.deepEqual(s.appointments.workingDays, ["mon", "tue"]);
   assert.notDeepEqual(s, DEFAULT_WORKFLOW_SETTINGS);
+});
+
+test("business time zone: validated, saved from the form, and used for 'today'", async () => {
+  const { todayInZone, validPreferredDate } = await import("../lib/workflow");
+  const { workflowSettingsSchema } = await import("../lib/workflow-settings");
+  const post = (tz: string | null) => parseWorkflowSettings(formToWorkflowInput((n) => (n === "timezone" ? tz : null)));
+  assert.equal(post("Asia/Kolkata").appointments.timezone, "Asia/Kolkata");
+  assert.equal(post("").appointments.timezone, null);       // "Not set"
+  assert.equal(post(null).appointments.timezone, null);
+  assert.equal(workflowSettingsSchema.safeParse(formToWorkflowInput((n) => (n === "timezone" ? "Mars/Olympus" : null))).success, false);
+  assert.equal(DEFAULT_WORKFLOW_SETTINGS.appointments.timezone, null);
+  // 23:00 UTC on 2 Jan is already 3 Jan in Kolkata (UTC+5:30) and still 2 Jan in New York
+  const t = new Date("2026-01-02T23:00:00Z");
+  assert.equal(todayInZone(t, "Asia/Kolkata"), "2026-01-03");
+  assert.equal(todayInZone(t, "America/New_York"), "2026-01-02");
+  assert.equal(todayInZone(t, null), "2026-01-02");
+  assert.equal(todayInZone(t, "Not/AZone"), "2026-01-02");   // a bad stored value never throws
+  // "today" for the business decides what counts as the past
+  assert.equal(validPreferredDate("2026-01-02", t, "Asia/Kolkata"), null);
+  assert.equal(validPreferredDate("2026-01-03", t, "Asia/Kolkata"), "2026-01-03");
+  assert.equal(validPreferredDate("2026-01-02", t, null), "2026-01-02");
 });

@@ -1,9 +1,10 @@
 import { summaryOrFallback, SOURCE_LABELS, type HandoffSource } from "./handoff";
 import {
-  ACTION_FAILED_REPLY, ALREADY_SUBMITTED_REPLY, decideAction, nextWorkflowState, REJECTED_SUBMIT_REPLY,
+  ACTION_FAILED_REPLY, ALREADY_SUBMITTED_REPLY, appointmentWindowIssue, decideAction, nextWorkflowState, REJECTED_SUBMIT_REPLY, validateAppointment,
   type AppointmentInput, type Decision, type LeadInput, type TicketInput, type WorkflowState,
 } from "./workflow";
 import { bookingMode, type WorkflowSettings } from "./workflow-settings";
+import { ticketRef } from "./tickets";
 import { isAuthFailure, keyProblem, type AiMode, type KeyStatus } from "./ai-keys";
 import type { Access } from "./billing/access";
 import { z } from "zod";
@@ -89,7 +90,7 @@ export interface BatchDeps {
   /** Idempotent: the same enquiry for this conversation returns created=false. */
   saveLead(clientId: string, ctx: BatchContext, l: LeadInput): Promise<{ created: boolean }>;
   /** Idempotent: the same open issue for this conversation returns created=false. */
-  saveTicket(clientId: string, ctx: BatchContext, t: TicketInput): Promise<{ created: boolean }>;
+  saveTicket(clientId: string, ctx: BatchContext, t: TicketInput): Promise<{ created: boolean; id?: string }>;
   recordFailedUsage(clientId: string, usage: Usage, provider: Provider, model: string): Promise<void>;
   raiseAlert(clientId: string | null, kind: string, detail: string, opts?: { oncePerMonth?: boolean }): Promise<void>;
   /** Fills empty contact fields; differing values go to contacts.suggested for the owner to confirm. */
@@ -217,15 +218,24 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
   let failedSource: HandoffSource | null = null;
   if (decision.kind === "rejected") {
     console.warn("workflow action rejected", { clientId: client.id, flow: decision.flow, reason: decision.reason });
-    replyText = REJECTED_SUBMIT_REPLY;
+    // A request that does not fit the working days, hours or notice gets a specific answer; anything else asks for confirmation.
+    replyText = decision.customerMessage ?? REJECTED_SUBMIT_REPLY;
   } else if (decision.kind === "appointment" || decision.kind === "lead" || decision.kind === "ticket") {
     try {
       const saved = decision.kind === "appointment" ? await deps.saveAppointment(client.id, ctx, decision.value)
         : decision.kind === "ticket" ? await deps.saveTicket(client.id, ctx, decision.value)
         : await deps.saveLead(client.id, ctx, decision.value);
       created = saved.created;
+      const savedId = (saved as { id?: string }).id;
+      const ref = decision.kind === "ticket" && savedId ? ticketRef(savedId) : null;
       // The same request was already open (a repeat, or a retried delivery): say so instead of "submitted".
-      if (!created) replyText = ALREADY_SUBMITTED_REPLY;
+      if (!created) replyText = ref ? `${ALREADY_SUBMITTED_REPLY} (Ticket ${ref})` : ALREADY_SUBMITTED_REPLY;
+      else if (ref) {
+        // The ticket number comes from our database, never from the model. The response time is only what the owner configured.
+        const rt = client.workflow.support.responseTime.trim();
+        if (!replyText.includes(ref)) replyText += `\n\nYour ticket reference is ${ref}.`;
+        if (rt && !replyText.toLowerCase().includes(rt.toLowerCase())) replyText += ` Expected response time: ${rt}.`;
+      }
     } catch (e) {
       console.error("saving workflow request failed", errorText(e));
       try { await deps.raiseAlert(client.id, "workflow_save_failed", `${decision.kind}: ${errorText(e)}`); } catch { /* never throws here */ }
@@ -233,6 +243,12 @@ async function handleBatch(ctx: BatchContext, deps: BatchDeps, now: Date): Promi
       failedSource = "action_failed";
       decision = { kind: "none" };
     }
+  }
+  // The model showed a summary for a time the business cannot take: do not let the customer confirm it. Say why instead.
+  if (decision.kind === "none" && mode === "collect" && gen.result.workflow.flow === "appointment" && gen.result.workflow.stage === "awaiting_confirmation") {
+    const v = validateAppointment(gen.result.appointment, ctx.contact.name, now, client.workflow.appointments.timezone);
+    const issue = v.ok ? appointmentWindowIssue(v.value, client.workflow.appointments, now) : null;
+    if (issue) replyText = issue;
   }
   await sendGuarded(ctx, deps, now, replyText, { usage: gen.usage, provider: gen.provider, model: gen.model });
 
@@ -301,7 +317,8 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
   const source: HandoffSource = failedSource ?? (askedForHuman ? "customer_request" : bookingNeedsPerson ? "booking_without_link" : "failed_answers");
 
   // 1) The silence switch (it is what stops the assistant) and the workflow state, then 2) the record and the email.
-  const nextState = failedSource ? null : nextWorkflowState({ prev: conversation.workflowState, result, decision, mode, settings: client.workflow, contactName: contact.name, now });
+  // A chat handed to a person drops any half-finished collection (it would be stale when the assistant resumes).
+  const nextState = failedSource || handoff ? null : nextWorkflowState({ prev: conversation.workflowState, result, decision, mode, settings: client.workflow, contactName: contact.name, now });
   const stateChanged = JSON.stringify(nextState) !== JSON.stringify(conversation.workflowState);
   await safely(deps, client.id, "conversation", () => deps.updateConversation(client.id, conversation.id, {
     failedAnswerCount: failed,
