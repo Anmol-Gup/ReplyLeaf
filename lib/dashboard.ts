@@ -12,6 +12,7 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   published: { kind: "ok", text: "Published. The assistant can use this document now." },
   published_no_vectors: { kind: "warn", text: "Published, but the semantic-search index could not be built right now. Keyword search works; use Re-index later to add it." },
   reindexed: { kind: "ok", text: "Re-indexed." },
+  no_changes: { kind: "warn", text: "Nothing was changed, so no new version was saved." },
   discarded: { kind: "ok", text: "Draft discarded." },
   extract_failed: { kind: "error", text: "That file could not be used." },
   too_many_docs: { kind: "error", text: "You have reached the limit of 10 documents. Archive or merge some documents, then try again." },

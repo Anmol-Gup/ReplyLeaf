@@ -245,6 +245,10 @@ export async function publishDocumentAction(formData: FormData) {
   const t = titleSchema.safeParse(formData.get("title"));
   const c = contentSchema.safeParse(formData.get("content"));
   if (!t.success || !c.success) return flash(back, "invalid");
+  // Nothing changed on a published document: do not create an identical new version. (Browsers post line breaks as CRLF.)
+  const norm = (x: string) => x.replace(/\r\n/g, "\n").trim();
+  const { data: current } = await supabaseAdmin().from("kb_documents").select("title, content, status, version").eq("id", id).eq("client_id", clientId).maybeSingle();
+  if (current && current.status !== "draft" && current.version > 0 && current.title === t.data && norm(current.content ?? "") === norm(c.data)) return flash(back, "no_changes");
   let result;
   try {
     result = await publishDocument(clientId, id, t.data, c.data, user.id);

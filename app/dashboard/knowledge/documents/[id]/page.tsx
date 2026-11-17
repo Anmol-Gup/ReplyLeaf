@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import CountedTextarea from "../../../../../components/CountedTextarea";
 import Icon from "../../../../../components/Icon";
+import ChangeAwareSubmit from "../../../../../components/ChangeAwareSubmit";
 import SubmitButton from "../../../../../components/SubmitButton";
 import { Alert, Badge, Card, PageHeader, type Tone } from "../../../../../components/ui";
 import { requireClient } from "../../../../../lib/auth/session";
@@ -53,7 +54,11 @@ export default async function DocumentPage({
             This will be split into {chunks.length} searchable section{chunks.length === 1 ? "" : "s"}
             {headings ? `: ${headings}` : ". Tip: add # headings to separate topics."}
           </p>
-          <div><SubmitButton pendingText={draft ? "Publishing..." : "Saving..."}>{draft ? "Confirm and publish" : "Save as new version"}</SubmitButton></div>
+          <div>
+            {draft
+              ? <SubmitButton pendingText="Publishing...">Confirm and publish</SubmitButton>
+              : <ChangeAwareSubmit pendingText="Saving...">Save as new version</ChangeAwareSubmit>}
+          </div>
         </form>
         {draft && (
           <form action={discardDraft} style={{ marginTop: 12 }}>
