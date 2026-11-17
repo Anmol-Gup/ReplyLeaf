@@ -9,6 +9,10 @@ const GEMINI = "AIzaSyA1234567890abcdefghijklmnopqrstuvw";
 test("key format: right shape for the right provider, trimmed, nothing odd accepted", () => {
   assert.deepEqual(checkKeyFormat("openai", `  ${OPENAI}\n`), { ok: true, key: OPENAI });
   assert.deepEqual(checkKeyFormat("gemini", GEMINI), { ok: true, key: GEMINI });
+  const NEW_GEMINI = "AQ.Zz0Test1Key2Shape3Only4Not5Real6Key7Value8abcd"; // synthetic, newer Google key shape
+  assert.deepEqual(checkKeyFormat("gemini", NEW_GEMINI), { ok: true, key: NEW_GEMINI });
+  assert.deepEqual(checkKeyFormat("gemini", "AQ.short"), { ok: false, reason: "format" });
+  assert.deepEqual(checkKeyFormat("openai", NEW_GEMINI), { ok: false, reason: "format" });
   assert.deepEqual(checkKeyFormat("openai", GEMINI), { ok: false, reason: "format" }); // a Gemini key given for OpenAI
   assert.deepEqual(checkKeyFormat("gemini", OPENAI), { ok: false, reason: "format" });
   assert.deepEqual(checkKeyFormat("openai", ""), { ok: false, reason: "empty" });

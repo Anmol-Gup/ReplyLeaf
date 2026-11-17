@@ -10,7 +10,7 @@ export type KeyStatus = "none" | "valid" | "unverified" | "invalid";
 
 const FORMATS: Record<KeyProvider, RegExp> = {
   openai: /^sk-[A-Za-z0-9_-]{20,}$/,        // includes sk-proj-... keys
-  gemini: /^AIza[0-9A-Za-z_-]{30,}$/,
+  gemini: /^(AIza[0-9A-Za-z_-]{30,}|AQ\.[0-9A-Za-z_-]{30,})$/, // classic "AIza..." keys and the newer "AQ...." keys
 };
 
 /** Trims, and checks the shape for the chosen provider before anything is sent anywhere. */

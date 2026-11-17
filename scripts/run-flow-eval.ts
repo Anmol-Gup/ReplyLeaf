@@ -8,7 +8,7 @@
 // Real API calls (about 15). The free Gemini tier allows 15 per minute, so the script paces itself.
 import { aiConfig } from "../lib/ai/config";
 import { generateReply } from "../lib/ai/generate-reply";
-import { buildSystemPrompt, wrapCustomerMessages } from "../lib/ai/prompt";
+import { buildSystemPrompt, renderProgress, wrapCustomerMessages } from "../lib/ai/prompt";
 import type { ChatTurn, Provider } from "../lib/ai/providers";
 import {
   ACTION_FAILED_REPLY as _unused, decideAction, nextWorkflowState, REJECTED_SUBMIT_REPLY, type Decision, type WorkflowState,
@@ -73,12 +73,13 @@ const SCENARIOS: Scenario[] = [
   },
 ];
 
-// Providers answer 503 ("high demand") now and then; one patient retry keeps the check from being flaky.
+// Providers answer 503 ("high demand") now and then; a few patient retries keep the check from being flaky.
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  try { return await fn(); } catch (e) {
-    if (!/503|UNAVAILABLE|429/.test(String(e))) throw e;
-    await new Promise((res) => setTimeout(res, 20_000));
-    return fn();
+  for (let attempt = 1; ; attempt++) {
+    try { return await fn(); } catch (e) {
+      if (!/503|UNAVAILABLE|429/.test(String(e)) || attempt >= 4) throw e;
+      await new Promise((res) => setTimeout(res, attempt * 20_000));
+    }
   }
 }
 
@@ -105,7 +106,7 @@ async function main() {
           { name: "Pixel Studio", businessInfo: null, businessHours: null, bookingLink, kbText: KB, workflow: settings }, [],
           { today: NOW().toISOString().slice(0, 10), flowState: state, open: { appointments: [], tickets: 0, leads: 0 } },
         ),
-        history, userTurn: wrapCustomerMessages([line]),
+        history, userTurn: wrapCustomerMessages([line], { progress: renderProgress(state, sc.contactName ?? null) }),
       }));
       const r = out.result;
       const dctx = { prev: state, result: r, mode, settings, contactName: sc.contactName ?? null, now: NOW() };
