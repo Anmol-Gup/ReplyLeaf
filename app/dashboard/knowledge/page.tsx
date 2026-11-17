@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ChangeAwareSubmit from "../../../components/ChangeAwareSubmit";
 import DocumentSourceFields from "../../../components/DocumentSourceFields";
 import CountedTextarea from "../../../components/CountedTextarea";
 import SubmitButton from "../../../components/SubmitButton";
@@ -34,8 +35,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         <form action={updateKnowledge} className="stack">
           <CountedTextarea name="kb_text" max={8000} defaultValue={client?.kb_text ?? ""} label="Core knowledge" minHeight={220} />
           <div className="row">
-            <SubmitButton pendingText="Saving...">Save core knowledge</SubmitButton>
-            <span className="hint">You will see a &quot;Saved&quot; confirmation at the top.</span>
+            <ChangeAwareSubmit pendingText="Saving...">Save core knowledge</ChangeAwareSubmit>
           </div>
         </form>
       </Card>
