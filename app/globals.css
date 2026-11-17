@@ -336,3 +336,8 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-s
 .msel-panel { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 240px; display: grid; gap: 10px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgb(16 36 26 / 0.12); }
 .msel-panel fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
 .msel-panel .check input { flex: none; width: auto; }
+
+/* ---- leads list: service and requirements columns ---- */
+td.col-service { min-width: 190px; max-width: 280px; overflow-wrap: anywhere; }
+td.col-reqs { min-width: 280px; max-width: 460px; overflow-wrap: anywhere; white-space: normal; }
+ul.reqs { margin: 0; padding-left: 16px; display: grid; gap: 3px; font-size: 0.88rem; }

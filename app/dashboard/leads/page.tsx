@@ -54,15 +54,19 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
       {error ? <ErrorState>Your leads could not be loaded.</ErrorState> : (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Customer</th><th>Service and requirements</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Service</th><th>Requirements</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th></tr></thead>
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
                   <td><Link href={`/dashboard/leads/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span></td>
-                  <td>
+                  <td className="col-service">
                     <b>{clip(r.project_type, 60)}</b>
                     {r.description && <><br /><span className="muted">{clip(r.description, 110)}</span></>}
-                    {(reqsByLead.get(r.id) ?? []).length > 0 && <><br /><span className="hint">{clip((reqsByLead.get(r.id) ?? []).slice(0, 4).join(" · "), 140)}</span></>}
+                  </td>
+                  <td className="col-reqs">
+                    {(reqsByLead.get(r.id) ?? []).length > 0
+                      ? <ul className="reqs">{(reqsByLead.get(r.id) ?? []).map((t, i) => <li key={i}>{t}</li>)}</ul>
+                      : <span className="muted">-</span>}
                   </td>
                   <td>{r.budget ?? "-"}</td>
                   <td>{r.timeline ?? "-"}</td>
@@ -72,7 +76,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
                 </tr>
               ))}
               {paged.items.length === 0 && (
-                <tr><td colSpan={7}>
+                <tr><td colSpan={8}>
                   {q || explicit
                     ? <EmptyState icon="search" title="No matching leads" action={{ href: "/dashboard/leads", label: "Show all leads" }}>Nothing matches this view.</EmptyState>
                     : <EmptyState icon="users" title="No leads yet">When a customer describes a project or service they need, the assistant collects the details and the lead appears here.</EmptyState>}
