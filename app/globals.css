@@ -306,11 +306,11 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-s
 .timeline li > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
 
 /* ---- Settings: tabs and workflow cards ---- */
-.tabs { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; border-bottom: 1px solid var(--border); margin-bottom: 18px; -webkit-overflow-scrolling: touch; }
-.tabs a { position: relative; flex: none; padding: 10px 14px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.92rem; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
-.tabs a:hover { color: var(--text); }
-.tabs a[aria-current="page"] { color: var(--brand-text); border-bottom-color: var(--brand); }
-.tabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-left: 6px; vertical-align: middle; }
+.settings-tabs { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; border-bottom: 1px solid var(--border); margin-bottom: 18px; -webkit-overflow-scrolling: touch; }
+.settings-tabs a { position: relative; flex: none; padding: 10px 14px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.92rem; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.settings-tabs a:hover { color: var(--text); }
+.settings-tabs a[aria-current="page"] { color: var(--brand-text); border-bottom-color: var(--brand); }
+.settings-tabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-left: 6px; vertical-align: middle; }
 .setup { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .setup li { display: flex; gap: 10px; align-items: flex-start; }
 .setup .tick { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; background: var(--surface-2); color: var(--muted); }

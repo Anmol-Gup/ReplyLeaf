@@ -62,7 +62,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         </div>
       )}
 
-      <nav className="tabs" aria-label="Settings sections">
+      <nav className="settings-tabs" aria-label="Settings sections">
         {SETTINGS_TABS.map((t) => (
           <Link key={t.id} href={`/dashboard/settings?tab=${t.id}`} aria-current={t.id === tab ? "page" : undefined}>
             {t.label}{needsAttention.has(t.id) && <span className="dot" title="Needs attention" />}

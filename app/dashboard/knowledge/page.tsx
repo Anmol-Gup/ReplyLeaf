@@ -2,9 +2,10 @@ import Link from "next/link";
 import DocumentSourceFields from "../../../components/DocumentSourceFields";
 import CountedTextarea from "../../../components/CountedTextarea";
 import SubmitButton from "../../../components/SubmitButton";
-import { Badge, Card, EmptyState, ErrorState, PageHeader, type Tone } from "../../../components/ui";
+import { Badge, Card, EmptyState, ErrorState, PageHeader, Stat, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { MAX_DOCUMENTS, MAX_TOTAL_STORAGE_BYTES } from "../../../lib/kb/chunk";
+import { MAX_UPLOAD_BYTES } from "../../../lib/kb/extract";
 import { fmtDay } from "../../../lib/dashboard";
 import Notice from "../Notice";
 import { createDocument, discardDraft, resolveQuestion, updateKnowledge } from "../actions";
@@ -71,10 +72,14 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
       </Card>
 
       <Card title="Add a document" description="You will see the extracted text first and must confirm it before the assistant can use it.">
-        <p className="muted">
+        <div className="stat-grid" style={{ marginBottom: 14 }}>
+          <Stat value={`${open.length} / ${MAX_DOCUMENTS}`} label="Documents per business (initial limit)" />
+          <Stat value={`${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`} label="Maximum per file (upload size)" />
+          <Stat value={`${mb(usedBytes)} / ${MAX_TOTAL_STORAGE_BYTES / (1024 * 1024)} MB`} label="Total storage per business" />
+        </div>
+        <p className="muted" style={{ marginBottom: 14 }}>
           <b>Supported file formats:</b> PDF (text-based, not scanned images), Word (.docx), plain text (.txt) and Markdown (.md).
-          Up to 10 MB per file.<br />
-          <b>Your limits:</b> {open.length} of {MAX_DOCUMENTS} documents · {mb(usedBytes)} MB of {MAX_TOTAL_STORAGE_BYTES / (1024 * 1024)} MB used. Archived documents don&apos;t count.
+          Archived documents don&apos;t count towards the limits.
         </p>
         <form action={createDocument} className="stack" id="add-document">
           <label className="field">Title <span className="hint">Optional. Defaults to the file name, or the first line of the text.</span><input name="title" maxLength={200} /></label>
