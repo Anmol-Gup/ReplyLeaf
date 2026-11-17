@@ -15,6 +15,7 @@ export type GenerateReplyInput = {
   history: ChatTurn[]; // earlier turns (customer turns already wrapped)
   userTurn: string; // current customer messages, from wrapCustomerMessages()
   adapters?: Record<Provider, Adapter>; // test seam
+  sleep?: (ms: number) => Promise<void>; // test seam
 };
 
 export type GenerateReplyOutput = {
@@ -32,6 +33,11 @@ export class InvalidModelOutputError extends Error {
 }
 
 const MAX_ATTEMPTS = 2;
+const TRANSIENT_RETRY_DELAY_MS = 1500;
+
+/** The provider is briefly overloaded or unreachable (not a bad key, not a bad request): worth one more try. */
+export const isTransientProviderError = (e: unknown): boolean =>
+  /\b(500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|ECONNRESET|ETIMEDOUT|fetch failed/i.test(e instanceof Error ? e.message : String(e));
 
 export async function generateReply(input: GenerateReplyInput): Promise<GenerateReplyOutput> {
   const { provider, config } = input;
@@ -45,13 +51,25 @@ export async function generateReply(input: GenerateReplyInput): Promise<Generate
   let problem = "no output";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const raw = await adapter({
-      apiKey, model, turns,
-      system: input.system,
-      jsonSchema: REPLY_JSON_SCHEMA,
-      maxOutputTokens: 2048,
-      timeoutMs: 25_000,
-    });
+    let raw;
+    try {
+      raw = await adapter({
+        apiKey, model, turns,
+        system: input.system,
+        jsonSchema: REPLY_JSON_SCHEMA,
+        maxOutputTokens: 2048,
+        timeoutMs: 25_000,
+      });
+    } catch (e) {
+      // A brief provider outage ("high demand") gets the same one retry that invalid output gets. Anything else
+      // (a refused key, a bad request) is thrown straight away so the caller can react to it.
+      if (attempt < MAX_ATTEMPTS && isTransientProviderError(e)) {
+        problem = "provider temporarily unavailable";
+        await (input.sleep ?? ((ms) => new Promise((res) => setTimeout(res, ms))))(TRANSIENT_RETRY_DELAY_MS);
+        continue;
+      }
+      throw e;
+    }
     usage.inputTokens += raw.inputTokens;
     usage.outputTokens += raw.outputTokens;
 

@@ -129,3 +129,21 @@ test("retrieved knowledge is included, labelled, size-capped, and cannot close i
   assert.ok(buildSystemPrompt(client, huge).length - buildSystemPrompt(client, []).length < 7500);
   assert.match(buildSystemPrompt(client, []), /no additional documents matched/);
 });
+
+test("generateReply retries once when the provider is briefly overloaded (503), but not on a refused key", async () => {
+  let calls = 0;
+  const flaky = async () => { calls++; if (calls === 1) throw new Error('{"error":{"code":503,"message":"This model is currently experiencing high demand.","status":"UNAVAILABLE"}}'); return { text: JSON.stringify(good), inputTokens: 1, outputTokens: 1 }; };
+  const sleeps: number[] = [];
+  const out = await generateReply({ ...base, adapters: both(flaky), sleep: async (ms) => void sleeps.push(ms) });
+  assert.equal(calls, 2); assert.equal(out.result.reply, good.reply); assert.equal(sleeps.length, 1);
+  // a second 503 in a row is thrown (the caller then falls back), never retried forever
+  calls = 0;
+  const down = async () => { calls++; throw new Error("503 UNAVAILABLE"); };
+  await assert.rejects(generateReply({ ...base, adapters: both(down), sleep: async () => {} }), /503/);
+  assert.equal(calls, 2);
+  // a refused key is not transient: one call, thrown at once
+  calls = 0;
+  const refused = async () => { calls++; throw new Error("403 API key not valid"); };
+  await assert.rejects(generateReply({ ...base, adapters: both(refused), sleep: async () => {} }), /API key/);
+  assert.equal(calls, 1);
+});
