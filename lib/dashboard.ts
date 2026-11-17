@@ -14,6 +14,7 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   reindexed: { kind: "ok", text: "Re-indexed." },
   discarded: { kind: "ok", text: "Draft discarded." },
   extract_failed: { kind: "error", text: "That file could not be used." },
+  too_much_storage: { kind: "error", text: "That would go over your 100 MB document storage. Archive documents you no longer need, then try again." },
   too_many_docs: { kind: "error", text: "You have reached the limit of 20 documents. Archive or merge some documents, then try again." },
   not_found: { kind: "error", text: "Not found." },
   appt_done: { kind: "ok", text: "Appointment updated." },

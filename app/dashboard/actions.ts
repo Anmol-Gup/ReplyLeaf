@@ -9,7 +9,7 @@ import { SOURCE_LABELS } from "../../lib/handoff";
 import { deleteContactData } from "../../lib/privacy";
 import { supabaseAdmin } from "../../lib/supabase-admin";
 import { sendClientText } from "../../lib/supabase-deps";
-import { MAX_DOCUMENTS } from "../../lib/kb/chunk";
+import { MAX_DOCUMENTS, MAX_TOTAL_STORAGE_BYTES } from "../../lib/kb/chunk";
 import { ExtractError, extractText, MAX_UPLOAD_BYTES } from "../../lib/kb/extract";
 import { publishDocument, reindexDocument } from "../../lib/kb/publish";
 import { isWithinWindow } from "../../lib/whatsapp/window";
@@ -201,6 +201,12 @@ async function countOpenDocuments(clientId: string): Promise<number> {
   return count ?? 0;
 }
 
+/** Total size of the open (non-archived) documents, from the size recorded when each was added. */
+async function openStorageBytes(clientId: string): Promise<number> {
+  const { data } = await supabaseAdmin().from("kb_documents").select("size_bytes").eq("client_id", clientId).neq("status", "archived").limit(1000);
+  return (data ?? []).reduce((sum, d) => sum + (typeof d.size_bytes === "number" ? d.size_bytes : 0), 0);
+}
+
 export async function createDocument(formData: FormData) {
   const { clientId } = await requireClient();
   await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
@@ -223,13 +229,17 @@ export async function createDocument(formData: FormData) {
     }
   }
 
+  // Storage check: the uploaded file's size, or the byte length of pasted text.
+  const sizeBytes = file instanceof File && file.size > 0 ? file.size : Buffer.byteLength(text, "utf8");
+  if (await openStorageBytes(clientId) + sizeBytes > MAX_TOTAL_STORAGE_BYTES) return flash(KB, "too_much_storage");
+
   title ||= text.trim().split("\n")[0]?.slice(0, 80) ?? "";
   const t = titleSchema.safeParse(title);
   const c = contentSchema.safeParse(text);
   if (!t.success || !c.success) return flash(KB, "invalid");
 
   const { data, error } = await supabaseAdmin().from("kb_documents")
-    .insert({ client_id: clientId, title: t.data, content: c.data, status: "draft", source, filename })
+    .insert({ client_id: clientId, title: t.data, content: c.data, status: "draft", source, filename, size_bytes: sizeBytes })
     .select("id").single();
   if (error) throw new Error(`creating document failed: ${error.message}`);
   redirect(`${KB}/documents/${data.id}`);

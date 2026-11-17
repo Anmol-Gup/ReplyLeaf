@@ -4,7 +4,7 @@ import CountedTextarea from "../../../components/CountedTextarea";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, Card, EmptyState, ErrorState, PageHeader, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
-import { MAX_DOCUMENTS } from "../../../lib/kb/chunk";
+import { MAX_DOCUMENTS, MAX_TOTAL_STORAGE_BYTES } from "../../../lib/kb/chunk";
 import { fmtDay } from "../../../lib/dashboard";
 import Notice from "../Notice";
 import { createDocument, discardDraft, resolveQuestion, updateKnowledge } from "../actions";
@@ -18,9 +18,13 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
   const { db, clientId } = await requireClient();
   const [{ data: client }, { data: docs, error: docsError }, { data: questions }] = await Promise.all([
     db.from("clients").select("kb_text").eq("id", clientId).single(),
-    db.from("kb_documents").select("id, title, status, source, version, updated_at").order("updated_at", { ascending: false }).limit(200),
+    db.from("kb_documents").select("id, title, status, source, version, updated_at, size_bytes").order("updated_at", { ascending: false }).limit(200),
     db.from("unanswered_questions").select("id, question, created_at").eq("status", "open").order("created_at", { ascending: false }).limit(50),
   ]);
+
+  const open = (docs ?? []).filter((d) => d.status !== "archived");
+  const usedBytes = open.reduce((n, d) => n + (typeof d.size_bytes === "number" ? d.size_bytes : 0), 0);
+  const mb = (b: number) => (b / (1024 * 1024)).toFixed(b < 10 * 1024 * 1024 ? 1 : 0);
 
   return (
     <>
@@ -67,6 +71,11 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
       </Card>
 
       <Card title="Add a document" description="You will see the extracted text first and must confirm it before the assistant can use it.">
+        <p className="muted">
+          <b>Supported file formats:</b> PDF (text-based, not scanned images), Word (.docx), plain text (.txt) and Markdown (.md).
+          Up to 10 MB per file.<br />
+          <b>Your limits:</b> {open.length} of {MAX_DOCUMENTS} documents · {mb(usedBytes)} MB of {MAX_TOTAL_STORAGE_BYTES / (1024 * 1024)} MB used. Archived documents don&apos;t count.
+        </p>
         <form action={createDocument} className="stack" id="add-document">
           <label className="field">Title <span className="hint">Optional. Defaults to the file name, or the first line of the text.</span><input name="title" maxLength={200} /></label>
           <DocumentSourceFields maxTextChars={200000} />
