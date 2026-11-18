@@ -10,7 +10,9 @@ import { updateSettings } from "../actions";
 import { maskedKey, PROVIDER_LABELS, type AiMode, type KeyProvider, type KeyStatus } from "../../../lib/ai-keys";
 import { fmt } from "../../../lib/dashboard";
 import { assistantSetup, parseTab, SETTINGS_TABS } from "../../../lib/settings-tabs";
-import { removeAiKey, saveAiKey, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
+import { removeAiKey, saveAiKey, setFreeAllowance, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
+import { BILLING_STATUS_UNAVAILABLE, ELIGIBILITY_LABELS, isEligibility, WHATSAPP_MANAGER_URL } from "../../../lib/wa-usage";
+import ChangeAwareSubmit from "../../../components/ChangeAwareSubmit";
 import { parseWorkflowSettings, WEEKDAYS, WEEKDAY_LABELS } from "../../../lib/workflow-settings";
 
 // Every IANA zone this server knows (Node 20+). A zone saved earlier that is missing here is still listed.
@@ -25,7 +27,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const tab = parseTab(rawTab);
   const { db, clientId } = await requireClient();
   const { data: c } = await db.from("clients")
-    .select("name, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, onboarding_status, onboarding_step, status, workflow_settings").eq("id", clientId).single();
+    .select("name, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, wa_free_allowance, onboarding_status, onboarding_step, status, workflow_settings").eq("id", clientId).single();
   const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications, delivery").eq("client_id", clientId).maybeSingle();
   const w = parseWorkflowSettings(c?.workflow_settings);
   const mode = (c?.ai_mode ?? "platform") as AiMode;
@@ -225,6 +227,16 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             {c?.wa_phone_number_id
               ? <p className="muted">Phone number ID: <b>{c.wa_phone_number_id}</b>{mode === "platform" && <> · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</>}</p>
               : <Alert kind="warn">No WhatsApp number is connected yet. <Link href="/onboarding">Connect WhatsApp</Link></Alert>}
+            <p className="muted"><b>WhatsApp billing:</b> {BILLING_STATUS_UNAVAILABLE}. Replyleaf cannot see your Meta payment method or its status. Check it in <a href={WHATSAPP_MANAGER_URL} target="_blank" rel="noopener noreferrer">WhatsApp Manager</a> or with your messaging provider. Replyleaf never asks for or stores card details.</p>
+            <form action={setFreeAllowance} className="stack">
+              <label className="field">Free service-message allowance
+                <span className="hint">Meta gives eligible WhatsApp numbers 1,000 free delivered service messages a month. Not every account qualifies. Tell us what you know so Usage shows the right figures.</span>
+                <select name="wa_free_allowance" defaultValue={isEligibility(c?.wa_free_allowance) ? c.wa_free_allowance : "unknown"}>
+                  {(["unknown", "eligible", "not_eligible"] as const).map((e) => <option key={e} value={e}>{ELIGIBILITY_LABELS[e]}</option>)}
+                </select>
+              </label>
+              <div><ChangeAwareSubmit pendingText="Saving...">Save</ChangeAwareSubmit></div>
+            </form>
           </div>
         </Card>
       )}

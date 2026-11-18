@@ -40,7 +40,7 @@ export default async function Onboarding() {
           </div>
         )}
         <p className="hint" style={{ marginBottom: 14 }}>
-          Your WhatsApp Business Account will be connected to Replyleaf. Meta messaging charges are separate from your Replyleaf subscription and are managed through your WhatsApp Business Account or messaging provider.
+          Connect your own WhatsApp Business Account. WhatsApp messaging charges are separate from your Replyleaf subscription and are billed through your applicable Meta or messaging-provider billing arrangement. Eligible accounts may receive a monthly free service-message allowance. Additional messages and other message categories may incur charges.
         </p>
         {ready ? (
           <EmbeddedSignup

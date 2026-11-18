@@ -16,6 +16,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <span className="who">{PRODUCT_NAME} · Admin</span>
         </div>
         <div className="row">
+          <Link className="btn btn-ghost btn-sm" href="/admin/signups">Sign-ups</Link>
+          <Link className="btn btn-ghost btn-sm" href="/admin/whatsapp">WhatsApp</Link>
           <Link className="btn btn-ghost btn-sm" href="/dashboard">Dashboard</Link>
           <form action={logoutAdmin}><SubmitButton variant="secondary" small pendingText="Signing out...">Sign out</SubmitButton></form>
         </div>

@@ -8,13 +8,14 @@ import { requireClient } from "../../../lib/auth/session";
 import { encryptSecret } from "../../../lib/crypto";
 import { env } from "../../../lib/env";
 import { parseEmails, parseOneEmail } from "../../../lib/notify-settings";
+import { isEligibility } from "../../../lib/wa-usage";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { formToWorkflowInput, workflowSettingsSchema } from "../../../lib/workflow-settings";
 
 // Same security model as the other dashboard actions: requireClient() gives the clientId, writes use the
 // service role and are always matched on that client_id. Nothing secret is read or written here.
 // Sends you back to the tab you were on, with a message. `tab` is always one of our own constants.
-const back = (notice: string, tab: "ai" | "workflows" | "notifications"): never => redirect(`/dashboard/settings?tab=${tab}&notice=${notice}`);
+const back = (notice: string, tab: "ai" | "workflows" | "notifications" | "whatsapp"): never => redirect(`/dashboard/settings?tab=${tab}&notice=${notice}`);
 const field = (fd: FormData, n: string) => { const v = fd.get(n); return typeof v === "string" ? v : null; };
 
 // The booking link lives with the appointment settings: if set, the assistant shares it instead of collecting a request.
@@ -102,4 +103,13 @@ export async function setPlatformProvider(formData: FormData) {
   if (!isProvider(provider)) return back("invalid", "ai");
   await supabaseAdmin().from("clients").update({ ai_provider: provider }).eq("id", clientId).eq("ai_mode", "platform");
   return back("saved", "ai");
+}
+
+/** Does this WhatsApp number receive Meta's free monthly service-message allowance? Only the owner can know, so it is their setting. */
+export async function setFreeAllowance(formData: FormData) {
+  const { clientId } = await requireClient();
+  const v = field(formData, "wa_free_allowance");
+  if (!isEligibility(v)) return back("invalid", "whatsapp");
+  await supabaseAdmin().from("clients").update({ wa_free_allowance: v }).eq("id", clientId);
+  return back("saved", "whatsapp");
 }

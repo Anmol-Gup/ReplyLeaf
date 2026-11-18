@@ -32,6 +32,7 @@ function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boole
       return { duplicate };
     },
     updateMessageStatus: async (id, s) => void statuses.push(`${id}:${s}`),
+    touchWebhook: async () => {},
     reportDeliveryProblem: async (id, problem) => void problems.push(`${id}:${problem}`),
     applyAccountEvent: async (waba, event) => { if (opts.dbFails) throw new Error("db down"); accountEvents.push(`${waba}:${event}`); },
     raiseAlert: async (_c, kind) => void alerts.push(kind),

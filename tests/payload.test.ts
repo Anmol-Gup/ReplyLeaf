@@ -34,7 +34,9 @@ test("extracts statuses", () => {
     metadata: meta, statuses: [{ id: "wamid.3", status: "failed", errors: [{ message: "boom" }] }],
   }));
   assert.equal(messages.length, 0);
-  assert.deepEqual(statuses, [{ waMessageId: "wamid.3", status: "failed", error: "boom", errorCode: null }]);
+  assert.equal(statuses.length, 1);
+  assert.deepEqual([statuses[0].waMessageId, statuses[0].status, statuses[0].error, statuses[0].errorCode, statuses[0].at], ["wamid.3", "failed", "boom", null, null]);
+  assert.ok(statuses[0].phoneNumberId);
 });
 test("garbage and other fields yield no events and never throw", () => {
   for (const bad of [null, "x", {}, { object: "page", entry: [] }, wrap({ nope: 1 }), wrap({ metadata: meta }, "account_update")]) {
@@ -57,4 +59,12 @@ test("smb_message_echoes: owner replies become echoes; edits, revokes and user-l
   ]));
   assert.deepEqual(r.echoes.map((e) => [e.waMessageId, e.to, e.phoneNumberId, e.text]), [["wamid.a", "919800000001", "PNID", "hi"], ["wamid.b", "919800000001", "PNID", null]]);
   assert.equal(r.messages.length, 0);
+});
+
+test("a status carries Meta's error code, the number it belongs to and when it happened", () => {
+  const { statuses } = parseWebhookPayload(wrap({
+    metadata: meta, statuses: [{ id: "wamid.9", status: "failed", timestamp: "1700000000", errors: [{ code: 131042, title: "Payment issue" }] }],
+  }));
+  assert.equal(statuses[0].errorCode, 131042);
+  assert.equal(statuses[0].at?.getTime(), 1700000000 * 1000);
 });

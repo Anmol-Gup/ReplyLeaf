@@ -13,6 +13,7 @@ const messageSchema = z.object({
 const statusSchema = z.object({
   id: z.string(),
   status: z.string(),
+  timestamp: z.string().optional(),
   errors: z.array(z.object({ code: z.number().optional(), title: z.string().optional(), message: z.string().optional() })).optional(),
 });
 
@@ -70,6 +71,8 @@ export type StatusUpdate = {
   status: string; // sent | delivered | read | failed
   error: string | null;
   errorCode?: number | null; // Meta's error code on a failed delivery
+  phoneNumberId?: string;    // which business number the status is for
+  at?: Date | null;          // when WhatsApp says it happened
 };
 
 /** A reply the owner typed in the WhatsApp Business app. */
@@ -134,6 +137,8 @@ export function parseWebhookPayload(json: unknown): ParsedEvents {
           status: s.status,
           error: s.errors?.[0]?.message ?? s.errors?.[0]?.title ?? null,
           errorCode: s.errors?.[0]?.code ?? null,
+          phoneNumberId: v.metadata.phone_number_id,
+          at: s.timestamp && /^\d+$/.test(s.timestamp) ? new Date(Number(s.timestamp) * 1000) : null,
         });
       }
     }

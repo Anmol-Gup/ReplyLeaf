@@ -44,6 +44,8 @@ const body = z.object({
   phoneNumberId: z.string().regex(/^\d{5,30}$/).optional(),
   name: z.string().trim().min(1).max(100),
   state: z.string().max(200),
+  // The owner ticked "I understand that WhatsApp messaging charges are separate...". Required here as well as in the page.
+  acknowledged: z.literal(true),
 });
 
 const fail = (status: number, error: string) => Response.json({ ok: false, error }, { status });
@@ -59,7 +61,9 @@ export async function POST(req: Request) {
   const user = await getUserOrNull();
   if (!user) return fail(401, "Please sign in again.");
 
-  const parsed = body.safeParse(await req.json().catch(() => null));
+  const raw: unknown = await req.json().catch(() => null);
+  if ((raw as { acknowledged?: unknown } | null)?.acknowledged !== true) return fail(400, "Please confirm that you understand the WhatsApp messaging charges, then try again.");
+  const parsed = body.safeParse(raw);
   if (!parsed.success) return fail(400, "The setup information was incomplete. Please try again.");
   const b = parsed.data;
   if (!verifyState(b.state, user.id, env().WHATSAPP_APP_SECRET)) return fail(400, "This setup session expired. Please reload the page and try again.");
@@ -102,7 +106,7 @@ export async function POST(req: Request) {
   const now = () => new Date().toISOString();
   const fields = {
     name: b.name, wa_phone_number_id: phoneNumberId, wa_waba_id: b.wabaId,
-    status: "paused", onboarding_status: "pending", onboarding_step: "started", onboarding_updated_at: now(),
+    status: "paused", onboarding_status: "pending", onboarding_step: "started", onboarding_updated_at: now(), wa_billing_ack_at: now(),
   };
   let clientId: string;
   if (plan.action === "resume") {

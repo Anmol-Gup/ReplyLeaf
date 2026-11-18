@@ -5,7 +5,7 @@ import { adminAlertEmail, ownerEmail, type OwnerEvent } from "./email/templates"
 import { env } from "./env";
 import type { InboundDeps } from "./inbound";
 import { supabaseAdmin } from "./supabase-admin";
-import { sendTextMessage } from "./whatsapp/send";
+import { sendTextMessageWithRetry } from "./whatsapp/send";
 
 // Production implementation of InboundDeps (the recording phase), plus helpers
 // shared with the batch worker. Every query filters by client_id.
@@ -114,7 +114,7 @@ export async function sendClientText(clientId: string, phoneNumberId: string, to
     .single();
   if (error || !data?.wa_access_token_enc) throw new Error("no WhatsApp token stored for client");
   const accessToken = decryptSecret(data.wa_access_token_enc, env().ENCRYPTION_KEY);
-  return sendTextMessage({ graphVersion: env().GRAPH_API_VERSION, phoneNumberId, accessToken, to, body });
+  return sendTextMessageWithRetry({ graphVersion: env().GRAPH_API_VERSION, phoneNumberId, accessToken, to, body });
 }
 
 export function supabaseInboundDeps(): InboundDeps {
@@ -168,13 +168,16 @@ export function supabaseInboundDeps(): InboundDeps {
       return { duplicate: row.out_duplicate };
     },
 
-    async updateMessageStatus(waMessageId, status, error) {
-      const { error: dbErr } = await db
-        .from("messages")
-        .update({ status, error })
-        .eq("wa_message_id", waMessageId)
-        .eq("direction", "outbound");
+    async updateMessageStatus(waMessageId, status, error, extra) {
+      // One SQL function: forward-only and idempotent, so a duplicate or late webhook cannot undo a delivery or double count it.
+      const { error: dbErr } = await db.rpc("apply_message_status", {
+        p_wa_message_id: waMessageId, p_status: status, p_error: error, p_error_code: extra?.errorCode ?? null, p_at: extra?.at?.toISOString() ?? null,
+      });
       if (dbErr) throw new Error(`status update failed: ${dbErr.message}`);
+    },
+
+    async touchWebhook(phoneNumberIds) {
+      await db.from("clients").update({ last_webhook_at: new Date().toISOString() }).in("wa_phone_number_id", phoneNumberIds);
     },
 
     async reportDeliveryProblem(waMessageId, problem, detail) {

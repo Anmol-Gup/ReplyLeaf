@@ -1,8 +1,9 @@
 import { Badge, Card, EmptyState, ErrorState, PageHeader, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { fmt, fmtDay } from "../../../lib/dashboard";
-import { monthBounds, serviceUsage, FREE_SERVICE_MESSAGES } from "../../../lib/wa-usage";
-import { classifyWhatsAppError, PROBLEM_LABELS } from "../../../lib/whatsapp/errors";
+import Link from "next/link";
+import { BILLING_STATUS_UNAVAILABLE, ELIGIBILITY_LABELS, FREE_SERVICE_MESSAGES, isEligibility, monthBounds, summariseUsage, WHATSAPP_MANAGER_URL, type UsageRow } from "../../../lib/wa-usage";
+import { classifyWhatsAppError } from "../../../lib/whatsapp/errors";
 import { parseWorkflowSettings } from "../../../lib/workflow-settings";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 
@@ -19,13 +20,18 @@ export default async function Usage() {
     supabaseAdmin().rpc("client_usage_summary", { p_client_id: clientId, p_since: since.toISOString() }),
   ]);
   const rows = (summary.data ?? []) as { out_day: string; out_provider: string | null; out_model: string | null; out_kind: string; out_events: number; out_input_tokens: number; out_output_tokens: number }[];
-  // WhatsApp messaging: delivered service messages this month (the month resets in the business's time zone, UTC if none is set).
+  // WhatsApp messaging usage: per business phone number, for the current period (the business's time zone, UTC if none is set).
+  // Counted in SQL from this business's own messages; the owner's session means row level security applies as well.
   const { start: waStart, next: waReset } = monthBounds(now, parseWorkflowSettings(client?.workflow_settings).appointments.timezone);
-  const [{ count: deliveredCount }, { data: failedRows, count: failedCount }] = await Promise.all([
-    db.from("messages").select("id", { count: "exact", head: true }).eq("direction", "outbound").in("status", ["delivered", "read"]).gte("created_at", waStart.toISOString()),
-    db.from("messages").select("created_at, error", { count: "exact" }).eq("direction", "outbound").eq("status", "failed").gte("created_at", waStart.toISOString()).order("created_at", { ascending: false }).limit(5),
+  const [usageRes, { data: failedRows, count: failedCount }, { data: waClient }] = await Promise.all([
+    db.rpc("wa_usage_summary", { p_client_id: clientId, p_since: waStart.toISOString(), p_until: waReset.toISOString() }),
+    db.from("messages").select("created_at, error, error_code", { count: "exact" }).eq("direction", "outbound").eq("via", "api").eq("status", "failed").gte("created_at", waStart.toISOString()).order("created_at", { ascending: false }).limit(5),
+    db.from("clients").select("wa_phone_number_id, wa_free_allowance").eq("id", clientId).single(),
   ]);
-  const wa = serviceUsage(deliveredCount ?? 0);
+  const eligibility = isEligibility(waClient?.wa_free_allowance) ? waClient.wa_free_allowance : "unknown";
+  const phones = summariseUsage((usageRes.data ?? []) as UsageRow[], eligibility);
+  if (phones.length === 0 && waClient?.wa_phone_number_id) phones.push(...summariseUsage([{ out_phone_number_id: waClient.wa_phone_number_id, out_category: "service", out_total: 0, out_delivered: 0, out_failed: 0, out_awaiting: 0 }], eligibility));
+  const billingErrors = (failedRows ?? []).filter((r) => classifyWhatsAppError(r.error_code as number | null, r.error as string | null) === "billing");
   const byok = client?.ai_mode === "byok";
   const cap = client?.monthly_message_cap ?? 0;
   const used = replies ?? 0;
@@ -53,27 +59,57 @@ export default async function Usage() {
         </div>
       </Card>
       )}
-      <Card title="WhatsApp messages this month" description="Meta, not Replyleaf, charges for WhatsApp messages. Each business phone number gets its first 1,000 delivered service messages free every month; the rest are charged by Meta to your WhatsApp account.">
-        <div className="stat-grid">
-          <Stat value={wa.delivered.toLocaleString()} label="Service messages delivered" />
-          <Stat value={wa.freeUsed.toLocaleString()} label="Free messages used" />
-          <Stat value={wa.freeRemaining.toLocaleString()} label={`Free messages left of ${FREE_SERVICE_MESSAGES.toLocaleString()}`} />
-          <Stat value={wa.paid.toLocaleString()} label="Paid messages (charged by Meta)" />
+      <Card title="WhatsApp Messaging Usage"
+        description={`Estimated from the messages Replyleaf sent that WhatsApp reported as delivered, ${fmtDay(waStart.toISOString())} to ${fmtDay(new Date(waReset.getTime() - 1).toISOString())}. Meta, not Replyleaf, bills WhatsApp messages; your Meta billing is the source of truth.`}>
+        <div className="stack">
+          {usageRes.error && <ErrorState>WhatsApp usage could not be loaded.</ErrorState>}
+          <p className="muted">
+            {ELIGIBILITY_LABELS[eligibility]}.{" "}
+            {eligibility === "unknown" && "Not every account qualifies, so the free-allowance figures below assume it does until you confirm. "}
+            <Link href="/dashboard/settings?tab=whatsapp">Change this in Settings</Link>.
+          </p>
+          {phones.length === 0 && <p className="muted">No WhatsApp number is connected yet.</p>}
+          {phones.map((u) => (
+            <div key={u.phoneNumberId ?? "none"} className="stack">
+              <h3>Phone number ID: {u.phoneNumberId ?? "unknown"}</h3>
+              <div className="stat-grid">
+                <Stat value={u.deliveredService.toLocaleString()} label="Service messages delivered" />
+                <Stat value={u.freeAllowance.toLocaleString()} label="Free allowance" />
+                <Stat value={u.freeRemaining.toLocaleString()} label="Remaining free messages" />
+                <Stat value={u.chargeableService.toLocaleString()} label="Chargeable service messages" />
+                <Stat value={u.marketing.toLocaleString()} label="Marketing messages" />
+                <Stat value={u.utility.toLocaleString()} label="Utility messages" />
+                <Stat value={u.authentication.toLocaleString()} label="Authentication messages" />
+                <Stat value={u.failed.toLocaleString()} label="Failed messages" />
+                <Stat value={u.awaiting.toLocaleString()} label="Awaiting delivery confirmation" />
+              </div>
+              {u.state !== "not_applicable" && (
+                <div className="stack-sm">
+                  <div className="spread"><span>{u.percentUsed}% of the free allowance used</span></div>
+                  <div className="bar" role="progressbar" aria-valuenow={u.percentUsed} aria-valuemin={0} aria-valuemax={100} aria-label="Free service-message allowance used"><div style={{ width: `${u.percentUsed}%` }} /></div>
+                </div>
+              )}
+              {u.state === "near" && <p className="notice"><span>You have used {u.percentUsed}% of your free service-message allowance this month.</span></p>}
+              {u.state === "exhausted" && <p className="notice warn"><span>Your free service-message allowance has been used. Additional eligible service messages may be charged by Meta according to your account&apos;s pricing and billing setup.</span></p>}
+              {u.state === "not_applicable" && <p className="muted">You told us this number does not receive the free allowance, so every delivered service message may be chargeable by Meta.</p>}
+            </div>
+          ))}
+          {billingErrors.length > 0 && (
+            <p className="notice error" role="alert"><span>WhatsApp could not deliver this message. Please check your WhatsApp Business Account billing configuration with Meta or your messaging provider. <a href={WHATSAPP_MANAGER_URL} target="_blank" rel="noopener noreferrer">Open WhatsApp Manager</a></span></p>
+          )}
+          {(failedCount ?? 0) > 0 && (
+            <div>
+              <h3>Delivery errors this month: {failedCount}</h3>
+              <ul className="reqs">
+                {(failedRows ?? []).map((r, i) => <li key={i}>{fmt(r.created_at as string)}: {r.error ? (r.error as string).slice(0, 140) : "delivery failed"}{r.error_code ? ` (code ${r.error_code})` : ""}</li>)}
+              </ul>
+            </div>
+          )}
+          <p className="muted"><b>WhatsApp billing:</b> {BILLING_STATUS_UNAVAILABLE}. Replyleaf cannot see your Meta payment method or its status, so check it in <a href={WHATSAPP_MANAGER_URL} target="_blank" rel="noopener noreferrer">WhatsApp Manager</a> (or with your messaging provider). Replyleaf never asks for or stores card details.</p>
+          <p className="hint">
+            Customer messages don&apos;t count. Replies typed in the WhatsApp Business app on your phone aren&apos;t sent through Replyleaf, so they aren&apos;t counted. Messages not yet delivered, or that failed, are never counted as delivered. Three separate costs: your Replyleaf subscription, your AI provider (paid directly with your own key), and WhatsApp messaging (Meta).
+          </p>
         </div>
-        <p className="muted" style={{ marginTop: 12 }}>
-          Resets on {fmtDay(waReset.toISOString())}. This is an estimate from the replies Replyleaf sent that WhatsApp reported as delivered (the assistant&apos;s and the ones you send from the dashboard). Customer messages don&apos;t count, and messages you type in the WhatsApp Business app on your phone aren&apos;t sent through Replyleaf, so they aren&apos;t counted here. Your Meta billing is the source of truth, and rates depend on the country.
-        </p>
-        {(failedCount ?? 0) > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <h3>Delivery errors this month: {failedCount}</h3>
-            <ul className="reqs">
-              {(failedRows ?? []).map((r, i) => <li key={i}>{fmt(r.created_at as string)}: {PROBLEM_LABELS[classifyWhatsAppError(null, r.error as string | null)]}{r.error ? ` (${(r.error as string).slice(0, 120)})` : ""}</li>)}
-            </ul>
-          </div>
-        )}
-        <p className="hint" style={{ marginTop: 12 }}>
-          Three separate costs: your Replyleaf subscription, your AI provider (you pay it directly with your own key), and WhatsApp messaging (Meta). Replyleaf doesn&apos;t pay or collect your WhatsApp charges.
-        </p>
       </Card>
       <Card title="Last 30 days">
         {summary.error ? <ErrorState>Usage could not be loaded.</ErrorState> : rows.length === 0 ? (

@@ -24,6 +24,7 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
   const [name, setName] = useState(p.defaultName);
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
   const assets = useRef<Assets | null>(null);
 
   const loadSdk = () =>
@@ -45,6 +46,7 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
       return;
     }
     if (!name.trim()) { setStatus("error"); setMessage("Please enter your business name first."); return; }
+    if (!acknowledged) { setStatus("error"); setMessage("Please confirm that you understand the WhatsApp messaging charges first."); return; }
     setStatus("working"); setMessage("Waiting for the WhatsApp window...");
     assets.current = null;
 
@@ -91,7 +93,7 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
     const res = await fetch("/onboarding/callback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, ...assets.current, name: name.trim(), state: p.state }),
+      body: JSON.stringify({ code, ...assets.current, name: name.trim(), state: p.state, acknowledged }),
     });
     const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
     if (res.ok && body?.ok) { setStatus("done"); setMessage("Connected! Taking you to your dashboard..."); window.location.href = "/dashboard"; }
@@ -103,9 +105,13 @@ export default function EmbeddedSignup(p: { appId: string; configId: string; gra
       <p className="muted">Connect the WhatsApp Business number your customers will message. You will sign in to WhatsApp in a pop-up; we never see your password.</p>
       <p className="muted">Already use the WhatsApp Business app on your phone? Choose that number in the pop-up and keep using the app: you can reply to customers yourself, and the assistant steps aside for that chat when you do.</p>
       <label className="field">Business name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></label>
+      <label className="check" style={{ alignItems: "flex-start" }}>
+        <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} style={{ marginTop: 4 }} />
+        <span>I understand that WhatsApp messaging charges are separate from my Replyleaf subscription and are billed by Meta or my messaging provider.</span>
+      </label>
       {message && <p className={`notice ${status === "error" ? "error" : status === "done" ? "ok" : ""}`} role={status === "error" ? "alert" : "status"}>{message}</p>}
       <div>
-        <button type="button" className="btn btn-primary" onClick={start} disabled={status === "working" || status === "done"} aria-busy={status === "working"}>
+        <button type="button" className="btn btn-primary" onClick={start} disabled={status === "working" || status === "done" || !acknowledged} aria-busy={status === "working"}>
           {status === "working" && <span className="spinner" aria-hidden="true" />}
           {status === "working" ? "Connecting..." : "Connect WhatsApp"}
         </button>

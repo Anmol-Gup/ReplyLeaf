@@ -24,7 +24,10 @@ export interface InboundDeps {
    * assistant was still handling that chat, silences it (opens a human_active handoff). Dedupes on wamid.
    */
   recordOwnerEcho(clientId: string, echo: OwnerEcho): Promise<{ duplicate: boolean }>;
-  updateMessageStatus(waMessageId: string, status: string, error: string | null): Promise<void>;
+  /** Applies a delivery status. Idempotent and forward-only (see apply_message_status): duplicate or out-of-order webhooks change nothing. */
+  updateMessageStatus(waMessageId: string, status: string, error: string | null, extra?: { errorCode?: number | null; at?: Date | null }): Promise<void>;
+  /** Remembers when each business number last sent us anything (for support: "is the webhook arriving?"). */
+  touchWebhook(phoneNumberIds: string[]): Promise<void>;
   /** A message we sent failed to deliver for a reason retrying cannot fix (billing, account, permission, policy): alert the admin and tell the owner (once a day). */
   reportDeliveryProblem(waMessageId: string, problem: SendProblem, detail: string): Promise<void>;
   /** account_update from Meta: records it and updates the matching client's onboarding status. */
@@ -43,9 +46,15 @@ export async function recordEvents(
   events: Omit<ParsedEvents, "accountEvents" | "echoes"> & { accountEvents?: AccountEvent[]; echoes?: OwnerEcho[] },
   deps: InboundDeps,
 ): Promise<RecordOutcome> {
+  // Support visibility: this payload really came from WhatsApp (the signature was checked), so note it per business number.
+  const numbers = [...new Set([...events.statuses.map((s) => s.phoneNumberId), ...events.messages.map((m) => m.phoneNumberId), ...(events.echoes ?? []).map((e) => e.phoneNumberId)].filter((x): x is string => Boolean(x)))];
+  if (numbers.length) {
+    try { await deps.touchWebhook(numbers); } catch (e) { console.error("webhook timestamp failed", errorText(e)); }
+  }
+
   for (const s of events.statuses) {
     try {
-      await deps.updateMessageStatus(s.waMessageId, s.status, s.error);
+      await deps.updateMessageStatus(s.waMessageId, s.status, s.error, { errorCode: s.errorCode ?? null, at: s.at ?? null });
     } catch (e) {
       console.error("status update failed", errorText(e));
     }
