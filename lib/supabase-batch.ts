@@ -10,7 +10,7 @@ import { billingEnforced, computeAccess, type SubscriptionRow } from "./billing/
 import { decryptSecret } from "./crypto";
 import { env } from "./env";
 import { parseWorkflowSettings } from "./workflow-settings";
-import { notifyOwner, raiseAlert, sendClientText } from "./supabase-deps";
+import { notifyOwner, raiseAlert, reportWhatsAppProblem, sendClientText } from "./supabase-deps";
 import { supabaseAdmin } from "./supabase-admin";
 
 const HISTORY_TURNS = 12;
@@ -179,6 +179,11 @@ export function supabaseBatchDeps(): BatchDeps {
     },
 
     sendText: (ctx, body) => sendClientText(ctx.client.id, ctx.client.waPhoneNumberId, ctx.phone, body),
+
+    async reportSendProblem(clientId, problem, detail) {
+      if (problem === "window" || problem === "rate_limit" || problem === "delivery") return;
+      await reportWhatsAppProblem(clientId, problem, detail);
+    },
 
     async saveReply(rec) {
       const { data, error } = await db.from("messages").insert({

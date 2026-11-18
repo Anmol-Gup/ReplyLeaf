@@ -34,7 +34,7 @@ test("extracts statuses", () => {
     metadata: meta, statuses: [{ id: "wamid.3", status: "failed", errors: [{ message: "boom" }] }],
   }));
   assert.equal(messages.length, 0);
-  assert.deepEqual(statuses, [{ waMessageId: "wamid.3", status: "failed", error: "boom" }]);
+  assert.deepEqual(statuses, [{ waMessageId: "wamid.3", status: "failed", error: "boom", errorCode: null }]);
 });
 test("garbage and other fields yield no events and never throw", () => {
   for (const bad of [null, "x", {}, { object: "page", entry: [] }, wrap({ nope: 1 }), wrap({ metadata: meta }, "account_update")]) {

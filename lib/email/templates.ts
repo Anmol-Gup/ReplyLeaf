@@ -12,6 +12,7 @@ export type OwnerEvent =
   | { type: "lead_created"; contactName: string | null; phone: string; projectType: string; budget: string | null; timeline: string | null; summary: string; status: "new" | "qualified" }
   | { type: "ticket_created"; contactName: string | null; phone: string; subject: string; category: string | null; referenceInfo: string | null; priority: "normal" | "high"; summary: string }
   | { type: "ai_key_problem"; problem: "missing" | "invalid" }
+  | { type: "whatsapp_problem"; problem: "billing" | "account" | "permission" | "policy" }
   | { type: "onboarded"; businessName: string }
   | { type: "needs_human"; contactName: string | null; phone: string; reason: HandoffSource; lastMessage: string; summary: string };
 
@@ -63,6 +64,20 @@ export function ownerEmail(
         subject: oneLine(event.problem === "missing" ? "Your assistant is switched off: add your AI key" : "Your assistant is switched off: your AI key was refused"),
         text: `${o.businessName}: your WhatsApp assistant can't reply right now because ${event.problem === "missing" ? "no AI key has been added yet" : "the AI provider refused your key (it may have been revoked or have no credit)"}.\n\nUntil it is fixed, customers who message you get a short "our team will reply" message and their chats appear in Human handoff so nothing is lost.\n\nNext step: open Settings, then AI, and add or replace your key. After that, open Human handoff and click Resume assistant on the chats you want the assistant to take back.${o.appUrl ? `\n\nOpen Settings: ${o.appUrl.replace(/\/$/, "")}/dashboard/settings` : ""}`,
       };
+    case "whatsapp_problem": {
+      const what: Record<typeof event.problem, { subject: string; body: string; step: string }> = {
+        billing: { subject: "WhatsApp could not deliver your assistant's reply: a billing problem", body: "WhatsApp refused to deliver a message because of a billing problem with your WhatsApp Business Account. This is separate from your Replyleaf subscription and your AI provider.", step: "Open WhatsApp Manager (business.facebook.com) and check the payment method on your WhatsApp Business Account. You get 1,000 free service messages each month per phone number; after that a valid payment method is needed." },
+        account: { subject: "WhatsApp could not deliver your assistant's reply: account problem", body: "WhatsApp refused to deliver a message because of a problem with your WhatsApp account or phone number (for example it is restricted or not registered).", step: "Open WhatsApp Manager and check the status of your account and phone number." },
+        permission: { subject: "WhatsApp could not deliver your assistant's reply: reconnect WhatsApp", body: "WhatsApp refused a message because the connection to your account has expired or lacks permission.", step: "Open Settings, then WhatsApp, and reconnect your number." },
+        policy: { subject: "WhatsApp could not deliver your assistant's reply: policy block", body: "WhatsApp blocked a message under one of its messaging policies.", step: "Check the notices in WhatsApp Manager. Replyleaf does not retry blocked messages." },
+      };
+      const w = what[event.problem];
+      return {
+        to: o.to,
+        subject: oneLine(w.subject),
+        text: `${o.businessName}: ${w.body}\n\nThe customer's message is saved and the chat is still in your Conversations. Replyleaf will not keep retrying a message that WhatsApp refuses.\n\nNext step: ${w.step}\n\nYou are emailed about this at most once a day.${o.appUrl ? `\n\nOpen Conversations: ${o.appUrl.replace(/\/$/, "")}/dashboard/conversations` : ""}`,
+      };
+    }
     case "onboarded":
       return {
         to: o.to,

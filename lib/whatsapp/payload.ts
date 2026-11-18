@@ -69,6 +69,7 @@ export type StatusUpdate = {
   waMessageId: string;
   status: string; // sent | delivered | read | failed
   error: string | null;
+  errorCode?: number | null; // Meta's error code on a failed delivery
 };
 
 /** A reply the owner typed in the WhatsApp Business app. */
@@ -132,6 +133,7 @@ export function parseWebhookPayload(json: unknown): ParsedEvents {
           waMessageId: s.id,
           status: s.status,
           error: s.errors?.[0]?.message ?? s.errors?.[0]?.title ?? null,
+          errorCode: s.errors?.[0]?.code ?? null,
         });
       }
     }

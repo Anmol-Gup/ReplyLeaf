@@ -61,6 +61,21 @@ async function emailAdmin(alertId: string, clientId: string | null, kind: string
 // Business emails (new lead, appointment request, needs a human ...). Recipients come from the business's
 // notification settings (primary + additional addresses, per-category switches), falling back to clients.owner_email.
 // One failing address never stops the others; it only throws when NOBODY could be emailed, so the caller alerts the admin.
+/**
+ * WhatsApp refused or failed a message for a reason that retrying cannot fix (billing, account, permission, policy).
+ * The admin alert is written by the caller; this emails the OWNER, but at most once a day per kind of problem, so an outage
+ * cannot flood them. Never throws.
+ */
+export async function reportWhatsAppProblem(clientId: string, problem: "billing" | "account" | "permission" | "policy", detail: string): Promise<void> {
+  const db = supabaseAdmin();
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const kind = `whatsapp_${problem}_notified`;
+  const { count } = await db.from("admin_alerts").select("id", { count: "exact", head: true }).eq("client_id", clientId).eq("kind", kind).gte("created_at", since);
+  if (count) return; // the owner was already told in the last 24 hours
+  await db.from("admin_alerts").insert({ client_id: clientId, kind, detail: detail.slice(0, 300) });
+  await notifyOwner(clientId, { type: "whatsapp_problem", problem });
+}
+
 export async function notifyOwner(clientId: string, event: OwnerEvent): Promise<void> {
   const db = supabaseAdmin();
   const [client, settings] = await Promise.all([
@@ -160,6 +175,14 @@ export function supabaseInboundDeps(): InboundDeps {
         .eq("wa_message_id", waMessageId)
         .eq("direction", "outbound");
       if (dbErr) throw new Error(`status update failed: ${dbErr.message}`);
+    },
+
+    async reportDeliveryProblem(waMessageId, problem, detail) {
+      if (problem === "window" || problem === "rate_limit" || problem === "delivery") return;
+      const { data } = await db.from("messages").select("client_id").eq("wa_message_id", waMessageId).eq("direction", "outbound").maybeSingle();
+      if (!data?.client_id) return;
+      await raiseAlert(data.client_id as string, `whatsapp_${problem}`, detail);
+      await reportWhatsAppProblem(data.client_id as string, problem, detail);
     },
 
     async applyAccountEvent(wabaId, event) {

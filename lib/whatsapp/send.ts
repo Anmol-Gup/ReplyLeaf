@@ -3,7 +3,8 @@ import { z } from "zod";
 const responseSchema = z.object({ messages: z.array(z.object({ id: z.string() })).min(1) });
 
 export class WhatsAppApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  /** `code` is Meta's own error code (for example 131042 = payment problem), when the response had one. */
+  constructor(message: string, readonly status: number, readonly code: number | null = null) {
     super(message);
   }
 }
@@ -39,8 +40,9 @@ export async function sendTextMessage(opts: {
 
   const json: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    const msg = (json as { error?: { message?: string } } | null)?.error?.message ?? "unknown error";
-    throw new WhatsAppApiError(`WhatsApp send failed (${res.status}): ${msg}`, res.status);
+    const err = (json as { error?: { message?: string; code?: number } } | null)?.error;
+    const msg = err?.message ?? "unknown error";
+    throw new WhatsAppApiError(`WhatsApp send failed (${res.status}): ${msg}`, res.status, typeof err?.code === "number" ? err.code : null);
   }
   const parsed = responseSchema.safeParse(json);
   if (!parsed.success) throw new WhatsAppApiError("Unexpected WhatsApp send response", res.status);

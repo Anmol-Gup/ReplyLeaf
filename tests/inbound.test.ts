@@ -16,6 +16,7 @@ function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boole
   const statuses: string[] = [];
   const accountEvents: string[] = [];
   const echoes: string[] = [];
+  const problems: string[] = [];
   const deps: InboundDeps = {
     findClientByPhoneNumberId: async () => (opts.knownClient === false ? null : { id: "c1", name: "Biz" }),
     recordInbound: async (_c, m): Promise<RecordResult> => {
@@ -31,10 +32,11 @@ function fakeDeps(opts: { handling?: "bot" | "human_active"; knownClient?: boole
       return { duplicate };
     },
     updateMessageStatus: async (id, s) => void statuses.push(`${id}:${s}`),
+    reportDeliveryProblem: async (id, problem) => void problems.push(`${id}:${problem}`),
     applyAccountEvent: async (waba, event) => { if (opts.dbFails) throw new Error("db down"); accountEvents.push(`${waba}:${event}`); },
     raiseAlert: async (_c, kind) => void alerts.push(kind),
   };
-  return { deps, stored, alerts, statuses, accountEvents, echoes };
+  return { deps, stored, alerts, statuses, accountEvents, echoes, problems };
 }
 
 test("stores each message once and schedules its conversation once", async () => {
@@ -108,4 +110,16 @@ test("coexistence: an echo for an unknown number is skipped; a storage failure a
   assert.deepEqual(unknown.echoes, []);
   const down = fakeDeps({ dbFails: true });
   assert.equal((await recordEvents({ statuses: [], messages: [], echoes: [echo] }, down.deps)).failed, 1);
+});
+
+test("a failed delivery for a billing reason is reported once per status; ordinary failures and good statuses are not", async () => {
+  const f = fakeDeps();
+  await recordEvents({ messages: [], statuses: [
+    { waMessageId: "w1", status: "failed", error: "Business eligibility payment issue", errorCode: 131042 },
+    { waMessageId: "w2", status: "failed", error: "Message undeliverable", errorCode: 131026 },
+    { waMessageId: "w3", status: "delivered", error: null },
+    { waMessageId: "w4", status: "failed", error: "Re-engagement message", errorCode: 131047 },
+  ] }, f.deps);
+  assert.deepEqual(f.problems, ["w1:billing"]);
+  assert.deepEqual(f.statuses, ["w1:failed", "w2:failed", "w3:delivered", "w4:failed"]); // every status is still stored
 });

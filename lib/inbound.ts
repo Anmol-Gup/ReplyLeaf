@@ -1,3 +1,4 @@
+import { classifyWhatsAppError, isBlockingProblem, type SendProblem } from "./whatsapp/errors";
 import type { AccountEvent, InboundMessage, OwnerEcho, ParsedEvents } from "./whatsapp/payload";
 
 // Recording phase of the webhook: fast, DB-only, runs BEFORE we answer Meta.
@@ -24,6 +25,8 @@ export interface InboundDeps {
    */
   recordOwnerEcho(clientId: string, echo: OwnerEcho): Promise<{ duplicate: boolean }>;
   updateMessageStatus(waMessageId: string, status: string, error: string | null): Promise<void>;
+  /** A message we sent failed to deliver for a reason retrying cannot fix (billing, account, permission, policy): alert the admin and tell the owner (once a day). */
+  reportDeliveryProblem(waMessageId: string, problem: SendProblem, detail: string): Promise<void>;
   /** account_update from Meta: records it and updates the matching client's onboarding status. */
   applyAccountEvent(wabaId: string, event: string): Promise<void>;
   raiseAlert(clientId: string | null, kind: string, detail: string): Promise<void>;
@@ -45,6 +48,16 @@ export async function recordEvents(
       await deps.updateMessageStatus(s.waMessageId, s.status, s.error);
     } catch (e) {
       console.error("status update failed", errorText(e));
+    }
+    if (s.status === "failed") {
+      const problem = classifyWhatsAppError(s.errorCode, s.error);
+      if (isBlockingProblem(problem)) {
+        try {
+          await deps.reportDeliveryProblem(s.waMessageId, problem, `code=${s.errorCode ?? "none"} ${s.error ?? ""}`.slice(0, 300));
+        } catch (e) {
+          console.error("reporting a delivery problem failed", errorText(e));
+        }
+      }
     }
   }
 

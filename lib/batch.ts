@@ -5,6 +5,8 @@ import {
 } from "./workflow";
 import { bookingMode, type WorkflowSettings } from "./workflow-settings";
 import { ticketRef } from "./tickets";
+import { classifyWhatsAppError, isBlockingProblem, type SendProblem } from "./whatsapp/errors";
+import { WhatsAppApiError } from "./whatsapp/send";
 import { isAuthFailure, keyProblem, type AiMode, type KeyStatus } from "./ai-keys";
 import type { Access } from "./billing/access";
 import { z } from "zod";
@@ -91,6 +93,8 @@ export interface BatchDeps {
   saveLead(clientId: string, ctx: BatchContext, l: LeadInput): Promise<{ created: boolean }>;
   /** Idempotent: the same open issue for this conversation returns created=false. */
   saveTicket(clientId: string, ctx: BatchContext, t: TicketInput): Promise<{ created: boolean; id?: string }>;
+  /** A send was refused for a reason retrying cannot fix (billing, account, permission, policy): alert the admin and email the owner (at most once a day). */
+  reportSendProblem(clientId: string, problem: SendProblem, detail: string): Promise<void>;
   recordFailedUsage(clientId: string, usage: Usage, provider: Provider, model: string): Promise<void>;
   raiseAlert(clientId: string | null, kind: string, detail: string, opts?: { oncePerMonth?: boolean }): Promise<void>;
   /** Fills empty contact fields; differing values go to contacts.suggested for the owner to confirm. */
@@ -393,6 +397,21 @@ async function aiUnavailable(ctx: BatchContext, deps: BatchDeps, now: Date, prob
 async function handleFailure(e: unknown, ctx: BatchContext | null, deps: BatchDeps, now: Date): Promise<void> {
   const detail = errorText(e);
   console.error("batch processing failed", detail);
+  // WhatsApp refused to send for a reason that retrying cannot fix (payment, account, permission, policy). Record exactly what
+  // Meta said, tell the owner (once a day), keep the customer's message and chat as they are, and do NOT send a fallback:
+  // it would be refused the same way. Nothing is recorded as sent, so nothing is reported as delivered.
+  if (e instanceof WhatsAppApiError && ctx) {
+    const problem = classifyWhatsAppError(e.code, e.message);
+    if (isBlockingProblem(problem)) {
+      try {
+        await deps.raiseAlert(ctx.client.id, `whatsapp_${problem}`, `code=${e.code ?? "none"} http=${e.status} ${detail}`.slice(0, 500));
+        await deps.reportSendProblem(ctx.client.id, problem, detail);
+      } catch (alertErr) {
+        console.error("could not record a WhatsApp send problem", errorText(alertErr));
+      }
+      return;
+    }
+  }
   // Their own key was refused by the provider: that is not a platform fault. Mark it, tell the owner, hand the chat over.
   if (ctx && ctx.client.ai.mode === "byok" && isAuthFailure(e) && ctx.conversation.handling === "bot") {
     try {

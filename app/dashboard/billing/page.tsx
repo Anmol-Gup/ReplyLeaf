@@ -86,6 +86,14 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
         </Card>
       )}
 
+      <Card title="What you pay for" description="Three separate costs. Replyleaf only charges the first one.">
+        <ul className="reqs">
+          <li><b>Replyleaf subscription:</b> ₹999 per month, paid here.</li>
+          <li><b>AI usage:</b> paid directly to your AI provider (Google or OpenAI) with your own key.</li>
+          <li><b>WhatsApp messaging:</b> paid to Meta through your own WhatsApp Business Account or messaging provider. Each business phone number gets its first 1,000 delivered service messages free every month; after that Meta charges, at rates that depend on the country. Replyleaf does not pay or collect these charges. See <a href="/dashboard/usage">Usage</a> for an estimate of this month.</li>
+        </ul>
+      </Card>
+
       <Card title="Payment history">
         {(invoices ?? []).length === 0 ? <EmptyState icon="card" title="No payments yet">Invoices appear here after your first payment.</EmptyState> : (
           <div className="table-wrap">

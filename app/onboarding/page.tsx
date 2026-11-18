@@ -39,6 +39,9 @@ export default async function Onboarding() {
             <Alert kind="error">{STEP_REASONS[failedStep] ?? "The last attempt did not finish."} You can try again below; nothing is duplicated.</Alert>
           </div>
         )}
+        <p className="hint" style={{ marginBottom: 14 }}>
+          Your WhatsApp Business Account will be connected to Replyleaf. Meta messaging charges are separate from your Replyleaf subscription and are managed through your WhatsApp Business Account or messaging provider.
+        </p>
         {ready ? (
           <EmbeddedSignup
             appId={appId!} configId={configId!} graphVersion={env().GRAPH_API_VERSION}

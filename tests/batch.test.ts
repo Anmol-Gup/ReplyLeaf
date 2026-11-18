@@ -40,7 +40,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
     generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
-    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[], keyReports: [] as { problem: string; markInvalid?: boolean }[] };
+    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[], keyReports: [] as { problem: string; markInvalid?: boolean }[], sendProblems: [] as string[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -58,6 +58,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
       log.sent.push(body); return { waMessageId: `out.${log.sent.length}` };
     },
     saveReply: async (r) => void log.saved.push(r),
+    reportSendProblem: async (_c, problem) => void log.sendProblems.push(problem),
     saveAppointment: async (_c, _ctx, a) => { if (opts.apptFails) throw new Error("db down"); log.appts.push(a); return { created: opts.apptCreated ?? true }; },
     reportAiKeyProblem: async (_c, problem, o) => void log.keyReports.push({ problem, markInvalid: o?.markInvalid }),
     saveTicket: async (_c, _ctx, t) => { log.tickets.push(t); return { created: opts.ticketCreated ?? true }; },
@@ -845,4 +846,29 @@ test("two businesses chatting at the same time: each saves only its own record a
   assert.deepEqual(a.f.log.tickets.map((t) => (t as { subject: string }).subject), ["Order A missing"]);
   assert.deepEqual(b.f.log.tickets.map((t) => (t as { subject: string }).subject), ["Order B missing"]);
   assert.ok(a.f.log.owner.every((e) => !JSON.stringify(e).includes("Order B")) && b.f.log.owner.every((e) => !JSON.stringify(e).includes("Order A")));
+});
+
+// ================= WhatsApp refuses to send: billing and other problems retrying cannot fix =================
+import { WhatsAppApiError } from "../lib/whatsapp/send";
+
+test("a billing refusal from WhatsApp: no fallback is sent, nothing is recorded as sent, the owner is told, the chat is untouched", async () => {
+  const f = fakeDeps(makeCtx());
+  f.deps.sendText = async () => { throw new WhatsAppApiError("WhatsApp send failed (400): payment issue", 400, 131042); };
+  await run(f.deps);
+  assert.deepEqual(f.log.sent, []);                                  // no message went out, and no fallback attempt either
+  assert.deepEqual(f.log.saved, []);                                 // nothing is recorded as sent or delivered
+  assert.deepEqual(f.log.sendProblems, ["billing"]);                 // the owner is told (the real dep emails once a day)
+  assert.ok(f.log.alerts.includes("whatsapp_billing"));
+  assert.ok(!f.log.alerts.includes("batch_processing_failed"));
+  assert.equal(f.log.conv.length, 0);                                // the conversation is not handed over or changed
+});
+
+test("a plain delivery error still gets the old behaviour (alert and one fallback attempt), and is not reported as a billing problem", async () => {
+  const f = fakeDeps(makeCtx());
+  let calls = 0;
+  f.deps.sendText = async (_c, body) => { calls++; if (calls === 1) throw new WhatsAppApiError("WhatsApp send failed (500): temporary", 500, 131000); f.log.sent.push(body); return { waMessageId: "out.1" }; };
+  await run(f.deps);
+  assert.deepEqual(f.log.sendProblems, []);
+  assert.ok(f.log.alerts.includes("batch_processing_failed"));
+  assert.equal(f.log.sent.length, 1);                                // the fallback went out
 });

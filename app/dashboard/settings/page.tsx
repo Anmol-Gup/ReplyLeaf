@@ -221,6 +221,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         <Card title="WhatsApp connection" description="The WhatsApp Business number your customers message.">
           <div className="stack">
             <OnboardingBanner status={c?.onboarding_status} step={c?.onboarding_step} />
+            {c?.wa_phone_number_id && <p className="muted">Your WhatsApp Business Account is connected to Replyleaf. Meta messaging charges are separate from your Replyleaf subscription and are managed through your WhatsApp Business Account or messaging provider. See <Link href="/dashboard/usage">Usage</Link> for this month&apos;s messages.</p>}
             {c?.wa_phone_number_id
               ? <p className="muted">Phone number ID: <b>{c.wa_phone_number_id}</b>{mode === "platform" && <> · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</>}</p>
               : <Alert kind="warn">No WhatsApp number is connected yet. <Link href="/onboarding">Connect WhatsApp</Link></Alert>}
