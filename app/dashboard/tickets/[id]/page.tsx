@@ -7,7 +7,7 @@ import { requireClient } from "../../../../lib/auth/session";
 import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt, fmtDay, fmtTime } from "../../../../lib/dashboard";
 import { whatsappLink } from "../../../../lib/appointments";
-import { isDone, resolutionMessage, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
+import { isDone, PRIORITIES, PRIORITY_LABELS, resolutionMessage, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
 import Notice from "../../Notice";
 import { updateTicket } from "../actions";
 
@@ -36,7 +36,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
       <PageHeader
         title={`${ticketRef(t.id)}: ${t.subject}`}
         description={`${t.customer_name || "Customer"} · +${t.customer_phone}${emailOf ? ` · ${emailOf}` : ""} · raised ${fmt(t.created_at)}`}
-        actions={<Link className="btn btn-secondary btn-sm" href="/dashboard/tickets">All tickets</Link>}
+        actions={<span className="row"><a className="btn btn-primary btn-sm" href="#edit">Edit</a><Link className="btn btn-secondary btn-sm" href="/dashboard/tickets">All tickets</Link></span>}
       />
       <Notice code={notice} />
       <Card title="The problem" actions={<span className="row">{t.priority === "high" && <Badge tone="danger">Urgent</Badge>}<Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge></span>}>
@@ -53,12 +53,15 @@ export default async function TicketDetail({ params, searchParams }: { params: P
         </p>
       </Card>
 
-      <Card title="Manage" description="Notes and the assignee stay private. They are never sent to the customer.">
+      <div id="edit"><Card title="Edit ticket" description="Set the status and priority, assign it, and keep private notes. Notes and the assignee are never sent to the customer.">
         <form action={updateTicket} className="stack">
           <input type="hidden" name="id" value={t.id} />
           <div className="row">
             <label className="field">Status
               <select name="status" defaultValue={status}>{TICKET_STATUSES.map((s) => <option key={s} value={s}>{TICKET_LABELS[s]}</option>)}</select>
+            </label>
+            <label className="field">Priority
+              <select name="priority" defaultValue={t.priority === "high" ? "high" : "normal"}>{PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>)}</select>
             </label>
             <label className="field">Assigned to <input name="assigned_to" maxLength={100} defaultValue={t.assigned_to ?? ""} placeholder="Name or email" /></label>
           </div>
@@ -72,7 +75,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
           )}
           <div><SubmitButton pendingText="Saving...">Save</SubmitButton></div>
         </form>
-      </Card>
+      </Card></div>
 
       {link && (
         <Card title="Message the customer yourself" description="Opens WhatsApp with this message ready; press send on your phone. It is a normal chat message, not an API message or a template, so Meta does not charge for it and the 24-hour rule does not apply.">

@@ -23,6 +23,6 @@ export function selectionSummary(selected: readonly string[], options: { value: 
 import { buildQuery } from "./paginate";
 
 /** The address for a list with these statuses chosen. Nothing chosen = no status in the address (the page's default view). */
-export function filterHref(action: string, selected: readonly string[], hidden: Record<string, string | undefined> = {}, param = "status"): string {
+export function filterHref(action: string, selected: readonly string[], hidden: Record<string, string | string[] | undefined> = {}, param = "status"): string {
   return `${action}${buildQuery({ [param]: [...selected], ...hidden })}`;
 }

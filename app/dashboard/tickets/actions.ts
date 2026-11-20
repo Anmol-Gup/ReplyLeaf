@@ -15,7 +15,7 @@ export async function updateTicket(formData: FormData) {
   const { clientId, clientName } = await requireClient();
   if (formData.get("notify") !== null) await requirePaidAccess(clientId); // sending to the customer is a paid feature
   const parsed = ticketFormSchema.safeParse({
-    id: formData.get("id"), status: formData.get("status"),
+    id: formData.get("id"), status: formData.get("status"), priority: formData.get("priority") ?? undefined,
     assigned_to: String(formData.get("assigned_to") ?? ""), notes: String(formData.get("notes") ?? "").replace(/\u0000/g, "").trim(),
     message: String(formData.get("message") ?? "").replace(/\u0000/g, "").trim(),
   });
@@ -31,7 +31,7 @@ export async function updateTicket(formData: FormData) {
 
   const prev = before.status as TicketStatus;
   const { error } = await db.from("tickets").update({
-    status: v.status, assigned_to: assignee, internal_notes: v.notes || null,
+    status: v.status, ...(v.priority ? { priority: v.priority } : {}), assigned_to: assignee, internal_notes: v.notes || null,
     resolved_at: resolvedAtFor(v.status, prev, before.resolved_at, new Date()), updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);
   if (error) return redirect(`/dashboard/tickets/${v.id}?notice=invalid`);

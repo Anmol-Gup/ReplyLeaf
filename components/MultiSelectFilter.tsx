@@ -8,11 +8,12 @@ import { filterHref, selectionSummary } from "../lib/filters";
 // changes in the list until you do. Reset clears the choice. The choice lives in the address (?status=a&status=b), the search text and
 // other switches travel along, and the page number is dropped (a new filter starts on page 1). Without JavaScript it is still a plain
 // GET form, so Apply works. The dropdown closes when the list has updated and when you click elsewhere.
-export default function MultiSelectFilter({ action, label = "Status", param = "status", options, selected, hidden = {} }: {
-  action: string; label?: string; param?: string;
+export default function MultiSelectFilter({ action, label = "Status", plural, param = "status", options, selected, hidden = {} }: {
+  action: string; label?: string; plural?: string; param?: string;
   options: { value: string; label: string; count: number }[];
   selected: string[];
-  hidden?: Record<string, string | undefined>;
+  /** Other values to keep in the address: the search text, another filter's choice (one value or several). */
+  hidden?: Record<string, string | string[] | undefined>;
 }) {
   const router = useRouter();
   const box = useRef<HTMLDetailsElement>(null);
@@ -46,9 +47,9 @@ export default function MultiSelectFilter({ action, label = "Status", param = "s
         {label}: <b>{selectionSummary(selected, options)}</b>{pending && <span className="spinner" aria-hidden="true" style={{ marginLeft: 8 }} />}
       </summary>
       <form method="get" action={action} className="msel-panel" onSubmit={(e) => { e.preventDefault(); apply(checked); }}>
-        {Object.entries(hidden).map(([k, v]) => v ? <input key={k} type="hidden" name={k} value={v} /> : null)}
+        {Object.entries(hidden).flatMap(([k, v]) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => <input key={`${k}-${x}`} type="hidden" name={k} value={x} />))}
         <fieldset>
-          <legend className="hint">Show items with any of these {label.toLowerCase()}es</legend>
+          <legend className="hint">Show items with any of these {plural ?? `${label.toLowerCase()}es`}</legend>
           <label className="check msel-all">
             <input type="checkbox" checked={allTicked} onChange={(e) => setChecked(e.target.checked ? allValues : [])} /> <b>Select all</b>
           </label>
