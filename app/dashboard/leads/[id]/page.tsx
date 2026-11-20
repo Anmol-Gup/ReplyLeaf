@@ -38,14 +38,6 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
         {contact && <p className="muted" style={{ marginTop: 12 }}><Link href={`/dashboard/contacts/${contact.id}`}>Contact details</Link></p>}
       </Card>
 
-      <Card title="Requirements" description="Collected from the conversation, as the customer described them.">
-        {(reqs ?? []).length === 0 ? <p className="muted">No extra details were collected.</p> : (
-          <dl className="handoff-facts">
-            {(reqs ?? []).map((r, i) => <div key={i}><dt>{r.requirement_key}</dt><dd>{r.requirement_value}</dd></div>)}
-          </dl>
-        )}
-      </Card>
-
       <div id="edit">
         <Card title="Edit lead" description="Everything about this lead in one place. The notes and follow-up date stay private and are never sent to the customer. Put one requirement per line as  name: value  (for example  platform: Shopify).">
           <form action={updateLeadDetails} className="stack">
