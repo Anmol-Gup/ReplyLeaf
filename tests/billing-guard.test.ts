@@ -15,7 +15,7 @@ const body = (src: string, fn: string) => {
 test("14. every paid dashboard action checks the subscription on the server before doing anything", () => {
   const gated: [string, string[]][] = [
     ["app/dashboard/actions.ts", ["sendHumanMessage", "updateKnowledge", "createDocument", "publishDocumentAction", "setDocumentStatus", "restoreVersion", "reindexDocumentAction"]],
-    ["app/dashboard/appointments/actions.ts", ["appointmentTransition"]],
+    ["app/dashboard/appointments/actions.ts", ["updateAppointment"]],
     ["app/dashboard/tickets/actions.ts", ["updateTicket"]],
   ];
   for (const [file, fns] of gated) {

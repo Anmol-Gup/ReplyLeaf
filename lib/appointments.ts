@@ -1,16 +1,19 @@
 import { z } from "zod";
 import { parseClockTime, todayInZone } from "./workflow";
 
-// Pure helpers for appointment requests (unit-tested). The same transition rules are enforced in SQL by
-// public.set_appointment_status; this copy decides which buttons the page shows and what the customer is told.
+// Pure helpers for appointment requests (unit-tested).
+//
+// How appointments work: the assistant collects the details (what, preferred date and time, notes). The owner then talks to the
+// customer themselves, and afterwards sets the status here by hand. Nothing is sent to the customer from this page.
 
 type Tone = "brand" | "success" | "warn" | "danger" | "muted"; // same names as components/ui
 
+// The database accepts all six; older records may still carry "reschedule_requested" or "rejected".
 export const APPOINTMENT_STATUSES = ["pending", "confirmed", "reschedule_requested", "rejected", "cancelled", "completed"] as const;
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
-export const APPOINTMENT_ACTIONS = ["confirm", "reject", "reschedule", "cancel", "complete"] as const;
-export type AppointmentAction = (typeof APPOINTMENT_ACTIONS)[number];
+/** The statuses the owner picks from. An older record with another status still shows it, so nothing is hidden. */
+export const OWNER_STATUSES = ["pending", "confirmed", "completed", "cancelled"] as const;
 
 export const STATUS_LABELS: Record<AppointmentStatus, string> = {
   pending: "Unconfirmed",
@@ -24,26 +27,13 @@ export const STATUS_TONES: Record<AppointmentStatus, Tone> = {
   pending: "warn", confirmed: "success", reschedule_requested: "brand", rejected: "danger", cancelled: "muted", completed: "muted",
 };
 
-const ALLOWED: Record<AppointmentStatus, AppointmentAction[]> = {
-  pending: ["confirm", "reject", "reschedule", "cancel"],
-  reschedule_requested: ["confirm", "reject", "cancel"],
-  confirmed: ["reschedule", "cancel", "complete"],
-  rejected: [], cancelled: [], completed: [],
-};
-export const allowedActions = (s: AppointmentStatus): AppointmentAction[] => ALLOWED[s];
-
-export function nextStatus(s: AppointmentStatus, a: AppointmentAction): AppointmentStatus | null {
-  if (!ALLOWED[s].includes(a)) return null;
-  return ({ confirm: "confirmed", reject: "rejected", reschedule: "reschedule_requested", cancel: "cancelled", complete: "completed" } as const)[a];
-}
-
 /** "2026-11-20 10am", "2026-11-20", "10am" or "" */
 export const whenText = (date: string | null | undefined, time: string | null | undefined) =>
   [date, time].map((x) => x?.trim()).filter(Boolean).join(" ");
 
 export type ApptLike = { status: AppointmentStatus; scheduled_date: string | null; preferred_date: string | null };
 
-/** Confirmed and not in the past (by its scheduled date, else its preferred date; no date at all counts as upcoming). */
+/** Confirmed and not in the past (by its agreed date, else its preferred date; no date at all counts as upcoming). */
 export function isUpcoming(a: ApptLike, today: string): boolean {
   if (a.status !== "confirmed") return false;
   const d = a.scheduled_date ?? a.preferred_date;
@@ -59,108 +49,49 @@ export function overview(rows: ApptLike[], today: string) {
   };
 }
 
-// ---- what the customer is told. Never includes internal notes. ----
-
-const trimNote = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
-
-export function customerMessage(action: Exclude<AppointmentAction, "complete">, a: { purpose: string; when: string; note?: string | null }, business: string): string {
-  const note = trimNote(a.note);
-  switch (action) {
-    case "confirm":
-      return `Good news! Your appointment with ${business} for ${a.purpose}${a.when ? ` is confirmed for ${a.when}` : " is confirmed"}. We look forward to seeing you. If anything changes, just message us here.`;
-    case "reject":
-      return `Sorry, we can't offer the appointment you asked for (${a.purpose}).${note ? ` ${note}` : ""} Please message us if you'd like to try another day or time.`;
-    case "reschedule":
-      return `${business} would like to reschedule your appointment for ${a.purpose}. ${note ? `Suggested: ${note}. ` : ""}Please reply and tell us if that works for you, or suggest another time.`;
-    case "cancel":
-      return `Your appointment with ${business} for ${a.purpose}${a.when ? ` (${a.when})` : ""} has been cancelled. Message us any time if you'd like to book again.`;
-  }
-}
-
-// ---- form validation (dashboard actions) ----
+// ---- updating an appointment (dashboard action)
 const realDate = (s: string) => {
   const d = new Date(`${s}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s; // Date gives "Invalid Date" for 2026-02-31: never throw
 };
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "not a real date");
 
-export const appointmentFormSchema = z.object({
-  id: z.string().uuid(),
-  action: z.enum(APPOINTMENT_ACTIONS),
-  date: z.union([z.literal(""), isoDate]).optional(),
-  time: z.string().trim().max(60).optional(),
-  note: z.string().trim().max(500).optional(),
-});
-
-/** Why this action cannot go ahead with the details given, or null. Reschedule needs the alternative. */
-export function formProblem(action: AppointmentAction, f: { date?: string; time?: string; note?: string }): string | null {
-  if (action === "reschedule" && !f.note && !f.date && !f.time) return "Tell the customer what you suggest instead.";
-  return null;
-}
-
-/** The alternative the owner typed, as one line for the customer. */
-export const rescheduleNote = (f: { date?: string; time?: string; note?: string }) =>
-  [whenText(f.date, f.time), f.note?.trim()].filter(Boolean).join(" - ");
-
-// ---- editing an appointment by hand (any field, any status)
-
-/** The customer message that goes with a status, when there is one (pending and completed have none). */
-export const statusMessageAction = (s: AppointmentStatus): Exclude<AppointmentAction, "complete"> | null =>
-  s === "confirmed" ? "confirm" : s === "rejected" ? "reject" : s === "reschedule_requested" ? "reschedule" : s === "cancelled" ? "cancel" : null;
-
-const optionalDate = z.union([z.literal(""), isoDate]);
-export const appointmentEditSchema = z.object({
+/** What the owner can change: the status, the date and time they agreed with the customer, and a private note. */
+export const appointmentUpdateSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(APPOINTMENT_STATUSES),
-  customer_name: z.string().trim().max(100),
-  purpose: z.string().trim().min(1).max(300),
-  preferred_date: optionalDate,
-  preferred_time: z.string().trim().max(60),
-  scheduled_date: optionalDate,
+  scheduled_date: z.union([z.literal(""), isoDate]),
   scheduled_time: z.string().trim().max(60),
-  appointment_type: z.enum(["", "online", "in_person"]),
-  timezone: z.string().trim().max(60),
-  note: z.string().trim().max(500),          // the reason or alternative shown to the customer with a reject / reschedule message
-  notify: z.boolean(),
+  notes: z.string().max(2000).transform((v) => v.replace(/\u0000/g, "").trim()),
 });
-
-/**
- * A link that opens WhatsApp with the message already typed, so the owner only presses send from their own phone (the WhatsApp
- * Business app). It is not an API message: no template, no 24-hour rule, no Meta API charge. Null if the number is not usable.
- */
-export function whatsappLink(phone: string | null | undefined, text: string): string | null {
-  const digits = (phone ?? "").replace(/\D/g, "");
-  if (digits.length < 7 || digits.length > 15) return null;
-  return `https://wa.me/${digits}?text=${encodeURIComponent(text.slice(0, 1500))}`;
-}
-
-// ---- the scheduled date and time (what the owner approves; never touches the customer's preferred date and time)
 
 export type ScheduleProblem = "date" | "past" | "time";
 /**
- * Confirming needs a real scheduled date and a real clock time ("10:30", "3pm"). The date may not be in the past, judged in the
- * appointment's time zone (or the business's, or UTC), and it is the same zone that is shown next to the time and written in the
- * customer's message, so the owner, the customer and the record all mean the same moment.
+ * A confirmed appointment needs the agreed date and a clock time ("10:30", "3pm"). The date may not be in the past, judged in the
+ * business's time zone (UTC if none is set). The customer's own preferred date and time are never changed by this.
  */
 export function validateSchedule(f: { date?: string | null; time?: string | null }, o: { timeZone: string | null; now: Date; checkPast?: boolean }):
   { ok: true; date: string; time: string } | { ok: false; problem: ScheduleProblem; message: string } {
   const date = (f.date ?? "").trim();
   const time = (f.time ?? "").trim();
-  if (!isoDate.safeParse(date).success) return { ok: false, problem: "date", message: "Pick the date you are confirming." };
+  if (!isoDate.safeParse(date).success) return { ok: false, problem: "date", message: "Pick the date you agreed with the customer." };
   if (o.checkPast !== false && date < todayInZone(o.now, o.timeZone)) return { ok: false, problem: "past", message: "That date has already passed. Pick today or a later date." };
   if (!time || parseClockTime(time) === null) return { ok: false, problem: "time", message: "Enter the time as a clock time, for example 10:30 or 3pm." };
   return { ok: true, date, time };
 }
-
-/** "2026-11-21 11 am (Asia/Kolkata)": the date and time with the zone they are in, when known. */
-export const whenWithZone = (date: string | null | undefined, time: string | null | undefined, timeZone: string | null | undefined) => {
-  const w = whenText(date, time);
-  return w && timeZone?.trim() ? `${w} (${timeZone.trim()})` : w;
-};
-
 /** The notice code for a schedule problem. */
 export const scheduleNotice = (p: ScheduleProblem) => (p === "date" ? "appt_need_date" : p === "past" ? "appt_date_past" : "appt_need_time");
 
-/** The notice code that says what really happened when the customer was told: sent by WhatsApp, sent by email, tried but FAILED, or not reachable. */
+/**
+ * A link that opens WhatsApp to chat with this customer, so the owner can talk to them from their own phone (the WhatsApp Business
+ * app). Not an API message: no template, no 24-hour rule, no Meta API charge. Null if the number is not usable.
+ */
+export function whatsappLink(phone: string | null | undefined, text = ""): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return null;
+  return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text.slice(0, 1500))}` : ""}`;
+}
+
+/** The notice code that says what really happened when a customer was told (tickets): sent by WhatsApp, by email, tried but FAILED, or not reachable. */
 export const deliveryNotice = (prefix: "appt" | "tkt", channel: "whatsapp" | "email" | "failed" | "none") =>
   `${prefix}_done_${channel === "none" ? "not_sent" : channel}`;

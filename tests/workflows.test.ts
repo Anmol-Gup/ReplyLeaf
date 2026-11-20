@@ -1,9 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  allowedActions, appointmentFormSchema, customerMessage, formProblem, isUpcoming, nextStatus, overview, rescheduleNote,
-  APPOINTMENT_ACTIONS, APPOINTMENT_STATUSES,
-} from "../lib/appointments";
+import { isUpcoming, overview, APPOINTMENT_STATUSES } from "../lib/appointments";
 import { TICKET_STATUSES, cleanAssignedTo, isOpenTicket, resolvedAtFor, resolutionMessage, ticketFormSchema, ticketOverview, ticketRef } from "../lib/tickets";
 import { LEAD_STATUSES, leadFormSchema, leadOverview, projectBrief } from "../lib/leads";
 import { eventCategory, parseEmails, parseOneEmail, recipientsFor, type NotificationSettings } from "../lib/notify-settings";
@@ -15,20 +12,6 @@ import { baseReply } from "./fixtures";
 const NOW = new Date("2026-01-02T12:00:00Z");
 
 // ---- appointment status rules ----
-test("appointment moves follow the lifecycle and refuse everything else", () => {
-  assert.equal(nextStatus("pending", "confirm"), "confirmed");
-  assert.equal(nextStatus("pending", "reject"), "rejected");
-  assert.equal(nextStatus("pending", "reschedule"), "reschedule_requested");
-  assert.equal(nextStatus("reschedule_requested", "confirm"), "confirmed");
-  assert.equal(nextStatus("confirmed", "complete"), "completed");
-  assert.equal(nextStatus("confirmed", "reschedule"), "reschedule_requested");
-  assert.equal(nextStatus("pending", "complete"), null); // only confirmed ones can be completed
-  assert.equal(nextStatus("confirmed", "confirm"), null);
-  for (const a of APPOINTMENT_ACTIONS) for (const s of ["rejected", "cancelled", "completed"] as const) assert.equal(nextStatus(s, a), null);
-  assert.deepEqual(allowedActions("cancelled"), []);
-  assert.equal(APPOINTMENT_STATUSES.length, 6);
-});
-
 test("upcoming = confirmed and not in the past; overview counts", () => {
   const rows = [
     { status: "pending" as const, scheduled_date: null, preferred_date: "2026-02-01" },
@@ -42,29 +25,6 @@ test("upcoming = confirmed and not in the past; overview counts", () => {
   assert.equal(isUpcoming(rows[2], "2026-01-02"), false);
   assert.equal(isUpcoming(rows[0], "2026-01-02"), false);
   assert.deepEqual(overview(rows, "2026-01-02"), { pending: 2, upcoming: 1, confirmed: 2, closed: 2 });
-});
-
-test("customer messages never claim more than is true and never leak internal notes", () => {
-  const confirm = customerMessage("confirm", { purpose: "check-up", when: "2026-01-09 10am" }, "Biz");
-  assert.match(confirm, /confirmed for 2026-01-09 10am/);
-  assert.match(customerMessage("reschedule", { purpose: "check-up", when: "", note: "Friday 3pm" }, "Biz"), /Suggested: Friday 3pm/);
-  assert.match(customerMessage("reject", { purpose: "check-up", when: "", note: "Fully booked" }, "Biz"), /Fully booked/);
-  assert.match(customerMessage("cancel", { purpose: "check-up", when: "" }, "Biz"), /cancelled/);
-  // the message builders only take the customer-facing fields: there is no parameter for internal notes
-  assert.equal(customerMessage.length, 3);
-});
-
-test("appointment form: real id, known action, real date; reschedule needs an alternative", () => {
-  const id = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
-  assert.ok(appointmentFormSchema.safeParse({ id, action: "confirm", date: "2026-01-09" }).success);
-  assert.ok(appointmentFormSchema.safeParse({ id, action: "confirm", date: "" }).success);
-  assert.ok(!appointmentFormSchema.safeParse({ id, action: "confirm", date: "2026-02-31" }).success);
-  assert.ok(!appointmentFormSchema.safeParse({ id: "x", action: "confirm" }).success);
-  assert.ok(!appointmentFormSchema.safeParse({ id, action: "delete" }).success);
-  assert.ok(formProblem("reschedule", {}) !== null);
-  assert.equal(formProblem("reschedule", { note: "Friday" }), null);
-  assert.equal(formProblem("confirm", {}), null);
-  assert.equal(rescheduleNote({ date: "2026-01-09", time: "3pm", note: "we are full" }), "2026-01-09 3pm - we are full");
 });
 
 // ---- workflow decision rules ----

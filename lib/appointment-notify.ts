@@ -52,7 +52,7 @@ export async function notifyCustomer(
       await mailer.send({
         to: emailTo, subject,
         text: `${text}\n\n- ${businessName}`,
-        html: emailLayout({ preheader: text.slice(0, 90), heading: subject, paragraphs: [text], brandName: businessName, footer: `You are receiving this because you asked ${businessName} for an appointment on WhatsApp.` }),
+        html: emailLayout({ preheader: text.slice(0, 90), heading: subject, paragraphs: [text], brandName: businessName, footer: `You are receiving this because you contacted ${businessName} on WhatsApp.` }),
       });
       return "email";
     } catch (e) {

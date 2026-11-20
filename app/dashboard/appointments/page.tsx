@@ -5,7 +5,7 @@ import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../.
 import { requireClient } from "../../../lib/auth/session";
 import { fmtDay, matches } from "../../../lib/dashboard";
 import { effectiveSelection } from "../../../lib/filters";
-import { APPOINTMENT_STATUSES, isUpcoming, overview, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentStatus } from "../../../lib/appointments";
+import { APPOINTMENT_STATUSES, isUpcoming, OWNER_STATUSES, overview, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentStatus } from "../../../lib/appointments";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
 
@@ -27,7 +27,9 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
     .order("created_at", { ascending: false }).limit(500);
   const all = (data ?? []) as Row[];
   const o = overview(all, today);
-  const options = APPOINTMENT_STATUSES.map((st) => ({ value: st as string, label: STATUS_LABELS[st], count: all.filter((r) => r.status === st).length }));
+  // The four statuses you use, plus an older status (Rejected, Reschedule) only if some appointment still has it.
+  const options = APPOINTMENT_STATUSES.map((st) => ({ value: st as string, label: STATUS_LABELS[st], count: all.filter((r) => r.status === st).length }))
+    .filter((o) => (OWNER_STATUSES as readonly string[]).includes(o.value) || o.count > 0);
 
   const matching = all.filter((r) => statuses.includes(r.status) && (!onlyUpcoming || isUpcoming(r, today)) && matches(q, r.customer_name, r.customer_phone, r.purpose, r.preferred_date, r.preferred_time, STATUS_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
@@ -36,7 +38,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Appointments" description="Requests collected by the assistant. Nothing is booked until you confirm it, and there is no calendar connection." />
+      <PageHeader title="Appointments" description="Requests collected by the assistant. Talk to the customer, then set the status." />
       <Notice code={notice} />
       <div className="stat-grid">
         <Stat value={o.pending} label="Waiting for you" />

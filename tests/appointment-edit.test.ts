@@ -1,66 +1,38 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allowedActions, appointmentEditSchema, APPOINTMENT_STATUSES, STATUS_LABELS, statusMessageAction } from "../lib/appointments";
-
-const base = {
-  id: "11111111-1111-4111-8111-111111111111", status: "pending", customer_name: "  Ravi ", purpose: " Discovery call ", preferred_date: "2026-11-21", preferred_time: " 11 am ",
-  scheduled_date: "", scheduled_time: "", appointment_type: "", timezone: "", note: "", notify: false,
-};
-
-test("status names are short: Unconfirmed and Reschedule", () => {
-  assert.equal(STATUS_LABELS.pending, "Unconfirmed");
-  assert.equal(STATUS_LABELS.reschedule_requested, "Reschedule");
-  assert.equal(STATUS_LABELS.confirmed, "Confirmed");
-});
-
-test("the edit form accepts any status, trims text, and rejects bad dates, unknown statuses and an empty purpose", () => {
-  for (const status of APPOINTMENT_STATUSES) assert.equal(appointmentEditSchema.safeParse({ ...base, status }).success, true, status);
-  const ok = appointmentEditSchema.parse(base);
-  assert.deepEqual([ok.customer_name, ok.purpose, ok.preferred_time], ["Ravi", "Discovery call", "11 am"]);
-  assert.equal(appointmentEditSchema.safeParse({ ...base, status: "banana" }).success, false);
-  assert.equal(appointmentEditSchema.safeParse({ ...base, purpose: "   " }).success, false);
-  assert.equal(appointmentEditSchema.safeParse({ ...base, preferred_date: "2026-02-31" }).success, false);
-  assert.equal(appointmentEditSchema.safeParse({ ...base, scheduled_date: "tomorrow" }).success, false);
-  assert.equal(appointmentEditSchema.safeParse({ ...base, appointment_type: "teleport" }).success, false);
-  assert.equal(appointmentEditSchema.safeParse({ ...base, id: "nope" }).success, false);
-});
-
-test("manual status edits can reopen a closed appointment, which the guided buttons never could", () => {
-  for (const closed of ["rejected", "cancelled", "completed"] as const) assert.deepEqual(allowedActions(closed), []); // guided buttons: nothing
-  assert.equal(appointmentEditSchema.safeParse({ ...base, status: "pending" }).success, true);                         // but the editor can set it back to Unconfirmed
-});
-
-test("only confirmed, rejected, reschedule and cancelled have a customer message; unconfirmed and completed send nothing", () => {
-  assert.equal(statusMessageAction("confirmed"), "confirm");
-  assert.equal(statusMessageAction("rejected"), "reject");
-  assert.equal(statusMessageAction("reschedule_requested"), "reschedule");
-  assert.equal(statusMessageAction("cancelled"), "cancel");
-  assert.equal(statusMessageAction("pending"), null);
-  assert.equal(statusMessageAction("completed"), null);
-});
-
-import { whatsappLink } from "../lib/appointments";
-
-test("'Send from WhatsApp' link: digits only, the message is encoded, unusable numbers give no link", () => {
-  assert.equal(whatsappLink("+91 98000-00001", "Hi there & welcome"), "https://wa.me/919800000001?text=Hi%20there%20%26%20welcome");
-  assert.equal(whatsappLink("919800000001", "x"), "https://wa.me/919800000001?text=x");
-  assert.equal(whatsappLink("12", "x"), null);
-  assert.equal(whatsappLink(null, "x"), null);
-  assert.equal(whatsappLink("1".repeat(20), "x"), null);
-});
-
-// ================= confirming, scheduling, time zones, notifications =================
-import { customerMessage, deliveryNotice, nextStatus, scheduleNotice, validateSchedule, whenWithZone } from "../lib/appointments";
+import { appointmentUpdateSchema, APPOINTMENT_STATUSES, deliveryNotice, OWNER_STATUSES, scheduleNotice, STATUS_LABELS, validateSchedule, whatsappLink, whenText } from "../lib/appointments";
 import { NOTICES } from "../lib/dashboard";
 
+const ID = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date("2026-11-20T10:00:00Z");
 
-test("confirming needs a real scheduled date and clock time", () => {
+test("status names are short, and the owner picks from four of them", () => {
+  assert.equal(STATUS_LABELS.pending, "Unconfirmed");
+  assert.equal(STATUS_LABELS.confirmed, "Confirmed");
+  assert.deepEqual([...OWNER_STATUSES], ["pending", "confirmed", "completed", "cancelled"]);
+  for (const s of OWNER_STATUSES) assert.ok((APPOINTMENT_STATUSES as readonly string[]).includes(s));
+  // older records may still carry other statuses and must stay valid
+  for (const old of ["rejected", "reschedule_requested"]) assert.equal(appointmentUpdateSchema.safeParse({ id: ID, status: old, scheduled_date: "", scheduled_time: "", notes: "" }).success, true);
+});
+
+test("the update form: any status, a date that is real or empty, a private note that is trimmed and capped", () => {
+  const ok = appointmentUpdateSchema.parse({ id: ID, status: "confirmed", scheduled_date: "2026-11-25", scheduled_time: " 3pm ", notes: "  called, agreed  " });
+  assert.deepEqual([ok.status, ok.scheduled_date, ok.scheduled_time, ok.notes], ["confirmed", "2026-11-25", "3pm", "called, agreed"]);
+  const base = { id: ID, status: "pending", scheduled_date: "", scheduled_time: "", notes: "" };
+  assert.equal(appointmentUpdateSchema.safeParse(base).success, true);
+  assert.equal(appointmentUpdateSchema.safeParse({ ...base, status: "banana" }).success, false);
+  assert.equal(appointmentUpdateSchema.safeParse({ ...base, scheduled_date: "2026-02-31" }).success, false);
+  assert.equal(appointmentUpdateSchema.safeParse({ ...base, scheduled_date: "tomorrow" }).success, false);
+  assert.equal(appointmentUpdateSchema.safeParse({ ...base, notes: "x".repeat(2001) }).success, false);
+  assert.equal(appointmentUpdateSchema.safeParse({ ...base, id: "nope" }).success, false);
+});
+
+test("confirming needs the agreed date and a real clock time", () => {
   assert.deepEqual(validateSchedule({ date: "2026-11-21", time: "10:30" }, { timeZone: null, now: NOW }), { ok: true, date: "2026-11-21", time: "10:30" });
-  assert.deepEqual(validateSchedule({ date: "2026-11-21", time: "3pm" }, { timeZone: null, now: NOW }), { ok: true, date: "2026-11-21", time: "3pm" });
+  assert.equal(validateSchedule({ date: "2026-11-21", time: "3pm" }, { timeZone: null, now: NOW }).ok, true);
   for (const [f, problem] of [
-    [{ date: "", time: "10am" }, "date"], [{ date: "2026-02-31", time: "10am" }, "date"], [{ date: "next friday", time: "10am" }, "date"], [{ date: undefined, time: "10am" }, "date"],
-    [{ date: "2026-11-21", time: "" }, "time"], [{ date: "2026-11-21", time: "morning" }, "time"], [{ date: "2026-11-21", time: "25:00" }, "time"], [{ date: "2026-11-21", time: null }, "time"],
+    [{ date: "", time: "10am" }, "date"], [{ date: "2026-02-31", time: "10am" }, "date"], [{ date: "next friday", time: "10am" }, "date"],
+    [{ date: "2026-11-21", time: "" }, "time"], [{ date: "2026-11-21", time: "morning" }, "time"], [{ date: "2026-11-21", time: "25:00" }, "time"],
     [{ date: "2026-11-19", time: "10am" }, "past"],
   ] as const) {
     const r = validateSchedule(f, { timeZone: null, now: NOW });
@@ -69,51 +41,40 @@ test("confirming needs a real scheduled date and clock time", () => {
   }
 });
 
-test("'in the past' is judged in the appointment's time zone, and can be skipped when only editing an old record", () => {
-  const lateUtc = new Date("2026-11-20T21:00:00Z");                    // 21 Nov 02:30 in Kolkata, still 20 Nov in New York
-  assert.equal(validateSchedule({ date: "2026-11-20", time: "10am" }, { timeZone: "Asia/Kolkata", now: lateUtc }).ok, false);   // already yesterday there
-  assert.equal(validateSchedule({ date: "2026-11-20", time: "10am" }, { timeZone: "America/New_York", now: lateUtc }).ok, true); // still today there
-  assert.equal(validateSchedule({ date: "2026-11-01", time: "10am" }, { timeZone: null, now: NOW, checkPast: false }).ok, true);   // an old confirmed appointment can be edited
-  assert.equal(validateSchedule({ date: "2026-11-01", time: "bad" }, { timeZone: null, now: NOW, checkPast: false }).ok, false);  // but a time must still be a time
+test("'in the past' follows the business time zone, and is skipped when only editing an old confirmed record", () => {
+  const lateUtc = new Date("2026-11-20T21:00:00Z");   // 21 Nov 02:30 in Kolkata, still 20 Nov in New York
+  assert.equal(validateSchedule({ date: "2026-11-20", time: "10am" }, { timeZone: "Asia/Kolkata", now: lateUtc }).ok, false);
+  assert.equal(validateSchedule({ date: "2026-11-20", time: "10am" }, { timeZone: "America/New_York", now: lateUtc }).ok, true);
+  assert.equal(validateSchedule({ date: "2026-11-01", time: "10am" }, { timeZone: null, now: NOW, checkPast: false }).ok, true);
+  assert.equal(validateSchedule({ date: "2026-11-01", time: "bad" }, { timeZone: null, now: NOW, checkPast: false }).ok, false);
 });
 
-test("times are shown and sent with the zone they are in; the customer's preference is untouched by it", () => {
-  assert.equal(whenWithZone("2026-11-21", "11 am", "Asia/Kolkata"), "2026-11-21 11 am (Asia/Kolkata)");
-  assert.equal(whenWithZone("2026-11-21", "11 am", null), "2026-11-21 11 am");
-  assert.equal(whenWithZone(null, null, "Asia/Kolkata"), "");
-  assert.match(customerMessage("confirm", { purpose: "call", when: whenWithZone("2026-11-21", "3pm", "Asia/Kolkata") }, "AG"), /confirmed for 2026-11-21 3pm \(Asia\/Kolkata\)/);
+test("the customer's preferred date and time are separate from the agreed ones", () => {
+  assert.equal(whenText("2026-11-21", "11 am"), "2026-11-21 11 am");
+  assert.equal(whenText(null, "11 am"), "11 am");
+  assert.equal(whenText(null, null), "");
+  // the update schema has no field for the preferred date or time at all, so an update cannot overwrite what the customer asked for
+  assert.deepEqual(Object.keys(appointmentUpdateSchema.shape).sort(), ["id", "notes", "scheduled_date", "scheduled_time", "status"]);
 });
 
-test("guided status transitions: only valid ones, and closed appointments have none", () => {
-  assert.equal(nextStatus("pending", "confirm"), "confirmed");
-  assert.equal(nextStatus("pending", "reject"), "rejected");
-  assert.equal(nextStatus("pending", "reschedule"), "reschedule_requested");
-  assert.equal(nextStatus("confirmed", "reschedule"), "reschedule_requested");
-  assert.equal(nextStatus("confirmed", "cancel"), "cancelled");
-  assert.equal(nextStatus("confirmed", "complete"), "completed");
-  assert.equal(nextStatus("reschedule_requested", "confirm"), "confirmed");
-  // not allowed
-  assert.equal(nextStatus("confirmed", "confirm"), null);
-  assert.equal(nextStatus("confirmed", "reject"), null);
-  assert.equal(nextStatus("pending", "complete"), null);
-  for (const closed of ["rejected", "cancelled", "completed"] as const) for (const a of ["confirm", "reject", "reschedule", "cancel", "complete"] as const) assert.equal(nextStatus(closed, a), null, `${closed} ${a}`);
+test("a link to chat with the customer: digits only, unusable numbers give no link", () => {
+  assert.equal(whatsappLink("+91 98000-00001"), "https://wa.me/919800000001");
+  assert.equal(whatsappLink("919800000001", "Hi & hello"), "https://wa.me/919800000001?text=Hi%20%26%20hello");
+  assert.equal(whatsappLink("12"), null);
+  assert.equal(whatsappLink(null), null);
+  assert.equal(whatsappLink("1".repeat(20)), null);
 });
 
-test("customer messages never contain internal notes, whatever the status", () => {
-  const secret = "INTERNAL: customer is difficult";
-  for (const action of ["confirm", "reject", "reschedule", "cancel"] as const) {
-    const m = customerMessage(action, { purpose: "call", when: "2026-11-21 3pm", note: "we are fully booked" }, "AG");
-    assert.ok(!m.includes(secret) && !/internal/i.test(m), action);
-  }
+test("the appointment page sends the customer nothing: only a plain 'updated' notice remains", () => {
+  assert.equal(NOTICES.appt_done.text, "Appointment updated.");
+  for (const gone of ["appt_done_whatsapp", "appt_done_email", "appt_done_not_sent", "appt_done_failed", "appt_need_alternative"]) assert.equal(NOTICES[gone], undefined, gone);
 });
 
-test("what really happened when the customer was told: sent, sent by email, failed, or not reachable", () => {
-  assert.equal(deliveryNotice("appt", "whatsapp"), "appt_done_whatsapp");
-  assert.equal(deliveryNotice("appt", "email"), "appt_done_email");
-  assert.equal(deliveryNotice("appt", "failed"), "appt_done_failed");
-  assert.equal(deliveryNotice("appt", "none"), "appt_done_not_sent");
+test("tickets still report what really happened when the customer was told", () => {
+  assert.equal(deliveryNotice("tkt", "whatsapp"), "tkt_done_whatsapp");
+  assert.equal(deliveryNotice("tkt", "email"), "tkt_done_email");
   assert.equal(deliveryNotice("tkt", "failed"), "tkt_done_failed");
-  for (const p of ["appt", "tkt"] as const) for (const c of ["whatsapp", "email", "failed", "none"] as const) assert.ok(NOTICES[deliveryNotice(p, c)], `${p} ${c} has a message`);
-  assert.equal(NOTICES.appt_done_failed.kind, "error");                          // a failed send is shown as an error, never as sent
-  assert.match(NOTICES.appt_done.text, /not told/i);                              // no notification requested: it says so
+  assert.equal(deliveryNotice("tkt", "none"), "tkt_done_not_sent");
+  for (const c of ["whatsapp", "email", "failed", "none"] as const) assert.ok(NOTICES[deliveryNotice("tkt", c)], c);
+  assert.equal(NOTICES.tkt_done_failed.kind, "error");
 });

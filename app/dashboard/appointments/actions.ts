@@ -5,139 +5,47 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePaidAccess } from "../../../lib/billing/gate";
 import { requireClient } from "../../../lib/auth/session";
-import { notifyCustomer } from "../../../lib/appointment-notify";
-import { appointmentEditSchema, appointmentFormSchema, customerMessage, deliveryNotice, formProblem, rescheduleNote, scheduleNotice, statusMessageAction, validateSchedule, whenWithZone } from "../../../lib/appointments";
-import { parseWorkflowSettings } from "../../../lib/workflow-settings";
+import { appointmentUpdateSchema, scheduleNotice, validateSchedule } from "../../../lib/appointments";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
-import { notifyOwner } from "../../../lib/supabase-deps";
+import { parseWorkflowSettings } from "../../../lib/workflow-settings";
 
-// SECURITY MODEL (same as the other dashboard actions): requireClient() derives clientId from the signed-in
-// owner's membership; writes use the service role, so every query filters by that clientId and the SQL
-// functions only touch rows that belong to it. Form ids are never trusted on their own.
+// SECURITY MODEL (same as the other dashboard actions): requireClient() derives clientId from the signed-in owner's membership;
+// writes use the service role and every query filters by that clientId. Form ids are never trusted on their own.
+// Nothing here contacts the customer: the owner talks to them directly and records the outcome.
 
 const detail = (id: string) => `/dashboard/appointments/${id}`;
-
-/** The time zone a scheduled time is in: the one the appointment records, else the business's own setting, else none (UTC for checks). */
-async function zoneFor(clientId: string, appointmentZone: string | null | undefined): Promise<string | null> {
-  if (appointmentZone?.trim()) return appointmentZone.trim();
-  const { data } = await supabaseAdmin().from("clients").select("workflow_settings").eq("id", clientId).maybeSingle();
-  return parseWorkflowSettings(data?.workflow_settings).appointments.timezone;
-}
 const go = (id: string, notice: string): never => redirect(`${detail(id)}?notice=${notice}`);
 
-export async function appointmentTransition(formData: FormData) {
-  const { clientId, clientName } = await requireClient();
-  await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
-  const rawId = String(formData.get("id") ?? "");
-  const parsed = appointmentFormSchema.safeParse({
-    id: formData.get("id"), action: formData.get("action"),
-    date: String(formData.get("date") ?? ""), time: String(formData.get("time") ?? ""), note: String(formData.get("note") ?? ""),
-  });
-  if (!parsed.success) return z.string().uuid().safeParse(rawId).success ? go(rawId, "invalid") : redirect("/dashboard/appointments?notice=invalid");
-  const { id, action, date, time, note } = parsed.data;
-  if (formProblem(action, { date, time, note })) return go(id, "appt_need_alternative");
-
-  const db = supabaseAdmin();
-  const { data: before } = await db.from("appointments")
-    .select("id, conversation_id, purpose, preferred_date, preferred_time, customer_name, customer_phone, timezone")
-    .eq("id", id).eq("client_id", clientId).maybeSingle();
-  if (!before) return redirect("/dashboard/appointments?notice=not_found");
-  const zone = await zoneFor(clientId, before.timezone);
-  // Confirming needs a real scheduled date and clock time (not in the past, in the appointment's zone). The customer's own
-  // preferred date and time are never changed by confirming, rescheduling or rejecting.
-  if (action === "confirm") {
-    const ok = validateSchedule({ date, time }, { timeZone: zone, now: new Date() });
-    if (!ok.ok) return go(id, scheduleNotice(ok.problem));
-  }
-
-  const alternative = action === "reschedule" ? rescheduleNote({ date, time, note }) : action === "reject" ? note ?? "" : "";
-  const { error } = await db.rpc("set_appointment_status", {
-    p_client_id: clientId, p_appointment_id: id, p_action: action,
-    p_date: action === "confirm" && date ? date : null, p_time: action === "confirm" ? time ?? null : null, p_note: alternative || null,
-  });
-  if (error) return go(id, "appt_failed");
-
-  const { data: after } = await db.from("appointments").select("scheduled_date, scheduled_time").eq("id", id).eq("client_id", clientId).single();
-  const when = action === "confirm" ? whenWithZone(after?.scheduled_date, after?.scheduled_time, zone) : whenWithZone(before.preferred_date, before.preferred_time, zone);
-
-  // Tell the team (the notification settings decide who) and the customer. Neither can undo the change.
-  const status = ({ confirm: "confirmed", reject: "rejected", reschedule: "reschedule_requested", cancel: "cancelled" } as const)[action as "confirm" | "reject" | "reschedule" | "cancel"];
-  if (status) {
-    await notifyOwner(clientId, {
-      type: "appointment_update", status, contactName: before.customer_name, phone: before.customer_phone,
-      purpose: before.purpose, when: when || null, note: alternative || null,
-    }).catch((e) => console.warn("appointment team email failed", e instanceof Error ? e.message : e));
-  }
-  if (action === "complete") { revalidatePath("/dashboard/appointments"); return go(id, "appt_done"); }
-
-  const text = customerMessage(action, { purpose: before.purpose, when, note: alternative }, clientName);
-  const subject = ({ confirm: "Your appointment is confirmed", reject: "About your appointment request", reschedule: "Can we reschedule your appointment?", cancel: "Your appointment was cancelled" })[action];
-  const channel = await notifyCustomer(clientId, before.conversation_id, clientName, subject, text);
-  revalidatePath("/dashboard/appointments");
-  revalidatePath(detail(id));
-  return go(id, deliveryNotice("appt", channel));
-}
-
-export async function saveAppointmentNote(formData: FormData) {
-  const { clientId } = await requireClient();
-  const id = z.string().uuid().safeParse(formData.get("id"));
-  const notes = z.string().max(2000).safeParse(String(formData.get("notes") ?? "").replace(/\u0000/g, "").trim());
-  if (!id.success || !notes.success) return redirect("/dashboard/appointments?notice=invalid");
-  const { data } = await supabaseAdmin().from("appointments")
-    .update({ internal_notes: notes.data || null, updated_at: new Date().toISOString() })
-    .eq("id", id.data).eq("client_id", clientId).select("id");
-  if (!data?.length) return redirect("/dashboard/appointments?notice=not_found");
-  revalidatePath(detail(id.data));
-  return go(id.data, "saved");
-}
-
-// The owner fixes an appointment by hand: any detail, and any status (including moving a rejected or cancelled one back to
-// "Unconfirmed"). Unlike the guided buttons above, nothing is sent to the customer unless the owner ticks "Tell the customer".
-// That message is free-form text (never a template): WhatsApp if the 24-hour window is open, else email, else shown to copy.
 export async function updateAppointment(formData: FormData) {
-  const { clientId, clientName } = await requireClient();
+  const { clientId } = await requireClient();
   await requirePaidAccess(clientId);
   const rawId = String(formData.get("id") ?? "");
-  const text = (n: string) => String(formData.get(n) ?? "").replace(/\u0000/g, "");
-  const parsed = appointmentEditSchema.safeParse({
-    id: formData.get("id"), status: formData.get("status"), customer_name: text("customer_name"), purpose: text("purpose"),
-    preferred_date: text("preferred_date"), preferred_time: text("preferred_time"), scheduled_date: text("scheduled_date"), scheduled_time: text("scheduled_time"),
-    appointment_type: text("appointment_type"), timezone: text("timezone"), note: text("note"), notify: formData.get("notify") !== null,
-  });
+  const text = (n: string) => String(formData.get(n) ?? "");
+  const parsed = appointmentUpdateSchema.safeParse({ id: formData.get("id"), status: formData.get("status"), scheduled_date: text("scheduled_date"), scheduled_time: text("scheduled_time"), notes: text("notes") });
   if (!parsed.success) return z.string().uuid().safeParse(rawId).success ? go(rawId, "invalid") : redirect("/dashboard/appointments?notice=invalid");
   const v = parsed.data;
 
   const db = supabaseAdmin();
-  const { data: before } = await db.from("appointments").select("id, status, conversation_id, scheduled_date, scheduled_time, timezone").eq("id", v.id).eq("client_id", clientId).maybeSingle();
+  const { data: before } = await db.from("appointments").select("id, status, scheduled_date, scheduled_time, timezone").eq("id", v.id).eq("client_id", clientId).maybeSingle();
   if (!before) return redirect("/dashboard/appointments?notice=not_found");
-  const zone = await zoneFor(clientId, v.timezone || before.timezone);
 
-  // A confirmed appointment must have a real scheduled date and time. The date is checked against today only when it is new or
-  // changed, so an old confirmed appointment can still be edited (notes, status) after its date has passed.
+  // A confirmed appointment must have the agreed date and a clock time. The date is checked against today only when it is new or
+  // changed, so an old confirmed appointment can still be marked completed after its date has passed.
   if (v.status === "confirmed") {
+    const { data: biz } = await db.from("clients").select("workflow_settings").eq("id", clientId).maybeSingle();
+    const zone = (before.timezone as string | null)?.trim() || parseWorkflowSettings(biz?.workflow_settings).appointments.timezone;
     const changed = before.status !== "confirmed" || v.scheduled_date !== (before.scheduled_date ?? "") || v.scheduled_time !== (before.scheduled_time ?? "");
     const ok = validateSchedule({ date: v.scheduled_date, time: v.scheduled_time }, { timeZone: zone, now: new Date(), checkPast: changed });
     if (!ok.ok) return go(v.id, scheduleNotice(ok.problem));
   }
 
   const { error } = await db.from("appointments").update({
-    status: v.status, customer_name: v.customer_name || null, purpose: v.purpose,
-    preferred_date: v.preferred_date || null, preferred_time: v.preferred_time || null,
-    scheduled_date: v.scheduled_date || null, scheduled_time: v.scheduled_time || null,
-    appointment_type: v.appointment_type || null, timezone: v.timezone || null,
-    reschedule_note: v.status === "rejected" || v.status === "reschedule_requested" ? (v.note || null) : null,
-    updated_at: new Date().toISOString(),
+    status: v.status, scheduled_date: v.scheduled_date || null, scheduled_time: v.scheduled_time || null,
+    internal_notes: v.notes || null, updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);
   // Two open requests for the same thing are not allowed (the same rule that stops the assistant saving a duplicate).
   if (error) return go(v.id, error.code === "23505" ? "appt_conflict" : "appt_failed");
   revalidatePath("/dashboard/appointments");
   revalidatePath(detail(v.id));
-
-  const action = statusMessageAction(v.status);
-  if (!v.notify || !action || before.status === v.status && !v.note) return go(v.id, "appt_done");
-  const when = action === "confirm" || action === "cancel" ? whenWithZone(v.scheduled_date, v.scheduled_time, zone) || whenWithZone(v.preferred_date, v.preferred_time, zone) : whenWithZone(v.preferred_date, v.preferred_time, zone);
-  const message = customerMessage(action, { purpose: v.purpose, when, note: v.note }, clientName);
-  const subject = ({ confirm: "Your appointment is confirmed", reject: "About your appointment request", reschedule: "Can we reschedule your appointment?", cancel: "Your appointment was cancelled" })[action];
-  const channel = await notifyCustomer(clientId, before.conversation_id, clientName, subject, message);
-  return go(v.id, deliveryNotice("appt", channel));
+  return go(v.id, "appt_done");
 }
