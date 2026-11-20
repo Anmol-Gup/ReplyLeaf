@@ -6,7 +6,7 @@ import { requireClient } from "../../../../lib/auth/session";
 import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { whatsappLink } from "../../../../lib/appointments";
-import { PRIORITIES, PRIORITY_LABELS, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
+import { PRIORITIES, PRIORITY_LABELS, priorityOf, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
 import Notice from "../../Notice";
 import { updateTicket } from "../actions";
 
@@ -31,7 +31,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
         actions={<span className="row">{link && <a className="btn btn-secondary btn-sm" href={link} target="_blank" rel="noopener noreferrer">Message on WhatsApp</a>}<a className="btn btn-primary btn-sm" href="#edit">Edit</a><Link className="btn btn-secondary btn-sm" href="/dashboard/tickets">All tickets</Link></span>}
       />
       <Notice code={notice} />
-      <Card title="The problem" actions={<span className="row">{t.priority === "high" && <Badge tone="danger">Urgent</Badge>}<Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge></span>}>
+      <Card title="The problem" actions={<span className="row">{priorityOf(t.priority) === "high" && <Badge tone="danger">High priority</Badge>}<Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge></span>}>
         <dl className="handoff-facts">
           <div><dt>What happened</dt><dd>{t.description}</dd></div>
           {t.category && <div><dt>Category</dt><dd>{t.category}</dd></div>}
@@ -51,7 +51,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
               <select name="status" defaultValue={status}>{TICKET_STATUSES.map((s) => <option key={s} value={s}>{TICKET_LABELS[s]}</option>)}</select>
             </label>
             <label className="field">Priority
-              <select name="priority" defaultValue={t.priority === "high" ? "high" : "normal"}>{PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>)}</select>
+              <select name="priority" defaultValue={priorityOf(t.priority)}>{PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>)}</select>
             </label>
             <label className="field">Assigned to <input name="assigned_to" maxLength={100} defaultValue={t.assigned_to ?? ""} placeholder="Name or email" /></label>
           </div>

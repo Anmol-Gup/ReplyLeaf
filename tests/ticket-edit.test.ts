@@ -1,15 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRIORITIES, PRIORITY_LABELS, ticketFormSchema } from "../lib/tickets";
+import { PRIORITIES, PRIORITY_LABELS, priorityOf, ticketFormSchema } from "../lib/tickets";
 import { effectiveSelection } from "../lib/filters";
 import { filterHref } from "../lib/filters";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const base = { id: ID, status: "open", assigned_to: "", notes: "", message: "" };
 
-test("ticket priority: Normal or Urgent, editable, and left unchanged when the form does not send it", () => {
-  assert.deepEqual([...PRIORITIES], ["normal", "high"]);
-  assert.deepEqual([PRIORITY_LABELS.normal, PRIORITY_LABELS.high], ["Normal", "Urgent"]);
+test("ticket priority: Low, Medium or High, editable, and left unchanged when the form does not send it", () => {
+  assert.deepEqual([...PRIORITIES], ["low", "normal", "high"]);                               // "normal" is the stored value for Medium
+  assert.deepEqual([PRIORITY_LABELS.low, PRIORITY_LABELS.normal, PRIORITY_LABELS.high], ["Low", "Medium", "High"]);
+  assert.equal(ticketFormSchema.parse({ ...base, priority: "low" }).priority, "low");
+  assert.equal(priorityOf("low"), "low"); assert.equal(priorityOf("high"), "high"); assert.equal(priorityOf("normal"), "normal");
+  assert.equal(priorityOf(null), "normal"); assert.equal(priorityOf("whatever"), "normal");   // anything unexpected counts as Medium
   assert.equal(ticketFormSchema.parse({ ...base, priority: "high" }).priority, "high");
   assert.equal(ticketFormSchema.parse({ ...base, priority: "normal" }).priority, "normal");
   assert.equal(ticketFormSchema.parse(base).priority, undefined);                         // older forms keep working: priority unchanged
@@ -20,7 +23,7 @@ test("ticket priority: Normal or Urgent, editable, and left unchanged when the f
 test("the priority filter: nothing chosen means every priority; a choice is validated", () => {
   assert.deepEqual(effectiveSelection(undefined, PRIORITIES, []), { selected: [], explicit: false });
   assert.deepEqual(effectiveSelection(["high"], PRIORITIES, []), { selected: ["high"], explicit: true });
-  assert.deepEqual(effectiveSelection(["high", "normal", "x"], PRIORITIES, []), { selected: ["normal", "high"], explicit: true });
+  assert.deepEqual(effectiveSelection(["high", "low", "x"], PRIORITIES, []), { selected: ["low", "high"], explicit: true });
   assert.deepEqual(effectiveSelection(["bogus"], PRIORITIES, []), { selected: [], explicit: false });
 });
 

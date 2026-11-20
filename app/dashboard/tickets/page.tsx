@@ -6,7 +6,7 @@ import { requireClient } from "../../../lib/auth/session";
 import { clip, fmtDay, matches } from "../../../lib/dashboard";
 import { effectiveSelection } from "../../../lib/filters";
 import { buildQuery, paginate } from "../../../lib/paginate";
-import { PRIORITIES, PRIORITY_LABELS, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketOverview, ticketRef, type TicketStatus } from "../../../lib/tickets";
+import { PRIORITIES, PRIORITY_LABELS, priorityOf, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketOverview, ticketRef, type TicketStatus } from "../../../lib/tickets";
 import Notice from "../Notice";
 
 type Row = {
@@ -28,11 +28,11 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const o = ticketOverview(all);
   const options = TICKET_STATUSES.map((s) => ({ value: s as string, label: TICKET_LABELS[s], count: all.filter((r) => r.status === s).length }));
 
-  const priorityOptions = PRIORITIES.map((p) => ({ value: p as string, label: PRIORITY_LABELS[p], count: all.filter((r) => (r.priority === "high" ? "high" : "normal") === p).length }));
+  const priorityOptions = PRIORITIES.map((p) => ({ value: p as string, label: PRIORITY_LABELS[p], count: all.filter((r) => priorityOf(r.priority) === p).length }));
 
   const matching = all.filter((r) =>
     (statuses.length === 0 || statuses.includes(r.status)) &&
-    (priorities.length === 0 || priorities.includes(r.priority === "high" ? "high" : "normal")) &&
+    (priorities.length === 0 || priorities.includes(priorityOf(r.priority))) &&
     matches(q, r.customer_name, r.customer_phone, r.subject, r.category, r.assigned_to, ticketRef(r.id), TICKET_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
 
@@ -43,7 +43,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
       <div className="stat-grid">
         <Stat value={o.open} label="Open" />
         <Stat value={o.inProgress} label="In progress or waiting" />
-        <Stat value={o.urgent} label="Urgent and open" />
+        <Stat value={o.urgent} label="High priority and open" />
         <Stat value={o.done} label="Resolved or closed" />
       </div>
       <div className="filters">
@@ -61,7 +61,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
                   <td><Link href={`/dashboard/tickets/${r.id}`}>{ticketRef(r.id)}</Link></td>
                   <td>{r.customer_name || "(no name)"}<br /><span className="muted">+{r.customer_phone}</span></td>
                   <td>{clip(r.subject, 70)}{r.category && <><br /><span className="muted">{r.category}</span></>}</td>
-                  <td>{r.priority === "high" ? <Badge tone="danger">Urgent</Badge> : <span className="muted">Normal</span>}</td>
+                  <td>{priorityOf(r.priority) === "high" ? <Badge tone="danger">High</Badge> : <span className="muted">{PRIORITY_LABELS[priorityOf(r.priority)]}</span>}</td>
                   <td><Badge tone={TICKET_TONES[r.status]}>{TICKET_LABELS[r.status]}</Badge></td>
                   <td>{r.assigned_to ?? "-"}</td>
                   <td>{fmtDay(r.created_at)}</td>

@@ -42,7 +42,7 @@ export default async function Overview() {
   const attention = [
     { n: waiting, text: `chat${waiting === 1 ? "" : "s"} waiting for a person`, href: "/dashboard/handoff?status=requested", tone: "danger" as const },
     { n: ao.pending, text: `appointment request${ao.pending === 1 ? "" : "s"} to confirm`, href: "/dashboard/appointments?status=pending&status=reschedule_requested", tone: "warn" as const },
-    { n: to.urgent, text: `urgent open ticket${to.urgent === 1 ? "" : "s"}`, href: "/dashboard/tickets?status=open&status=in_progress&status=waiting_on_customer", tone: "danger" as const },
+    { n: to.urgent, text: `high-priority open ticket${to.urgent === 1 ? "" : "s"}`, href: "/dashboard/tickets?status=open&status=in_progress&status=waiting_on_customer", tone: "danger" as const },
     { n: lo.dueFollowUp, text: `lead follow-up${lo.dueFollowUp === 1 ? "" : "s"} due`, href: "/dashboard/leads", tone: "warn" as const },
     { n: lo.fresh, text: `new or qualified lead${lo.fresh === 1 ? "" : "s"} to contact`, href: "/dashboard/leads?status=new&status=qualified", tone: "brand" as const },
   ].filter((a) => a.n > 0);
@@ -108,7 +108,7 @@ export default async function Overview() {
             <ul className="latest">
               {tickets.slice(0, 5).map((t) => (
                 <li key={t.id}>
-                  <div><Link href={`/dashboard/tickets/${t.id}`}>{ticketRef(t.id)}: {clip(t.subject, 50)}</Link><br /><span className="muted">{who(t.customer_name, t.customer_phone)} · {fmtDay(t.created_at)}{t.priority === "high" ? " · urgent" : ""}</span></div>
+                  <div><Link href={`/dashboard/tickets/${t.id}`}>{ticketRef(t.id)}: {clip(t.subject, 50)}</Link><br /><span className="muted">{who(t.customer_name, t.customer_phone)} · {fmtDay(t.created_at)}{t.priority === "high" ? " · high priority" : ""}</span></div>
                   <Badge tone={TICKET_TONES[t.status]}>{TICKET_LABELS[t.status]}</Badge>
                 </li>
               ))}

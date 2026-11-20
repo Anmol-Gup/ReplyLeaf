@@ -23,7 +23,7 @@ export const ticketRef = (id: string) => `T-${id.replace(/-/g, "").slice(0, 6).t
 export const ticketFormSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(TICKET_STATUSES),
-  priority: z.enum(["normal", "high"]).optional(), // left out = unchanged
+  priority: z.enum(["low", "normal", "high"]).optional(), // left out = unchanged
   assigned_to: z.string().max(200),
   notes: z.string().max(4000),
   message: z.string().max(1000), // optional text for the customer when the ticket is resolved or closed
@@ -57,6 +57,10 @@ export function ticketOverview(rows: { status: TicketStatus; priority: string }[
   };
 }
 
-export const PRIORITIES = ["normal", "high"] as const;
+// "normal" is the stored value for Medium. The assistant only ever sets normal or high (when the customer says it is urgent); Low is the owner's.
+export const PRIORITIES = ["low", "normal", "high"] as const;
 export type TicketPriority = (typeof PRIORITIES)[number];
-export const PRIORITY_LABELS: Record<TicketPriority, string> = { normal: "Normal", high: "Urgent" };
+export const PRIORITY_LABELS: Record<TicketPriority, string> = { low: "Low", normal: "Medium", high: "High" };
+
+/** A stored priority as one of the three levels (anything unexpected counts as Medium). */
+export const priorityOf = (p: string | null | undefined): TicketPriority => (p === "low" || p === "high" ? p : "normal");
