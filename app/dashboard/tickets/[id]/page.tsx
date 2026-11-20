@@ -4,6 +4,7 @@ import ChatLog from "../../../../components/ChatLog";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
+import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt, fmtDay, fmtTime } from "../../../../lib/dashboard";
 import { whatsappLink } from "../../../../lib/appointments";
 import { isDone, resolutionMessage, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
@@ -22,6 +23,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
     db.from("messages").select("id, sender, type, body, created_at").eq("conversation_id", t.conversation_id).order("created_at", { ascending: false }).limit(100),
   ]);
   const chat = [...(messages ?? [])].reverse();
+  const emailOf = (await emailsByContact(db, [t.contact_id])).get(t.contact_id) ?? contact?.email ?? null;
   const status = t.status as TicketStatus;
   // A message you can send yourself from your own phone (the WhatsApp Business app): free, no template, no 24-hour rule.
   const message = isDone(status)
@@ -33,7 +35,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
     <>
       <PageHeader
         title={`${ticketRef(t.id)}: ${t.subject}`}
-        description={`${t.customer_name || "Customer"} · +${t.customer_phone}${contact?.email ? ` · ${contact.email}` : ""} · raised ${fmt(t.created_at)}`}
+        description={`${t.customer_name || "Customer"} · +${t.customer_phone}${emailOf ? ` · ${emailOf}` : ""} · raised ${fmt(t.created_at)}`}
         actions={<Link className="btn btn-secondary btn-sm" href="/dashboard/tickets">All tickets</Link>}
       />
       <Notice code={notice} />

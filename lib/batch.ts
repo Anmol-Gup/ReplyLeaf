@@ -57,7 +57,7 @@ export type BatchContext = {
   };
   /** What this customer already has open, so the assistant can acknowledge it. Counts and owner-written notes only. */
   open: { appointments: { status: "pending" | "reschedule_requested"; rescheduleNote: string | null }[]; tickets: number; leads: number };
-  contact: { id: string; name: string | null };
+  contact: { id: string; name: string | null; email?: string | null }; // email: one already on file (confirmed, or given in chat), so it is never asked for twice
   phone: string;
   pending: PendingItem[]; // oldest first
   history: ChatTurn[]; // earlier turns, customer turns already wrapped
@@ -277,9 +277,9 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
     await safely(deps, client.id, "crm", () => deps.applyContactDetails(client.id, contact.id, { name, email: details.email }));
   }
 
-  // The customer typed an email in a support conversation: keep it, only for updates about that ticket. (Appointments and enquiries
-  // do not ask for one: the owner contacts the customer directly.)
-  const inRequestFlow = decision.kind === "ticket" || result.workflow.flow === "issue";
+  // The customer typed an email while booking, enquiring or reporting a problem: keep it for that request (the owner reads it on the
+  // lead, appointment or ticket page; tickets can also use it to tell the customer after the 24-hour window).
+  const inRequestFlow = decision.kind !== "none" && decision.kind !== "rejected" || result.workflow.flow !== null;
   if (inRequestFlow && details.email) {
     await safely(deps, client.id, "notify_email", () => deps.saveNotifyEmail(client.id, contact.id, details.email as string));
   }

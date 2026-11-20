@@ -114,11 +114,13 @@ export function wrapCustomerMessages(lines: string[], opts: { hasUnreadableMedia
  * What the system saved about a half-finished flow, for the model (as DATA in the user turn, because it came from customer
  * text). Null when there is nothing to say.
  */
-export function renderProgress(state: WorkflowState | null, knownName: string | null = null): string | null {
+export function renderProgress(state: WorkflowState | null, knownName: string | null = null, knownEmail: string | null = null): string | null {
   const name = knownName?.replace(/[\u0000-\u001f\u007f<>]/g, " ").trim().slice(0, 100);
-  if (!state) return name ? `known customer name: ${JSON.stringify(name)}` : null;
+  const email = knownEmail?.replace(/[\u0000-\u001f\u007f<>\s]/g, "").slice(0, 200);
+  const known = [name ? `known customer name: ${JSON.stringify(name)}` : null, email ? `known customer email: ${JSON.stringify(email)}` : null].filter(Boolean).join("\n");
+  if (!state) return known || null;
   const lines = [`flow: ${state.flow === "issue" ? "support ticket" : state.flow === "appointment" ? "appointment request" : "project enquiry"}`, `stage: ${state.stage}`];
-  if (name) lines.push(`known customer name: ${JSON.stringify(name)}`);
+  if (known) lines.push(known);
   const entries = Object.entries(state.collected ?? {});
   if (entries.length) lines.push("collected so far: " + entries.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join("; "));
   if (state.missing?.length) lines.push("still needed: " + state.missing.join(", "));

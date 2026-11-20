@@ -4,6 +4,7 @@ import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
 import CopyButton from "../../../../components/CopyButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
+import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, projectBrief, requirementLines, type LeadStatus } from "../../../../lib/leads";
 import Notice from "../../Notice";
@@ -20,6 +21,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
     db.from("lead_requirements").select("requirement_key, requirement_value").eq("lead_id", id).order("created_at"),
     db.from("contacts").select("id, name, email").eq("id", l.contact_id).maybeSingle(),
   ]);
+  const emailOf = (await emailsByContact(db, [l.contact_id])).get(l.contact_id) ?? contact?.email ?? null;
   const status = l.status as LeadStatus;
   const brief = projectBrief(l, reqs ?? [], clientName);
 
@@ -27,7 +29,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
     <>
       <PageHeader
         title={l.customer_name || "Project enquiry"}
-        description={`+${l.customer_phone}${contact?.email ? ` · ${contact.email}` : ""} · received ${fmt(l.created_at)}`}
+        description={`+${l.customer_phone}${emailOf ? ` · ${emailOf}` : ""} · received ${fmt(l.created_at)}`}
         actions={<span className="row"><a className="btn btn-primary btn-sm" href="#edit">Edit details</a><Link className="btn btn-secondary btn-sm" href="/dashboard/leads">All leads</Link></span>}
       />
       <Notice code={notice} />

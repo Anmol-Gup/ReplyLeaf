@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import AppointmentEditForm from "../../../../components/AppointmentEditForm";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
+import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import Notice from "../../Notice";
@@ -17,6 +18,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   const { data: a } = await db.from("appointments").select("*").eq("id", id).maybeSingle();
   if (!a) notFound(); // also what another business's id looks like: RLS returns nothing
 
+  const chatEmail = (await emailsByContact(db, [a.contact_id])).get(a.contact_id) ?? null; // an email the customer gave in chat
   const status = a.status as AppointmentStatus;
   const prefer = whenText(a.preferred_date, a.preferred_time);
   const agreed = whenText(a.scheduled_date, a.scheduled_time);
@@ -41,7 +43,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
           <div><dt>For</dt><dd>{a.purpose}</dd></div>
           <div><dt>Customer asked for</dt><dd>{prefer || "-"}</dd></div>
           {agreed && <div><dt>Agreed</dt><dd>{agreed}</dd></div>}
-          {a.customer_email && <div><dt>Email</dt><dd>{a.customer_email}</dd></div>}
+          {(a.customer_email || chatEmail) && <div><dt>Email</dt><dd>{a.customer_email || chatEmail}</dd></div>}
           {a.notes && <div><dt>Customer notes</dt><dd>{a.notes}</dd></div>}
         </dl>
         <p className="muted" style={{ marginTop: 12 }}><Link href={`/dashboard/conversations/${a.conversation_id}`}>Open the conversation</Link></p>

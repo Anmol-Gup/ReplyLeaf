@@ -26,7 +26,7 @@ export default function Privacy() {
       <ul>
         <li>To receive customer messages, write replies from the business&apos;s own knowledge base, and send them.</li>
         <li>To show the business its conversations and contacts, and to email the owner about leads and conversations that need a person.</li>
-        <li>To send a customer updates about their own support request, by WhatsApp, or by email if they chose to share an address for that purpose.</li>
+        <li>To follow up on a customer's own appointment, project enquiry or support request, by WhatsApp or, if the customer chose to share an email address, by email (for example to send a project proposal). Sharing an email is optional.</li>
         <li>To keep the service secure, prevent abuse and fix faults.</li>
       </ul>
       <p>We do not sell personal data, and we do not use customer messages to train AI models.</p>

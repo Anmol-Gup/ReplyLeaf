@@ -4,13 +4,14 @@ import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { fmtDay, matches } from "../../../lib/dashboard";
+import { emailsByContact } from "../../../lib/contact-emails";
 import { effectiveSelection } from "../../../lib/filters";
 import { APPOINTMENT_STATUSES, isUpcoming, OWNER_STATUSES, overview, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentStatus } from "../../../lib/appointments";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
 
 type Row = {
-  id: string; customer_name: string | null; customer_phone: string; purpose: string; customer_email: string | null; preferred_date: string | null; preferred_time: string | null;
+  id: string; contact_id: string; customer_name: string | null; customer_phone: string; purpose: string; customer_email: string | null; preferred_date: string | null; preferred_time: string | null;
   scheduled_date: string | null; scheduled_time: string | null; status: AppointmentStatus; created_at: string;
 };
 
@@ -23,7 +24,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
   const today = new Date().toISOString().slice(0, 10);
 
   const { data, error } = await db.from("appointments")
-    .select("id, customer_name, customer_phone, customer_email, purpose, preferred_date, preferred_time, scheduled_date, scheduled_time, status, created_at")
+    .select("id, contact_id, customer_name, customer_phone, customer_email, purpose, preferred_date, preferred_time, scheduled_date, scheduled_time, status, created_at")
     .order("created_at", { ascending: false }).limit(500);
   const all = (data ?? []) as Row[];
   const o = overview(all, today);
@@ -33,6 +34,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
 
   const matching = all.filter((r) => (statuses.length === 0 || statuses.includes(r.status)) && (!onlyUpcoming || isUpcoming(r, today)) && matches(q, r.customer_name, r.customer_phone, r.customer_email, r.purpose, r.preferred_date, r.preferred_time, STATUS_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
+  const chatEmails = await emailsByContact(db, paged.items.map((r) => r.contact_id)); // an email the customer gave in chat
   const keepStatus = explicit ? statuses : [];
   const href = (n: number) => `/dashboard/appointments${buildQuery({ status: keepStatus, upcoming: onlyUpcoming ? "1" : null, q, page: n > 1 ? n : null })}`;
 
@@ -59,7 +61,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
-                  <td><Link href={`/dashboard/appointments/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span>{r.customer_email && <><br /><span className="muted">{r.customer_email}</span></>}</td>
+                  <td><Link href={`/dashboard/appointments/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span>{(r.customer_email || chatEmails.get(r.contact_id)) && <><br /><span className="muted">{r.customer_email || chatEmails.get(r.contact_id)}</span></>}</td>
                   <td>{r.purpose}</td>
                   <td>{whenText(r.scheduled_date ?? r.preferred_date, r.scheduled_time ?? r.preferred_time) || "-"}</td>
                   <td><Badge tone={STATUS_TONES[r.status]}>{STATUS_LABELS[r.status]}</Badge></td>

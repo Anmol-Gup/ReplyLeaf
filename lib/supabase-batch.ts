@@ -17,6 +17,20 @@ const HISTORY_TURNS = 12;
 
 // Production implementation of BatchDeps. The conversation row tells us which
 // client it belongs to; every later query filters by that client_id.
+/**
+ * The contact row, with the email already on file (confirmed email first, else the one they gave in chat). If the database has not
+ * had the migration that adds `notify_email` yet, the lookup still works without it: a missing column must never stop replies.
+ */
+async function loadContact(clientId: string, contactId: string) {
+  const db = supabaseAdmin();
+  const full = await db.from("contacts").select("id, phone, name, email, notify_email").eq("client_id", clientId).eq("id", contactId).single();
+  if (!full.error) return { data: full.data ? { id: full.data.id, phone: full.data.phone, name: full.data.name, email: (full.data.email ?? full.data.notify_email ?? null) as string | null } : null, error: null };
+  const basic = await db.from("contacts").select("id, phone, name, email").eq("client_id", clientId).eq("id", contactId).single();
+  if (!basic.error) return { data: basic.data ? { id: basic.data.id, phone: basic.data.phone, name: basic.data.name, email: (basic.data.email ?? null) as string | null } : null, error: null };
+  const bare = await db.from("contacts").select("id, phone, name").eq("client_id", clientId).eq("id", contactId).single();
+  return { data: bare.data ? { id: bare.data.id, phone: bare.data.phone, name: bare.data.name, email: null as string | null } : null, error: bare.error };
+}
+
 export function supabaseBatchDeps(): BatchDeps {
   const db = supabaseAdmin();
 
@@ -45,7 +59,7 @@ export function supabaseBatchDeps(): BatchDeps {
         db.from("clients")
           .select("id, name, wa_phone_number_id, ai_provider, ai_mode, ai_key_status, billing_exempt, business_info, business_hours, booking_link, kb_text, monthly_message_cap, workflow_settings")
           .eq("id", clientId).single(),
-        db.from("contacts").select("id, phone, name").eq("client_id", clientId).eq("id", conv.contact_id).single(),
+        loadContact(clientId, conv.contact_id),
         db.from("pending_messages").select("id, message_id, created_at")
           .eq("client_id", clientId).eq("conversation_id", conversationId).order("created_at"),
         db.from("messages").select("id, direction, type, body, status, created_at")
@@ -125,7 +139,7 @@ export function supabaseBatchDeps(): BatchDeps {
           tickets: openTickets.count ?? 0,
           leads: openLeads.count ?? 0,
         },
-        contact: { id: contact.data!.id, name: contact.data!.name },
+        contact: { id: contact.data!.id, name: contact.data!.name, email: contact.data!.email ?? null },
         phone: contact.data!.phone,
         pending,
         history,
@@ -162,7 +176,7 @@ export function supabaseBatchDeps(): BatchDeps {
           open: ctx.open,
         }),
         history: ctx.history,
-        userTurn: wrapCustomerMessages(customerLines, { hasUnreadableMedia, progress: renderProgress(ctx.conversation.workflowState, ctx.contact.name) }),
+        userTurn: wrapCustomerMessages(customerLines, { hasUnreadableMedia, progress: renderProgress(ctx.conversation.workflowState, ctx.contact.name, ctx.contact.email ?? null) }),
       });
     },
 
