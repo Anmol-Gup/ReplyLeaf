@@ -1,54 +1,44 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import ChatLog from "../../../../components/ChatLog";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { emailsByContact } from "../../../../lib/contact-emails";
-import { fmt, fmtDay, fmtTime } from "../../../../lib/dashboard";
+import { fmt } from "../../../../lib/dashboard";
 import { whatsappLink } from "../../../../lib/appointments";
-import { isDone, PRIORITIES, PRIORITY_LABELS, resolutionMessage, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
+import { PRIORITIES, PRIORITY_LABELS, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
 import Notice from "../../Notice";
 import { updateTicket } from "../actions";
 
 export default async function TicketDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
   const { notice } = await searchParams;
-  const { db, clientName } = await requireClient();
+  const { db } = await requireClient();
   const { data: t } = await db.from("tickets").select("*").eq("id", id).maybeSingle();
   if (!t) notFound(); // also what another business's id looks like: RLS returns nothing
 
-  const [{ data: contact }, { data: messages }] = await Promise.all([
-    db.from("contacts").select("id, email").eq("id", t.contact_id).maybeSingle(),
-    db.from("messages").select("id, sender, type, body, created_at").eq("conversation_id", t.conversation_id).order("created_at", { ascending: false }).limit(100),
-  ]);
-  const chat = [...(messages ?? [])].reverse();
+  const { data: contact } = await db.from("contacts").select("id, email").eq("id", t.contact_id).maybeSingle();
   const emailOf = (await emailsByContact(db, [t.contact_id])).get(t.contact_id) ?? contact?.email ?? null;
   const status = t.status as TicketStatus;
-  // A message you can send yourself from your own phone (the WhatsApp Business app): free, no template, no 24-hour rule.
-  const message = isDone(status)
-    ? resolutionMessage(clientName, t.subject, ticketRef(t.id), "")
-    : `Hi${t.customer_name ? ` ${t.customer_name}` : ""}, this is ${clientName} about your issue ${ticketRef(t.id)} (${t.subject}). We are looking into it and will update you here.`;
-  const link = whatsappLink(t.customer_phone, message);
+  // A chat with the customer from your own phone (the WhatsApp Business app): free, no template, no 24-hour rule.
+  const link = whatsappLink(t.customer_phone);
 
   return (
     <>
       <PageHeader
         title={`${ticketRef(t.id)}: ${t.subject}`}
         description={`${t.customer_name || "Customer"} · +${t.customer_phone}${emailOf ? ` · ${emailOf}` : ""} · raised ${fmt(t.created_at)}`}
-        actions={<span className="row"><a className="btn btn-primary btn-sm" href="#edit">Edit</a><Link className="btn btn-secondary btn-sm" href="/dashboard/tickets">All tickets</Link></span>}
+        actions={<span className="row">{link && <a className="btn btn-secondary btn-sm" href={link} target="_blank" rel="noopener noreferrer">Message on WhatsApp</a>}<a className="btn btn-primary btn-sm" href="#edit">Edit</a><Link className="btn btn-secondary btn-sm" href="/dashboard/tickets">All tickets</Link></span>}
       />
       <Notice code={notice} />
       <Card title="The problem" actions={<span className="row">{t.priority === "high" && <Badge tone="danger">Urgent</Badge>}<Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge></span>}>
         <dl className="handoff-facts">
-          <div><dt>AI summary</dt><dd>{t.ai_summary || "-"}</dd></div>
           <div><dt>What happened</dt><dd>{t.description}</dd></div>
-          <div><dt>Category</dt><dd>{t.category ?? "Not set"}</dd></div>
-          <div><dt>Reference given</dt><dd>{t.reference_info ?? "None"}</dd></div>
-          {t.resolved_at && <div><dt>Resolved</dt><dd>{fmt(t.resolved_at)}</dd></div>}
+          {t.category && <div><dt>Category</dt><dd>{t.category}</dd></div>}
+          {t.reference_info && <div><dt>Reference given</dt><dd>{t.reference_info}</dd></div>}
         </dl>
         <p className="muted" style={{ marginTop: 12 }}>
-          <Link href={`/dashboard/conversations/${t.conversation_id}`}>Open the conversation to reply</Link>
+          <Link href={`/dashboard/conversations/${t.conversation_id}`}>Open the conversation</Link>
           {contact && <> · <Link href={`/dashboard/contacts/${contact.id}`}>Contact details</Link></>}
         </p>
       </Card>
@@ -76,28 +66,6 @@ export default async function TicketDetail({ params, searchParams }: { params: P
           <div><SubmitButton pendingText="Saving...">Save</SubmitButton></div>
         </form>
       </Card></div>
-
-      {link && (
-        <Card title="Message the customer yourself" description="Opens WhatsApp with this message ready; press send on your phone. It is a normal chat message, not an API message or a template, so Meta does not charge for it and the 24-hour rule does not apply.">
-          <p className="note" style={{ whiteSpace: "pre-wrap" }}>{message}</p>
-          <p style={{ marginTop: 10 }}><a className="btn btn-secondary btn-sm" href={link} target="_blank" rel="noopener noreferrer">Send from WhatsApp</a></p>
-        </Card>
-      )}
-
-      <Card title="WhatsApp conversation">
-        <ChatLog>
-          {chat.map((m, i) => (
-            <div key={m.id} style={{ display: "contents" }}>
-              {(i === 0 || fmtDay(chat[i - 1].created_at) !== fmtDay(m.created_at)) && <span className="day">{fmtDay(m.created_at)}</span>}
-              <div className={`bubble ${m.sender}`}>
-                {m.sender !== "customer" && <span className="tag">{m.sender === "bot" ? "Assistant" : "You"}</span>}
-                {m.body ?? (m.type !== "text" ? `[${m.type} message]` : "[deleted by retention policy]")}
-                <time dateTime={m.created_at}>{fmtTime(m.created_at)} UTC</time>
-              </div>
-            </div>
-          ))}
-        </ChatLog>
-      </Card>
     </>
   );
 }
