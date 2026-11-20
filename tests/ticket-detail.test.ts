@@ -122,7 +122,7 @@ test("a notification is only called 'delivered' when WhatsApp says so; failures 
 });
 
 test("every outcome the ticket page can redirect to has a message", () => {
-  for (const code of ["tkt_saved", "tkt_bad_transition", "tkt_bad_assignee", "tkt_nothing_to_notify", "tkt_note_added", "tkt_note_empty", "tkt_done_whatsapp", "tkt_done_email", "tkt_done_failed", "tkt_done_not_sent"]) {
+  for (const code of ["tkt_saved", "tkt_needs_update", "tkt_bad_transition", "tkt_bad_assignee", "tkt_nothing_to_notify", "tkt_note_added", "tkt_note_empty", "tkt_done_whatsapp", "tkt_done_email", "tkt_done_failed", "tkt_done_not_sent"]) {
     assert.ok(NOTICES[code], code);
   }
   assert.equal(NOTICES.tkt_done_failed.kind, "error");
@@ -137,4 +137,12 @@ test("authorization lives on the server: the assignee is checked against the bus
   assert.equal((actions.match(/client_id: clientId/g) ?? []).length >= 3, true);                        // ...and every insert carries the business id
   const team = readFileSync("lib/team.ts", "utf8");
   assert.match(team, /from\("client_users"\)[\s\S]*eq\("client_id", clientId\)/);
+});
+
+test("a database that is missing an update is reported as that, never as 'not found'", () => {
+  const actions = readFileSync("app/dashboard/tickets/actions.ts", "utf8");
+  assert.match(actions, /readError\) return go\(v\.id, needsUpdate\(readError\)/);          // a failed read of the ticket is not "no such ticket"
+  for (const code of ["42703", "42P01", "PGRST204", "PGRST205"]) assert.ok(actions.includes(code), code);
+  assert.match(NOTICES.tkt_needs_update.text, /migration 0025/);
+  assert.equal(NOTICES.tkt_needs_update.kind, "error");
 });

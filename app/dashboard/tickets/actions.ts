@@ -18,6 +18,9 @@ import { supabaseAdmin } from "../../../lib/supabase-admin";
 const detail = (id: string) => `/dashboard/tickets/${id}`;
 const go = (id: string, notice: string): never => redirect(`${detail(id)}?notice=${notice}`);
 
+/** Postgres says a column or table does not exist: the database is missing one of Replyleaf's updates. */
+const needsUpdate = (e: { code?: string } | null) => e?.code === "42703" || e?.code === "42P01" || e?.code === "PGRST204" || e?.code === "PGRST205";
+
 type EventRow = { client_id: string; ticket_id: string; kind: string; detail: Record<string, unknown>; actor_user_id: string; actor_label: string | null };
 
 export async function updateTicket(formData: FormData) {
@@ -33,9 +36,11 @@ export async function updateTicket(formData: FormData) {
   const v = parsed.data;
 
   const db = supabaseAdmin();
-  const { data: before } = await db.from("tickets")
+  const { data: before, error: readError } = await db.from("tickets")
     .select("id, status, priority, category, assigned_user_id, resolved_at, conversation_id, subject")
     .eq("id", v.id).eq("client_id", clientId).maybeSingle();
+  // A failed read (for example a database that has not had the latest migration) is not the same as "no such ticket".
+  if (readError) return go(v.id, needsUpdate(readError) ? "tkt_needs_update" : "invalid");
   if (!before) return redirect("/dashboard/tickets?notice=not_found");
 
   const prev = before.status as TicketStatus;
@@ -67,7 +72,7 @@ export async function updateTicket(formData: FormData) {
     ...(wantsAssignee ? { assigned_user_id: newAssignee, ...(newAssignee ? { assigned_to: null } : {}) } : {}), // the old free-text name is replaced by the real person
     resolved_at: resolvedAtFor(v.status, prev, before.resolved_at, new Date()), updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);
-  if (error) return go(v.id, "invalid");
+  if (error) return go(v.id, needsUpdate(error) ? "tkt_needs_update" : "invalid");
   if (events.length) await db.from("ticket_events").insert(events); // the activity is a record, not a gate: a failure here never undoes the change
 
   revalidatePath("/dashboard/tickets");
@@ -99,7 +104,7 @@ export async function addTicketNote(formData: FormData) {
   const { data: ticket } = await db.from("tickets").select("id").eq("id", id).eq("client_id", clientId).maybeSingle();
   if (!ticket) return redirect("/dashboard/tickets?notice=not_found");
   const { error } = await db.from("ticket_notes").insert({ client_id: clientId, ticket_id: id, author_user_id: user.id, author_label: user.email ?? null, body });
-  if (error) return go(id, "invalid");
+  if (error) return go(id, needsUpdate(error) ? "tkt_needs_update" : "invalid");
   await db.from("ticket_events").insert({ client_id: clientId, ticket_id: id, kind: "note", detail: {}, actor_user_id: user.id, actor_label: user.email ?? null });
   revalidatePath(detail(id));
   return go(id, "tkt_note_added");
