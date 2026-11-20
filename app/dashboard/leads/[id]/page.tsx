@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import ChatLog from "../../../../components/ChatLog";
 import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
 import CopyButton from "../../../../components/CopyButton";
-import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
-import { fmt, fmtDay, fmtTime } from "../../../../lib/dashboard";
+import { fmt } from "../../../../lib/dashboard";
 import { LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, projectBrief, requirementLines, type LeadStatus } from "../../../../lib/leads";
 import Notice from "../../Notice";
 import { updateLeadDetails } from "../actions";
@@ -18,13 +16,10 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   const { data: l } = await db.from("leads").select("*").eq("id", id).maybeSingle();
   if (!l) notFound(); // also what another business's id looks like: RLS returns nothing
 
-  const [{ data: reqs }, { data: contact }, { data: messages }] = await Promise.all([
+  const [{ data: reqs }, { data: contact }] = await Promise.all([
     db.from("lead_requirements").select("requirement_key, requirement_value").eq("lead_id", id).order("created_at"),
     db.from("contacts").select("id, name, email").eq("id", l.contact_id).maybeSingle(),
-    db.from("messages").select("id, sender, type, body, status, created_at").eq("conversation_id", l.conversation_id)
-      .order("created_at", { ascending: false }).limit(100),
   ]);
-  const chat = [...(messages ?? [])].reverse();
   const status = l.status as LeadStatus;
   const brief = projectBrief(l, reqs ?? [], clientName);
 
@@ -39,14 +34,8 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       <Card title={l.project_type} actions={<Badge tone={LEAD_TONES[status]}>{LEAD_LABELS[status]}</Badge>}>
         <dl className="handoff-facts">
           <div><dt>AI summary</dt><dd>{l.ai_summary || "-"}</dd></div>
-          <div><dt>Description</dt><dd>{l.description}</dd></div>
-          <div><dt>Budget</dt><dd>{l.budget ?? "Not given"}</dd></div>
-          <div><dt>Timeline</dt><dd>{l.timeline ?? "Not given"}</dd></div>
         </dl>
-        <p className="muted" style={{ marginTop: 12 }}>
-          <Link href={`/dashboard/conversations/${l.conversation_id}`}>Open the conversation</Link>
-          {contact && <> · <Link href={`/dashboard/contacts/${contact.id}`}>Contact details</Link></>}
-        </p>
+        {contact && <p className="muted" style={{ marginTop: 12 }}><Link href={`/dashboard/contacts/${contact.id}`}>Contact details</Link></p>}
       </Card>
 
       <Card title="Requirements" description="Collected from the conversation, as the customer described them.">
@@ -88,21 +77,6 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       <Card title="Project brief" description="A plain-text summary you can paste into a proposal or send to a teammate. It does not include your internal notes."
         actions={<span className="row"><CopyButton text={brief} label="Copy brief" /><a className="btn btn-secondary btn-sm" href={`/dashboard/leads/${l.id}/brief`}>Download .txt</a></span>}>
         <pre className="brief">{brief}</pre>
-      </Card>
-
-      <Card title="WhatsApp conversation">
-        <ChatLog>
-          {chat.map((m, i) => (
-            <div key={m.id} style={{ display: "contents" }}>
-              {(i === 0 || fmtDay(chat[i - 1].created_at) !== fmtDay(m.created_at)) && <span className="day">{fmtDay(m.created_at)}</span>}
-              <div className={`bubble ${m.sender}`}>
-                {m.sender !== "customer" && <span className="tag">{m.sender === "bot" ? "Assistant" : "You"}</span>}
-                {m.body ?? (m.type !== "text" ? `[${m.type} message]` : "[deleted by retention policy]")}
-                <time dateTime={m.created_at}>{fmtTime(m.created_at)} UTC</time>
-              </div>
-            </div>
-          ))}
-        </ChatLog>
       </Card>
     </>
   );
