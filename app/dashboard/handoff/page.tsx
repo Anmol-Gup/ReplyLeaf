@@ -20,8 +20,8 @@ type Handoff = {
 
 export default async function HumanHandoff({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; page?: string }> }) {
   const { notice, q, status: statusRaw, page: pageRaw } = await searchParams;
-  // Nothing chosen = the requests that still need a person.
-  const { selected: statuses, explicit } = effectiveSelection(statusRaw, HANDOFF_STATUSES, HANDOFF_STATUSES.filter((s) => s !== "resolved"));
+  // Nothing chosen = every status (the page never starts with a filter you did not pick).
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, HANDOFF_STATUSES, []);
   const { db } = await requireClient(); // RLS: only this business's rows can come back
 
   const { data, error } = await db.from("handoff_requests")
@@ -53,7 +53,7 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
   const options = HANDOFF_STATUSES.map((s) => ({ value: s as string, label: STATUS_LABELS[s], count: rows.filter((r) => r.h.status === s).length }));
 
   const matching = rows.filter((r) =>
-    statuses.includes(r.h.status) &&
+    (statuses.length === 0 || statuses.includes(r.h.status)) &&
     matches(q, r.name, r.phone, r.last, r.h.ai_summary, r.h.assigned_to, r.h.internal_notes));
   const paged = paginate(matching, pageRaw, 10);
   const here = `/dashboard/handoff${buildQuery({ status: explicit ? statuses : [], q, page: paged.page > 1 ? paged.page : null })}`;

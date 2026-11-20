@@ -6,7 +6,7 @@ import { requireClient } from "../../../lib/auth/session";
 import { clip, fmtDay, matches } from "../../../lib/dashboard";
 import { effectiveSelection } from "../../../lib/filters";
 import { buildQuery, paginate } from "../../../lib/paginate";
-import { isOpenTicket, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketOverview, ticketRef, type TicketStatus } from "../../../lib/tickets";
+import { TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketOverview, ticketRef, type TicketStatus } from "../../../lib/tickets";
 import Notice from "../Notice";
 
 type Row = {
@@ -16,8 +16,8 @@ type Row = {
 
 export default async function Tickets({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; page?: string }> }) {
   const { notice, q, status: statusRaw, page: pageRaw } = await searchParams;
-  // Nothing chosen = the tickets that still need work.
-  const { selected: statuses, explicit } = effectiveSelection(statusRaw, TICKET_STATUSES, TICKET_STATUSES.filter((s) => isOpenTicket(s)));
+  // Nothing chosen = every status (the page never starts with a filter you did not pick).
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, TICKET_STATUSES, []);
   const { db } = await requireClient(); // RLS: only this business's rows can come back
 
   const { data, error } = await db.from("tickets")
@@ -28,7 +28,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const options = TICKET_STATUSES.map((s) => ({ value: s as string, label: TICKET_LABELS[s], count: all.filter((r) => r.status === s).length }));
 
   const matching = all.filter((r) =>
-    statuses.includes(r.status) &&
+    (statuses.length === 0 || statuses.includes(r.status)) &&
     matches(q, r.customer_name, r.customer_phone, r.subject, r.category, r.assigned_to, ticketRef(r.id), TICKET_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
 

@@ -40,9 +40,9 @@ export default async function Overview() {
 
   // What needs the owner now, most urgent first. Each line links to the list that shows exactly those items.
   const attention = [
-    { n: waiting, text: `chat${waiting === 1 ? "" : "s"} waiting for a person`, href: "/dashboard/handoff", tone: "danger" as const },
-    { n: ao.pending, text: `appointment request${ao.pending === 1 ? "" : "s"} to confirm`, href: "/dashboard/appointments", tone: "warn" as const },
-    { n: to.urgent, text: `urgent open ticket${to.urgent === 1 ? "" : "s"}`, href: "/dashboard/tickets", tone: "danger" as const },
+    { n: waiting, text: `chat${waiting === 1 ? "" : "s"} waiting for a person`, href: "/dashboard/handoff?status=requested", tone: "danger" as const },
+    { n: ao.pending, text: `appointment request${ao.pending === 1 ? "" : "s"} to confirm`, href: "/dashboard/appointments?status=pending&status=reschedule_requested", tone: "warn" as const },
+    { n: to.urgent, text: `urgent open ticket${to.urgent === 1 ? "" : "s"}`, href: "/dashboard/tickets?status=open&status=in_progress&status=waiting_on_customer", tone: "danger" as const },
     { n: lo.dueFollowUp, text: `lead follow-up${lo.dueFollowUp === 1 ? "" : "s"} due`, href: "/dashboard/leads", tone: "warn" as const },
     { n: lo.fresh, text: `new or qualified lead${lo.fresh === 1 ? "" : "s"} to contact`, href: "/dashboard/leads?status=new&status=qualified", tone: "brand" as const },
   ].filter((a) => a.n > 0);
@@ -56,9 +56,9 @@ export default async function Overview() {
       <AiKeyBanner mode={(conn?.ai_mode ?? "platform") as AiMode} hasKey={(conn?.ai_key_status ?? "none") !== "none"} status={(conn?.ai_key_status ?? "none") as KeyStatus} />
 
       <div className="stat-grid">
-        <Stat href="/dashboard/handoff" value={handoffOpen} label="Chats handed to you" />
-        <Stat href="/dashboard/appointments" value={ao.pending} label="Appointments to confirm" />
-        <Stat href="/dashboard/tickets" value={openTickets} label="Open tickets" />
+        <Stat href="/dashboard/handoff?status=requested&status=assigned&status=human_active" value={handoffOpen} label="Chats handed to you" />
+        <Stat href="/dashboard/appointments?status=pending&status=reschedule_requested" value={ao.pending} label="Appointments to confirm" />
+        <Stat href="/dashboard/tickets?status=open&status=in_progress&status=waiting_on_customer" value={openTickets} label="Open tickets" />
         <Stat href="/dashboard/leads?status=new&status=qualified" value={lo.fresh} label="New or qualified leads" />
         <Stat href="/dashboard/leads" value={lo.dueFollowUp} label="Lead follow-ups due" />
         <Stat href="/dashboard/contacts" value={contacts.count ?? 0} label="Contacts in total" />
