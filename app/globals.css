@@ -348,3 +348,11 @@ ul.reqs { margin: 0; padding-left: 16px; display: grid; gap: 3px; font-size: 0.8
 form.rowedit { display: grid; gap: 6px; min-width: 190px; }
 form.rowedit select { min-height: 34px; padding: 4px 8px; }
 form.rowedit .check input { flex: none; width: auto; }
+
+/* ---- overview: latest items ---- */
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 16px; align-items: start; }
+ul.latest { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+ul.latest li { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+ul.latest li:last-child { border-bottom: 0; padding-bottom: 0; }
+ul.latest li > div { min-width: 0; overflow-wrap: anywhere; }
+ul.latest li .badge { flex: none; }
