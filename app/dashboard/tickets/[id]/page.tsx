@@ -20,6 +20,9 @@ type Event = { id: string; kind: string; detail: Record<string, unknown> | null;
 // One ticket: the problem, a form to manage it (status, priority, category, who has it, and an optional message to the customer),
 // private notes over time, and the activity. Reads of the new notes and activity are separate, so a database that has not had the
 // latest migration still shows the ticket.
+const SHOWN_EVENTS = 5; // the page shows the latest few and folds the rest away, so a busy ticket never makes it endless
+const SHOWN_NOTES = 3;
+
 export default async function TicketDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
   const { notice } = await searchParams;
@@ -42,6 +45,25 @@ export default async function TicketDetail({ params, searchParams }: { params: P
   const waIds = events.map((e) => (e.kind === "notification" ? (e.detail?.wa_message_id as string | undefined) : undefined)).filter((x): x is string => Boolean(x));
   const { data: msgs } = waIds.length ? await db.from("messages").select("wa_message_id, status").in("wa_message_id", waIds) : { data: [] };
   const deliveryOf = new Map((msgs ?? []).map((m) => [m.wa_message_id as string, m.status as string]));
+
+  // The renderers need the delivery reports and the old single note, so they live inside the page function.
+  const renderEvent = (e: Event) => {
+    const d = e.detail ?? {};
+    const outcome = e.kind === "notification" ? notificationOutcome(d, deliveryOf.get(String(d.wa_message_id ?? "")) ?? null) : null;
+    return (
+      <li key={e.id}>
+        <div>
+          {describeTicketEvent(e.kind, d)}{outcome && <>: <Badge tone={outcome.tone}>{outcome.label}</Badge></>}<br />
+          <span className="muted">{e.actor_label ?? "Assistant"} · {fmt(e.created_at)}</span>
+        </div>
+      </li>
+    );
+  };
+  // The newest notes first; the single note written before notes were dated goes last.
+  const allNotes: Note[] = [...notes, ...(t.internal_notes ? [{ id: "earlier", author_label: null, body: t.internal_notes as string, created_at: "" }] : [])];
+  const renderNote = (n: Note) => (
+    <li key={n.id}><div><span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span><br /><span className="muted">{n.id === "earlier" ? "Earlier note (written before notes were dated)" : `${n.author_label ?? "A team member"} · ${fmt(n.created_at)}`}</span></div></li>
+  );
 
   const status = t.status as TicketStatus;
   const priority = priorityOf(t.priority);
@@ -117,34 +139,28 @@ export default async function TicketDetail({ params, searchParams }: { params: P
             <label className="field">Add a note <textarea name="body" required rows={2} maxLength={4000} /></label>
             <div><SubmitButton variant="secondary" pendingText="Adding...">Add note</SubmitButton></div>
           </form>
-          {notes.length === 0 && !t.internal_notes && <p className="muted">No notes yet.</p>}
-          <ul className="latest">
-            {notes.map((n) => (
-              <li key={n.id}><div><span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span><br /><span className="muted">{n.author_label ?? "A team member"} · {fmt(n.created_at)}</span></div></li>
-            ))}
-            {t.internal_notes && (
-              <li><div><span style={{ whiteSpace: "pre-wrap" }}>{t.internal_notes}</span><br /><span className="muted">Earlier note (written before notes were dated)</span></div></li>
-            )}
-          </ul>
+          {allNotes.length === 0 && <p className="muted">No notes yet.</p>}
+          {allNotes.length > 0 && <ul className="latest compact">{allNotes.slice(0, SHOWN_NOTES).map(renderNote)}</ul>}
+          {allNotes.length > SHOWN_NOTES && (
+            <details className="handoff-more fold">
+              <summary>Show {allNotes.length - SHOWN_NOTES} earlier note{allNotes.length - SHOWN_NOTES === 1 ? "" : "s"}</summary>
+              <ul className="latest compact scroll">{allNotes.slice(SHOWN_NOTES).map(renderNote)}</ul>
+            </details>
+          )}
         </div>
       </Card>
 
       <Card title="Activity">
         {events.length === 0 ? <p className="muted">Nothing has happened to this ticket since activity tracking began.</p> : (
-          <ul className="latest">
-            {events.map((e) => {
-              const d = e.detail ?? {};
-              const outcome = e.kind === "notification" ? notificationOutcome(d, deliveryOf.get(String(d.wa_message_id ?? "")) ?? null) : null;
-              return (
-                <li key={e.id}>
-                  <div>
-                    {describeTicketEvent(e.kind, d)}{outcome && <>: <Badge tone={outcome.tone}>{outcome.label}</Badge></>}<br />
-                    <span className="muted">{e.actor_label ?? "Assistant"} · {fmt(e.created_at)}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <ul className="latest compact">{events.slice(0, SHOWN_EVENTS).map(renderEvent)}</ul>
+            {events.length > SHOWN_EVENTS && (
+              <details className="handoff-more fold">
+                <summary>Show {events.length - SHOWN_EVENTS} earlier event{events.length - SHOWN_EVENTS === 1 ? "" : "s"}</summary>
+                <ul className="latest compact scroll">{events.slice(SHOWN_EVENTS).map(renderEvent)}</ul>
+              </details>
+            )}
+          </>
         )}
       </Card>
     </>

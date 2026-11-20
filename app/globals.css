@@ -360,3 +360,9 @@ ul.latest li .badge { flex: none; }
 /* ---- compact two-column form rows ---- */
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; }
 .stack-sm.tight, form.stack-sm { gap: 10px; }
+
+/* ---- compact, bounded lists (ticket activity and notes) ---- */
+ul.latest.compact { gap: 8px; }
+ul.latest.compact li { padding-bottom: 8px; }
+details.fold { margin-top: 8px; }
+ul.latest.scroll { max-height: 260px; overflow-y: auto; margin-top: 10px; padding-right: 6px; }
