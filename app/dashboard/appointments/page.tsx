@@ -16,8 +16,8 @@ type Row = {
 
 export default async function Appointments({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; upcoming?: string; page?: string }> }) {
   const { notice, q, status: statusRaw, upcoming: upcomingRaw, page: pageRaw } = await searchParams;
-  // Nothing chosen = the requests that are waiting for you.
-  const { selected: statuses, explicit } = effectiveSelection(statusRaw, APPOINTMENT_STATUSES, ["pending", "reschedule_requested"]);
+  // Nothing chosen = every status (so a confirmed appointment never disappears just because the page was reloaded).
+  const { selected: statuses, explicit } = effectiveSelection(statusRaw, APPOINTMENT_STATUSES, []);
   const onlyUpcoming = upcomingRaw === "1";
   const { db } = await requireClient(); // RLS: only this business's rows can come back
   const today = new Date().toISOString().slice(0, 10);
@@ -31,7 +31,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
   const options = APPOINTMENT_STATUSES.map((st) => ({ value: st as string, label: STATUS_LABELS[st], count: all.filter((r) => r.status === st).length }))
     .filter((o) => (OWNER_STATUSES as readonly string[]).includes(o.value) || o.count > 0);
 
-  const matching = all.filter((r) => statuses.includes(r.status) && (!onlyUpcoming || isUpcoming(r, today)) && matches(q, r.customer_name, r.customer_phone, r.customer_email, r.purpose, r.preferred_date, r.preferred_time, STATUS_LABELS[r.status]));
+  const matching = all.filter((r) => (statuses.length === 0 || statuses.includes(r.status)) && (!onlyUpcoming || isUpcoming(r, today)) && matches(q, r.customer_name, r.customer_phone, r.customer_email, r.purpose, r.preferred_date, r.preferred_time, STATUS_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
   const keepStatus = explicit ? statuses : [];
   const href = (n: number) => `/dashboard/appointments${buildQuery({ status: keepStatus, upcoming: onlyUpcoming ? "1" : null, q, page: n > 1 ? n : null })}`;

@@ -498,16 +498,16 @@ const LEAD_SUBMIT = {
   action: { type: "submit_lead" as const, customer_confirmed: true },
 };
 
-test("confirmed enquiry: lead saved as qualified (budget + timeline known), owner emailed once", async () => {
+test("confirmed enquiry: lead saved as NEW even with budget and timeline known (only the owner qualifies a lead), owner emailed once", async () => {
   const f = fakeDeps(makeCtx({}, { workflowState: awaiting("enquiry") }), { gen: async () => ({ result: reply({ reply: "Thanks, the team has your enquiry.", ...LEAD_SUBMIT }) }) });
   await run(f.deps);
   assert.equal(f.log.leads.length, 1);
-  assert.equal((f.log.leads[0] as { status: string }).status, "qualified");
+  assert.equal((f.log.leads[0] as { status: string }).status, "new");
   const mail = f.log.owner.find((e) => e.type === "lead_created");
-  assert.ok(mail && mail.type === "lead_created" && mail.projectType === "e-commerce website" && mail.status === "qualified");
+  assert.ok(mail && mail.type === "lead_created" && mail.projectType === "e-commerce website" && mail.status === "new");
 });
 
-test("enquiry without budget or timeline is saved as NEW, never qualified", async () => {
+test("enquiry without budget or timeline is saved as NEW too", async () => {
   const f = fakeDeps(makeCtx({}, { workflowState: awaiting("enquiry") }), { gen: async () => ({ result: reply({ ...LEAD_SUBMIT, lead: { ...LEAD, budget: null } }) }) });
   await run(f.deps);
   assert.equal((f.log.leads[0] as { status: string }).status, "new");

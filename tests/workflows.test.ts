@@ -50,10 +50,10 @@ test("appointment needs a purpose, a date or time, and a name (the chat's contac
   assert.ok(r.ok && r.value.purpose === "check-up now" && (r.value.notes?.length ?? 0) <= 500);
 });
 
-test("lead: qualified only with budget AND timeline; thin descriptions are refused; same enquiry = same key", () => {
+test("lead: always starts as new, whatever was collected; thin descriptions are refused; same enquiry = same key", () => {
   const l = { project_type: "website", description: "A shop for handmade candles", budget: "$3k", timeline: "6 weeks", requirements: [{ key: "platform", value: "Shopify" }, { key: " ", value: "x" }] };
   const full = validateLead(l, "Wants a candle shop.", "Asha");
-  assert.ok(full.ok && full.value.status === "qualified" && full.value.requirements.length === 1);
+  assert.ok(full.ok && full.value.status === "new" && full.value.requirements.length === 1);
   const noBudget = validateLead({ ...l, budget: null }, null, null);
   assert.ok(noBudget.ok && noBudget.value.status === "new");
   assert.ok(!validateLead({ ...l, description: "site" }, null, null).ok);

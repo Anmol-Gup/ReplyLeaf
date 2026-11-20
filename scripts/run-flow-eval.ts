@@ -42,7 +42,8 @@ const SCENARIOS: Scenario[] = [
     expect: ({ saved }) => {
       const l = saved.find((d) => d.kind === "lead");
       if (!l || l.kind !== "lead") return "no lead was saved after the customer confirmed";
-      if (l.value.status !== "qualified") return `expected a qualified lead (budget and timeline were given), got ${l.value.status}`;
+      if (l.value.status !== "new") return `a lead must start as new (only the owner qualifies it), got ${l.value.status}`;
+      if (!l.value.budget || !l.value.timeline) return "the budget and timeline the customer gave were not captured";
       return null;
     },
   },

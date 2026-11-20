@@ -102,7 +102,7 @@ export const appointmentDedupeKey = (a: { purpose: string; preferredDate: string
 export const leadDedupeKey = (projectType: string, description: string) =>
   createHash("sha256").update(`${projectType.toLowerCase()}\n${description.toLowerCase()}`.replace(/\s+/g, " ")).digest("hex").slice(0, 32);
 
-/** Required: project type and a real description. "qualified" only when budget AND timeline are known too. */
+/** Required: project type and a real description. Every lead starts as "new": only the owner marks it qualified. */
 export function validateLead(l: ReplyResult["lead"], summary: string | null, contactName: string | null): { ok: true; value: LeadInput } | { ok: false; missing: string[] } {
   const projectType = clean(l.project_type, 200);
   const description = clean(l.description, 1500);
@@ -120,7 +120,7 @@ export function validateLead(l: ReplyResult["lead"], summary: string | null, con
     ok: true,
     value: {
       customerName: clean(l.customer_name, 100) ?? clean(contactName, 100), projectType, description, budget, timeline, requirements,
-      status: budget && timeline ? "qualified" : "new",
+      status: "new", // the owner decides when a lead is qualified; the assistant never does
       summary: clean(summary, 600) ?? `${projectType}: ${description}`.slice(0, 600),
       dedupeKey: leadDedupeKey(projectType, description),
     },

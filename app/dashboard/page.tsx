@@ -17,7 +17,7 @@ export default async function Overview() {
   const [{ data: conn }, handoff, contacts, leadsRes, apptRes, ticketRes] = await Promise.all([
     db.from("clients").select("onboarding_status, onboarding_step, ai_mode, ai_key_status").eq("id", clientId).single(),
     db.from("handoff_requests").select("id, status"),
-    db.from("contacts").select("id", { count: "exact", head: true }),
+    db.from("contacts").select("id", { count: "exact", head: true }).eq("spoke", true),
     db.from("leads").select("id, customer_name, customer_phone, project_type, status, follow_up_at, created_at").order("created_at", { ascending: false }).limit(300),
     db.from("appointments").select("id, customer_name, customer_phone, purpose, preferred_date, preferred_time, scheduled_date, scheduled_time, status, created_at").order("created_at", { ascending: false }).limit(300),
     db.from("tickets").select("id, customer_name, customer_phone, subject, priority, status, created_at").order("created_at", { ascending: false }).limit(300),

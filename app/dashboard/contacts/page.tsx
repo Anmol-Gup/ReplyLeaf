@@ -18,6 +18,7 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
   const { db } = await requireClient();
   const { data, error } = await db.from("contacts")
     .select("id, name, phone, email, status, tags, suggested, created_at")
+    .eq("spoke", true) // someone who has only sent a photo or a voice note is listed once they type something
     .order("created_at", { ascending: false }).limit(500);
   const everyone = data ?? [];
   const options = CONTACT_STATUSES.map((s) => ({ value: s as string, label: CONTACT_LABELS[s], count: everyone.filter((c) => c.status === s).length }));
@@ -27,7 +28,7 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <PageHeader title="Contacts" description="Everyone who has messaged your WhatsApp number." />
+      <PageHeader title="Contacts" description="Everyone who has sent a text message to your WhatsApp number." />
       <Notice code={notice} />
       <div className="filters">
         <MultiSelectFilter action="/dashboard/contacts" options={options} selected={statuses} hidden={{ q }} />
