@@ -4,7 +4,6 @@ import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { clip, fmtDay, matches } from "../../../lib/dashboard";
-import { emailsByContact } from "../../../lib/contact-emails";
 import { effectiveSelection } from "../../../lib/filters";
 import { isOpenLead, LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, leadOverview, type LeadStatus } from "../../../lib/leads";
 import { buildQuery, paginate } from "../../../lib/paginate";
@@ -35,7 +34,6 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
   // What each customer asked for: the collected requirements of the leads on this page (still through the RLS client).
   const ids = paged.items.map((r) => r.id);
   const { data: reqRows } = ids.length ? await db.from("lead_requirements").select("lead_id, requirement_key, requirement_value").in("lead_id", ids).order("created_at") : { data: [] };
-  const emails = await emailsByContact(db, paged.items.map((r) => r.contact_id));
   const reqsByLead = new Map<string, string[]>();
   for (const r of reqRows ?? []) reqsByLead.set(r.lead_id as string, [...(reqsByLead.get(r.lead_id as string) ?? []), `${r.requirement_key}: ${r.requirement_value}`]);
 
@@ -60,7 +58,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
-                  <td><Link href={`/dashboard/leads/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span>{emails.get(r.contact_id) && <><br /><span className="muted">{emails.get(r.contact_id)}</span></>}</td>
+                  <td><Link href={`/dashboard/leads/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span></td>
                   <td className="col-service">
                     <b>{clip(r.project_type, 60)}</b>
                     {r.description && <><br /><span className="muted">{clip(r.description, 110)}</span></>}
