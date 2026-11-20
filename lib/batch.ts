@@ -93,6 +93,8 @@ export interface BatchDeps {
   saveLead(clientId: string, ctx: BatchContext, l: LeadInput): Promise<{ created: boolean }>;
   /** Idempotent: the same open issue for this conversation returns created=false. */
   saveTicket(clientId: string, ctx: BatchContext, t: TicketInput): Promise<{ created: boolean; id?: string }>;
+  /** An email the customer gave while booking or reporting a problem, kept ONLY to send them updates about it after WhatsApp's 24-hour window closes. */
+  saveNotifyEmail(clientId: string, contactId: string, email: string): Promise<void>;
   /** A send was refused for a reason retrying cannot fix (billing, account, permission, policy): alert the admin and email the owner (at most once a day). */
   reportSendProblem(clientId: string, problem: SendProblem, detail: string): Promise<void>;
   recordFailedUsage(clientId: string, usage: Usage, provider: Provider, model: string): Promise<void>;
@@ -273,6 +275,12 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
   const name = details.name ?? (decision.kind === "appointment" ? decision.value.customerName : null);
   if (name || details.email) {
     await safely(deps, client.id, "crm", () => deps.applyContactDetails(client.id, contact.id, { name, email: details.email }));
+  }
+
+  // The customer typed an email in an appointment or ticket conversation: keep it, only for updates about that request.
+  const inRequestFlow = decision.kind === "appointment" || decision.kind === "ticket" || result.workflow.flow === "appointment" || result.workflow.flow === "issue";
+  if (inRequestFlow && details.email) {
+    await safely(deps, client.id, "notify_email", () => deps.saveNotifyEmail(client.id, contact.id, details.email as string));
   }
 
   // Questions we could not answer go to a list the owner can turn into knowledge.

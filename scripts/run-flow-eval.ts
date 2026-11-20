@@ -48,7 +48,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: "support ticket",
-    lines: ["My order didn't arrive. It was order #4521, placed 10 days ago.", "I'd like a replacement sent please.", "Yes, that's right", "Thanks"],
+    lines: ["My order didn't arrive. It was order #4521, placed 10 days ago.", "I'd like a replacement sent please.", "My name is Priya", "Yes, that's right", "Thanks"],
     expect: ({ saved, replies }) => {
       const t = saved.filter((d) => d.kind === "ticket");
       if (t.length !== 1) return `expected exactly one ticket, got ${t.length}`;

@@ -53,7 +53,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
       {error ? <ErrorState>Your appointments could not be loaded.</ErrorState> : (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Customer</th><th>For</th><th>Preferred</th><th>Status</th><th>Requested</th></tr></thead>
+            <thead><tr><th>Customer</th><th>For</th><th>Preferred</th><th>Status</th><th>Requested</th><th></th></tr></thead>
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
@@ -62,10 +62,11 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
                   <td>{whenText(r.scheduled_date ?? r.preferred_date, r.scheduled_time ?? r.preferred_time) || "-"}</td>
                   <td><Badge tone={STATUS_TONES[r.status]}>{STATUS_LABELS[r.status]}</Badge></td>
                   <td>{fmtDay(r.created_at)}</td>
+                  <td><Link className="btn btn-secondary btn-sm" href={`/dashboard/appointments/${r.id}#edit`}>Edit</Link></td>
                 </tr>
               ))}
               {paged.items.length === 0 && (
-                <tr><td colSpan={5}>
+                <tr><td colSpan={6}>
                   {q || explicit || onlyUpcoming
                     ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/appointments", label: "Show requests that need action" }}>No appointments match this view.</EmptyState>
                     : <EmptyState icon="calendar" title="No requests waiting">When a customer asks to book and no booking link is set, the assistant collects the details and the request appears here.</EmptyState>}

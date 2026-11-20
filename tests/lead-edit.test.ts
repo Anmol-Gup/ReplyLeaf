@@ -17,12 +17,15 @@ test("requirements round trip through the textarea", () => {
 });
 
 test("lead details form: service and a real description are required, the rest is optional and trimmed", () => {
-  const ok = leadDetailsSchema.safeParse({ id: "11111111-1111-4111-8111-111111111111", customer_name: "  Priya ", project_type: " Website ", description: " A single page portfolio ", budget: "", timeline: " 2 weeks ", requirements: "" });
+  const ok = leadDetailsSchema.safeParse({ id: "11111111-1111-4111-8111-111111111111", status: "contacted", follow_up_at: "2026-12-01", notes: "  call after the festival ", customer_name: "  Priya ", project_type: " Website ", description: " A single page portfolio ", budget: "", timeline: " 2 weeks ", requirements: "" });
   assert.equal(ok.success, true);
-  if (ok.success) assert.deepEqual([ok.data.customer_name, ok.data.project_type, ok.data.description, ok.data.timeline], ["Priya", "Website", "A single page portfolio", "2 weeks"]);
-  const base = { id: "11111111-1111-4111-8111-111111111111", customer_name: "", project_type: "Website", description: "A portfolio site", budget: "", timeline: "", requirements: "" };
+  if (ok.success) assert.deepEqual([ok.data.customer_name, ok.data.project_type, ok.data.description, ok.data.timeline, ok.data.status, ok.data.follow_up_at, ok.data.notes], ["Priya", "Website", "A single page portfolio", "2 weeks", "contacted", "2026-12-01", "call after the festival"]);
+  const base = { id: "11111111-1111-4111-8111-111111111111", status: "new", follow_up_at: "", notes: "", customer_name: "", project_type: "Website", description: "A portfolio site", budget: "", timeline: "", requirements: "" };
   assert.equal(leadDetailsSchema.safeParse({ ...base, project_type: "   " }).success, false);
   assert.equal(leadDetailsSchema.safeParse({ ...base, description: "x" }).success, false);
   assert.equal(leadDetailsSchema.safeParse({ ...base, id: "not-a-uuid" }).success, false);
+  assert.equal(leadDetailsSchema.safeParse({ ...base, status: "banana" }).success, false);
+  assert.equal(leadDetailsSchema.safeParse({ ...base, follow_up_at: "2026-02-31" }).success, false);
+  assert.equal(leadDetailsSchema.safeParse({ ...base, notes: "x".repeat(4001) }).success, false);
   assert.equal(leadDetailsSchema.safeParse({ ...base, budget: "x".repeat(101) }).success, false);
 });

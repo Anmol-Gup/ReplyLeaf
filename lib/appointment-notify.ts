@@ -19,7 +19,7 @@ export async function notifyCustomer(
   if (!conv) return "none";
   const [{ data: client }, { data: contact }] = await Promise.all([
     db.from("clients").select("wa_phone_number_id").eq("id", clientId).single(),
-    db.from("contacts").select("phone, email").eq("id", conv.contact_id).eq("client_id", clientId).single(),
+    db.from("contacts").select("phone, email, notify_email").eq("id", conv.contact_id).eq("client_id", clientId).single(),
   ]);
 
   const last = conv.last_customer_message_at ? new Date(conv.last_customer_message_at) : null;
@@ -38,10 +38,11 @@ export async function notifyCustomer(
   }
 
   const mailer = getMailer();
-  if (mailer && contact?.email) {
+  const emailTo = (contact?.email ?? contact?.notify_email) as string | null | undefined; // the owner-confirmed email first, else the one they gave for updates
+  if (mailer && emailTo) {
     try {
       await mailer.send({
-        to: contact.email, subject,
+        to: emailTo, subject,
         text: `${text}\n\n- ${businessName}`,
         html: emailLayout({ preheader: text.slice(0, 90), heading: subject, paragraphs: [text], brandName: businessName, footer: `You are receiving this because you asked ${businessName} for an appointment on WhatsApp.` }),
       });

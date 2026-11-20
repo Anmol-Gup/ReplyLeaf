@@ -38,3 +38,13 @@ test("only confirmed, rejected, reschedule and cancelled have a customer message
   assert.equal(statusMessageAction("pending"), null);
   assert.equal(statusMessageAction("completed"), null);
 });
+
+import { whatsappLink } from "../lib/appointments";
+
+test("'Send from WhatsApp' link: digits only, the message is encoded, unusable numbers give no link", () => {
+  assert.equal(whatsappLink("+91 98000-00001", "Hi there & welcome"), "https://wa.me/919800000001?text=Hi%20there%20%26%20welcome");
+  assert.equal(whatsappLink("919800000001", "x"), "https://wa.me/919800000001?text=x");
+  assert.equal(whatsappLink("12", "x"), null);
+  assert.equal(whatsappLink(null, "x"), null);
+  assert.equal(whatsappLink("1".repeat(20), "x"), null);
+});

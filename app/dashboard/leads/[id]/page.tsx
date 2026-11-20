@@ -9,7 +9,7 @@ import { requireClient } from "../../../../lib/auth/session";
 import { fmt, fmtDay, fmtTime } from "../../../../lib/dashboard";
 import { LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, projectBrief, requirementLines, type LeadStatus } from "../../../../lib/leads";
 import Notice from "../../Notice";
-import { updateLead, updateLeadDetails } from "../actions";
+import { updateLeadDetails } from "../actions";
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
@@ -58,9 +58,17 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       </Card>
 
       <div id="edit">
-        <Card title="Edit details" description="Correct or complete what the assistant collected. Put one requirement per line as  name: value  (for example  platform: Shopify).">
+        <Card title="Edit lead" description="Everything about this lead in one place. The notes and follow-up date stay private and are never sent to the customer. Put one requirement per line as  name: value  (for example  platform: Shopify).">
           <form action={updateLeadDetails} className="stack">
             <input type="hidden" name="id" value={l.id} />
+            <div className="row">
+              <label className="field">Status
+                <select name="status" defaultValue={status}>
+                  {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_LABELS[s]}</option>)}
+                </select>
+              </label>
+              <label className="field">Follow up on <input type="date" name="follow_up_at" defaultValue={l.follow_up_at ?? ""} /></label>
+            </div>
             <div className="row">
               <label className="field">Customer name <input name="customer_name" maxLength={100} defaultValue={l.customer_name ?? ""} /></label>
               <label className="field">Service / project type <input name="project_type" required maxLength={200} defaultValue={l.project_type} /></label>
@@ -71,26 +79,11 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
               <label className="field">Timeline <input name="timeline" maxLength={100} defaultValue={l.timeline ?? ""} /></label>
             </div>
             <label className="field">Requirements <textarea name="requirements" rows={5} maxLength={6000} defaultValue={requirementLines(reqs ?? [])} placeholder={"platform: Shopify\npayments: card"} /></label>
-            <div><ChangeAwareSubmit pendingText="Saving...">Save details</ChangeAwareSubmit></div>
+            <label className="field">Internal notes <textarea name="notes" rows={4} maxLength={4000} defaultValue={l.internal_notes ?? ""} /></label>
+            <div><ChangeAwareSubmit pendingText="Saving...">Save lead</ChangeAwareSubmit></div>
           </form>
         </Card>
       </div>
-
-      <Card title="Manage" description="Your notes and follow-up date stay private. They are never sent to the customer.">
-        <form action={updateLead} className="stack">
-          <input type="hidden" name="id" value={l.id} />
-          <div className="row">
-            <label className="field">Status
-              <select name="status" defaultValue={status}>
-                {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_LABELS[s]}</option>)}
-              </select>
-            </label>
-            <label className="field">Follow up on <input type="date" name="follow_up_at" defaultValue={l.follow_up_at ?? ""} /></label>
-          </div>
-          <label className="field">Internal notes <textarea name="notes" rows={4} maxLength={4000} defaultValue={l.internal_notes ?? ""} /></label>
-          <div><SubmitButton pendingText="Saving...">Save</SubmitButton></div>
-        </form>
-      </Card>
 
       <Card title="Project brief" description="A plain-text summary you can paste into a proposal or send to a teammate. It does not include your internal notes."
         actions={<span className="row"><CopyButton text={brief} label="Copy brief" /><a className="btn btn-secondary btn-sm" href={`/dashboard/leads/${l.id}/brief`}>Download .txt</a></span>}>

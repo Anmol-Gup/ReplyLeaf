@@ -89,6 +89,9 @@ export const requirementLines = (rows: { requirement_key: string; requirement_va
 const clean = (max: number) => z.string().max(max).transform((v) => v.replace(/\u0000/g, "").trim());
 export const leadDetailsSchema = z.object({
   id: z.string().uuid(),
+  status: z.enum(LEAD_STATUSES),
+  follow_up_at: z.union([z.literal(""), isoDate]),
+  notes: z.string().max(4000).transform((v) => v.replace(/\u0000/g, "").trim()),
   customer_name: clean(100),
   project_type: clean(200).refine((v) => v.length > 0, "service required"),
   description: clean(1500).refine((v) => v.length >= 3, "description required"),

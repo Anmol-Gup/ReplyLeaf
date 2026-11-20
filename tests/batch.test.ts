@@ -40,7 +40,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
     generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
-    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[], keyReports: [] as { problem: string; markInvalid?: boolean }[], sendProblems: [] as string[] };
+    crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[], keyReports: [] as { problem: string; markInvalid?: boolean }[], sendProblems: [] as string[], notifyEmails: [] as string[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
   const deps: BatchDeps = {
@@ -59,6 +59,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     },
     saveReply: async (r) => void log.saved.push(r),
     reportSendProblem: async (_c, problem) => void log.sendProblems.push(problem),
+    saveNotifyEmail: async (_c, _id, email) => void log.notifyEmails.push(email),
     saveAppointment: async (_c, _ctx, a) => { if (opts.apptFails) throw new Error("db down"); log.appts.push(a); return { created: opts.apptCreated ?? true }; },
     reportAiKeyProblem: async (_c, problem, o) => void log.keyReports.push({ problem, markInvalid: o?.markInvalid }),
     saveTicket: async (_c, _ctx, t) => { log.tickets.push(t); return { created: opts.ticketCreated ?? true }; },
@@ -871,4 +872,26 @@ test("a plain delivery error still gets the old behaviour (alert and one fallbac
   assert.deepEqual(f.log.sendProblems, []);
   assert.ok(f.log.alerts.includes("batch_processing_failed"));
   assert.equal(f.log.sent.length, 1);                                // the fallback went out
+});
+
+// ================= an email the customer volunteers for updates =================
+test("an email given during an appointment conversation is kept, for updates about that request only", async () => {
+  const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({
+    intent: "appointment_request", reply: "Thanks! Anything else?", contact: { name: null, email: " Ravi@Example.com " },
+    workflow: { flow: "appointment", stage: "collecting" }, appointment: { ...APPT_FIELDS },
+  }) }) });
+  await run(f.deps);
+  assert.deepEqual(f.log.notifyEmails, ["Ravi@Example.com"]);
+});
+
+test("an email in a support conversation is kept too; an email in an ordinary chat or a junk address is not stored for updates", async () => {
+  const ticket = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "support_issue", workflow: { flow: "issue", stage: "collecting" }, ticket: { ...TICKET }, contact: { name: null, email: "a@b.co" } }) }) });
+  await run(ticket.deps);
+  assert.deepEqual(ticket.log.notifyEmails, ["a@b.co"]);
+  const chat = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ contact: { name: null, email: "a@b.co" } }) }) });
+  await run(chat.deps);
+  assert.deepEqual(chat.log.notifyEmails, []);
+  const junk = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "appointment_request", workflow: { flow: "appointment", stage: "collecting" }, appointment: { ...APPT_FIELDS }, contact: { name: null, email: "not an email" } }) }) });
+  await run(junk.deps);
+  assert.deepEqual(junk.log.notifyEmails, []);
 });

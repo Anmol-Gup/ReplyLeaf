@@ -5,14 +5,15 @@ import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { fmt, fmtDay, fmtTime } from "../../../../lib/dashboard";
-import { TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
+import { whatsappLink } from "../../../../lib/appointments";
+import { isDone, resolutionMessage, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
 import Notice from "../../Notice";
 import { updateTicket } from "../actions";
 
 export default async function TicketDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
   const { notice } = await searchParams;
-  const { db } = await requireClient();
+  const { db, clientName } = await requireClient();
   const { data: t } = await db.from("tickets").select("*").eq("id", id).maybeSingle();
   if (!t) notFound(); // also what another business's id looks like: RLS returns nothing
 
@@ -22,6 +23,11 @@ export default async function TicketDetail({ params, searchParams }: { params: P
   ]);
   const chat = [...(messages ?? [])].reverse();
   const status = t.status as TicketStatus;
+  // A message you can send yourself from your own phone (the WhatsApp Business app): free, no template, no 24-hour rule.
+  const message = isDone(status)
+    ? resolutionMessage(clientName, t.subject, ticketRef(t.id), "")
+    : `Hi${t.customer_name ? ` ${t.customer_name}` : ""}, this is ${clientName} about your issue ${ticketRef(t.id)} (${t.subject}). We are looking into it and will update you here.`;
+  const link = whatsappLink(t.customer_phone, message);
 
   return (
     <>
@@ -65,6 +71,13 @@ export default async function TicketDetail({ params, searchParams }: { params: P
           <div><SubmitButton pendingText="Saving...">Save</SubmitButton></div>
         </form>
       </Card>
+
+      {link && (
+        <Card title="Message the customer yourself" description="Opens WhatsApp with this message ready; press send on your phone. It is a normal chat message, not an API message or a template, so Meta does not charge for it and the 24-hour rule does not apply.">
+          <p className="note" style={{ whiteSpace: "pre-wrap" }}>{message}</p>
+          <p style={{ marginTop: 10 }}><a className="btn btn-secondary btn-sm" href={link} target="_blank" rel="noopener noreferrer">Send from WhatsApp</a></p>
+        </Card>
+      )}
 
       <Card title="WhatsApp conversation">
         <ChatLog>

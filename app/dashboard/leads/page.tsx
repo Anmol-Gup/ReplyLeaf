@@ -54,7 +54,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
       {error ? <ErrorState>Your leads could not be loaded.</ErrorState> : (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Customer</th><th>Service</th><th>Requirements</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Service</th><th>Requirements</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th><th></th></tr></thead>
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
@@ -73,10 +73,11 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
                   <td><Badge tone={LEAD_TONES[r.status]}>{LEAD_LABELS[r.status]}</Badge></td>
                   <td>{r.follow_up_at ? <span className={isOpenLead(r.status) && r.follow_up_at <= today ? "due" : undefined}>{r.follow_up_at}</span> : "-"}</td>
                   <td>{fmtDay(r.created_at)}</td>
+                  <td><Link className="btn btn-secondary btn-sm" href={`/dashboard/leads/${r.id}#edit`}>Edit</Link></td>
                 </tr>
               ))}
               {paged.items.length === 0 && (
-                <tr><td colSpan={8}>
+                <tr><td colSpan={9}>
                   {q || explicit
                     ? <EmptyState icon="search" title="No matching leads" action={{ href: "/dashboard/leads", label: "Show all leads" }}>Nothing matches this view.</EmptyState>
                     : <EmptyState icon="users" title="No leads yet">When a customer describes a project or service they need, the assistant collects the details and the lead appears here.</EmptyState>}

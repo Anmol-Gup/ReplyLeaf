@@ -180,6 +180,11 @@ export function supabaseBatchDeps(): BatchDeps {
 
     sendText: (ctx, body) => sendClientText(ctx.client.id, ctx.client.waPhoneNumberId, ctx.phone, body),
 
+    async saveNotifyEmail(clientId, contactId, email) {
+      const { error } = await db.from("contacts").update({ notify_email: email }).eq("id", contactId).eq("client_id", clientId);
+      if (error) throw new Error(`saving the notification email failed: ${error.message}`);
+    },
+
     async reportSendProblem(clientId, problem, detail) {
       if (problem === "window" || problem === "rate_limit" || problem === "delivery") return;
       await reportWhatsAppProblem(clientId, problem, detail);

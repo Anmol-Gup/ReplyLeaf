@@ -122,3 +122,13 @@ export const appointmentEditSchema = z.object({
   note: z.string().trim().max(500),          // the reason or alternative shown to the customer with a reject / reschedule message
   notify: z.boolean(),
 });
+
+/**
+ * A link that opens WhatsApp with the message already typed, so the owner only presses send from their own phone (the WhatsApp
+ * Business app). It is not an API message: no template, no 24-hour rule, no Meta API charge. Null if the number is not usable.
+ */
+export function whatsappLink(phone: string | null | undefined, text: string): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return null;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text.slice(0, 1500))}`;
+}

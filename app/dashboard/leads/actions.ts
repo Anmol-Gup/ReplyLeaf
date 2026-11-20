@@ -25,12 +25,13 @@ export async function updateLead(formData: FormData) {
   return redirect(`/dashboard/leads/${v.id}?notice=lead_saved`);
 }
 
-// Fix or complete what the assistant collected: the customer's name, the service, the description, budget, timeline and
-// the requirement list. Same security model: the clientId comes from the session and every write is matched on it.
+// Everything about a lead in one save: status, follow-up date, the customer's name, the service, description, budget, timeline,
+// the requirement list and your private notes. Same security model: the clientId comes from the session and every write is matched on it.
 export async function updateLeadDetails(formData: FormData) {
   const { clientId } = await requireClient();
   const parsed = leadDetailsSchema.safeParse({
-    id: formData.get("id"), customer_name: String(formData.get("customer_name") ?? ""), project_type: String(formData.get("project_type") ?? ""),
+    id: formData.get("id"), status: formData.get("status"), follow_up_at: String(formData.get("follow_up_at") ?? ""), notes: String(formData.get("notes") ?? ""),
+    customer_name: String(formData.get("customer_name") ?? ""), project_type: String(formData.get("project_type") ?? ""),
     description: String(formData.get("description") ?? ""), budget: String(formData.get("budget") ?? ""), timeline: String(formData.get("timeline") ?? ""),
     requirements: String(formData.get("requirements") ?? ""),
   });
@@ -41,7 +42,10 @@ export async function updateLeadDetails(formData: FormData) {
   const v = parsed.data;
   const db = supabaseAdmin();
   const { data } = await db.from("leads")
-    .update({ customer_name: v.customer_name || null, project_type: v.project_type, description: v.description, budget: v.budget || null, timeline: v.timeline || null, updated_at: new Date().toISOString() })
+    .update({
+      status: v.status, follow_up_at: v.follow_up_at || null, internal_notes: v.notes || null,
+      customer_name: v.customer_name || null, project_type: v.project_type, description: v.description, budget: v.budget || null, timeline: v.timeline || null, updated_at: new Date().toISOString(),
+    })
     .eq("id", v.id).eq("client_id", clientId).select("id");
   if (!data?.length) return redirect("/dashboard/leads?notice=not_found");
   // Replace the requirement list (delete, then insert), always scoped to this business and this lead.

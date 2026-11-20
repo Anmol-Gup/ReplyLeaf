@@ -6,7 +6,7 @@ import { Alert, Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { fmt, windowStatus } from "../../../../lib/dashboard";
 import {
-  allowedActions, APPOINTMENT_STATUSES, customerMessage, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentAction, type AppointmentStatus,
+  allowedActions, APPOINTMENT_STATUSES, customerMessage, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentAction, type AppointmentStatus,
 } from "../../../../lib/appointments";
 import Notice from "../../Notice";
 import { appointmentTransition, saveAppointmentNote, updateAppointment } from "../actions";
@@ -122,6 +122,12 @@ export default async function AppointmentDetail({ params, searchParams }: { para
       {manual && (
         <Card title="Message for the customer" description="This is what the customer is sent for the current status. If they could not be reached, copy it and send it yourself.">
           <p className="note" style={{ whiteSpace: "pre-wrap" }}>{manual}</p>
+          {whatsappLink(a.customer_phone, manual) && (
+            <p style={{ marginTop: 10 }}>
+              <a className="btn btn-secondary btn-sm" href={whatsappLink(a.customer_phone, manual) ?? "#"} target="_blank" rel="noopener noreferrer">Send from WhatsApp</a>{" "}
+              <span className="hint">Opens WhatsApp with this message ready; press send on your phone. It is a normal chat message, not an API message or a template, so Meta does not charge for it.</span>
+            </p>
+          )}
         </Card>
       )}
 
