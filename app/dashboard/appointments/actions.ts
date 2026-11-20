@@ -46,6 +46,7 @@ export async function updateAppointment(formData: FormData) {
   // Two open requests for the same thing are not allowed (the same rule that stops the assistant saving a duplicate).
   if (error) return go(v.id, error.code === "23505" ? "appt_conflict" : "appt_failed");
   revalidatePath("/dashboard/appointments");
+  revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(detail(v.id));
   return go(v.id, "appt_done");
 }

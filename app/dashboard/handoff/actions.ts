@@ -44,6 +44,7 @@ export async function handoffTransition(formData: FormData) {
   if (error) return go(to, "handoff_failed");
 
   revalidatePath(LIST);
+  revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(`/dashboard/conversations/${row.conversation_id}`);
   // After taking over, go straight to the chat to reply.
   if (action === "take_over") redirect(`/dashboard/conversations/${row.conversation_id}`);

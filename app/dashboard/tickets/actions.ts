@@ -76,6 +76,7 @@ export async function updateTicket(formData: FormData) {
   if (events.length) await db.from("ticket_events").insert(events); // the activity is a record, not a gate: a failure here never undoes the change
 
   revalidatePath("/dashboard/tickets");
+  revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(detail(v.id));
 
   // Telling the customer is opt-in, and only when the status really changed (so a double click or a repeat save never sends twice).

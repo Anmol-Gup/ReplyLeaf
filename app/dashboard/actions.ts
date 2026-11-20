@@ -46,6 +46,7 @@ export async function takeOver(formData: FormData) {
   }
   revalidatePath(`/dashboard/conversations/${id}`);
   revalidatePath("/dashboard/handoff");
+  revalidatePath("/dashboard"); // the Overview counts change too
 }
 
 export async function handBack(formData: FormData) {
@@ -63,6 +64,7 @@ export async function handBack(formData: FormData) {
       .eq("id", id).eq("client_id", clientId);
   }
   revalidatePath(`/dashboard/conversations/${id}`);
+  revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath("/dashboard/handoff");
 }
 
@@ -159,6 +161,7 @@ export async function deleteContact(formData: FormData) {
   const id = uuid.parse(formData.get("id"));
   if (formData.get("confirm") !== "yes") return flash(`/dashboard/contacts/${id}`, "invalid");
   await deleteContactData(clientId, { contactId: id });
+  revalidatePath("/dashboard"); // the Overview changes too
   flash("/dashboard/contacts", "deleted");
 }
 
@@ -184,6 +187,7 @@ export async function updateKnowledge(formData: FormData) {
   const text = z.string().max(8000).safeParse(formData.get("kb_text"));
   if (!text.success) return flash("/dashboard/knowledge", "invalid");
   await supabaseAdmin().from("clients").update({ kb_text: text.data || null }).eq("id", clientId);
+  revalidatePath("/dashboard"); // the Overview changes too
   flash("/dashboard/knowledge", "saved");
 }
 
@@ -256,6 +260,7 @@ export async function publishDocumentAction(formData: FormData) {
     console.error("publish failed", e instanceof Error ? e.message : e);
     return flash(back, "invalid");
   }
+  revalidatePath("/dashboard"); // the Overview changes too
   flash(back, result.embedded ? "published" : "published_no_vectors");
 }
 
@@ -276,6 +281,7 @@ export async function setDocumentStatus(formData: FormData) {
   await supabaseAdmin().from("kb_documents").update({ status, updated_at: new Date().toISOString() })
     .eq("id", id).eq("client_id", clientId).gt("version", 0);
   revalidatePath(`${KB}/documents/${id}`);
+  revalidatePath("/dashboard"); // the Overview changes too
 }
 
 // Restoring creates a NEW version with the old text, so history is never rewritten.

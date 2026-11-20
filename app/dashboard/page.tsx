@@ -1,88 +1,114 @@
 import Link from "next/link";
-import { Badge, Card, EmptyState, PageHeader, Stat } from "../../components/ui";
+import { Alert, Badge, Card, EmptyState, PageHeader, Stat } from "../../components/ui";
 import { requireClient } from "../../lib/auth/session";
+import { loadAccess } from "../../lib/billing/gate";
 import { clip, fmtDay } from "../../lib/dashboard";
-import { overview as apptOverview, STATUS_LABELS as APPT_LABELS, STATUS_TONES as APPT_TONES, whenText, type AppointmentStatus } from "../../lib/appointments";
-import { LEAD_LABELS, LEAD_TONES, leadOverview, type LeadStatus } from "../../lib/leads";
-import { isOpenTicket, TICKET_LABELS, TICKET_TONES, ticketOverview, ticketRef, type TicketStatus } from "../../lib/tickets";
+import { STATUS_LABELS as APPT_LABELS, STATUS_TONES as APPT_TONES, whenText, type AppointmentStatus } from "../../lib/appointments";
+import { LEAD_LABELS, LEAD_TONES, type LeadStatus } from "../../lib/leads";
+import {
+  APPOINTMENTS_TO_CONFIRM, assistantReadiness, buildAttention, HANDOFF_WAITING, LEADS_ACTIVE, LEADS_NEW, overviewLinks, showCount, TICKETS_OPEN, type Counts,
+} from "../../lib/overview";
+import { PRIORITY_LABELS, priorityOf, TICKET_LABELS, TICKET_TONES, ticketRef, type TicketStatus } from "../../lib/tickets";
+import { todayInZone } from "../../lib/workflow";
+import { parseWorkflowSettings } from "../../lib/workflow-settings";
 import type { AiMode, KeyStatus } from "../../lib/ai-keys";
-import AiKeyBanner from "./AiKeyBanner";
-import OnboardingBanner from "./OnboardingBanner";
 
-// The home page: what needs the owner now, and the latest of everything the assistant collected. Every number links to the page
-// that lists it. All reads go through the owner's session, so row level security limits them to this business.
+// The home page: is the assistant ready, what needs the owner now, and the latest of everything it collected.
+// Numbers are counted by the database (never from a capped list), always for THIS business: the signed-in owner's session limits every
+// read through row level security, and every query also names the business the server resolved. A number that cannot be read shows a
+// dash, never a made-up zero. The statuses counted are the same ones the linked pages filter on (lib/overview.ts).
+type CountQuery = PromiseLike<{ count: number | null; error: unknown }>;
+const counted = async (q: CountQuery): Promise<number | null> => { const r = await q; return r.error ? null : r.count ?? 0; };
+
 export default async function Overview() {
   const { db, clientId } = await requireClient();
-  const today = new Date().toISOString().slice(0, 10);
-  const [{ data: conn }, handoff, contacts, leadsRes, apptRes, ticketRes] = await Promise.all([
-    db.from("clients").select("onboarding_status, onboarding_step, ai_mode, ai_key_status").eq("id", clientId).single(),
-    db.from("handoff_requests").select("id, status"),
-    db.from("contacts").select("id", { count: "exact", head: true }).eq("spoke", true),
-    db.from("leads").select("id, customer_name, customer_phone, project_type, status, follow_up_at, created_at").order("created_at", { ascending: false }).limit(300),
-    db.from("appointments").select("id, customer_name, customer_phone, purpose, preferred_date, preferred_time, scheduled_date, scheduled_time, status, created_at").order("created_at", { ascending: false }).limit(300),
-    db.from("tickets").select("id, customer_name, customer_phone, subject, priority, status, created_at").order("created_at", { ascending: false }).limit(300),
+  const mine = (table: string) => db.from(table).select("id", { count: "exact", head: true }).eq("client_id", clientId);
+
+  const { data: conn } = await db.from("clients")
+    .select("onboarding_status, ai_mode, ai_key_status, status, wa_phone_number_id, kb_text, workflow_settings").eq("id", clientId).single();
+  const today = todayInZone(new Date(), parseWorkflowSettings(conn?.workflow_settings).appointments.timezone);
+
+  const [handoffs, appointments, tickets, highTickets, newLeads, followUps, contacts, kbDocs, access, leadsRes, apptRes, ticketRes] = await Promise.all([
+    counted(mine("handoff_requests").in("status", [...HANDOFF_WAITING])),
+    counted(mine("appointments").in("status", [...APPOINTMENTS_TO_CONFIRM])),
+    counted(mine("tickets").in("status", [...TICKETS_OPEN])),
+    counted(mine("tickets").in("status", [...TICKETS_OPEN]).eq("priority", "high")),
+    counted(mine("leads").in("status", [...LEADS_NEW])),
+    counted(mine("leads").in("status", [...LEADS_ACTIVE]).not("follow_up_at", "is", null).lte("follow_up_at", today)),
+    counted(mine("contacts").eq("spoke", true)),            // one per person: a contact is one row however many leads, tickets or chats they have
+    counted(mine("kb_documents").eq("status", "active")),
+    loadAccess(clientId).catch(() => null),
+    db.from("leads").select("id, customer_name, customer_phone, project_type, status, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(3),
+    db.from("appointments").select("id, customer_name, customer_phone, purpose, preferred_date, preferred_time, status").eq("client_id", clientId).order("created_at", { ascending: false }).limit(3),
+    db.from("tickets").select("id, customer_name, customer_phone, subject, priority, status").eq("client_id", clientId).order("created_at", { ascending: false }).limit(3),
   ]);
+  const counts: Counts = { handoffs, appointments, tickets, highTickets, newLeads, followUps, contacts };
 
-  const handoffs = (handoff.data ?? []) as { status: string }[];
-  const waiting = handoffs.filter((h) => h.status === "requested").length;
-  const handoffOpen = handoffs.filter((h) => h.status !== "resolved").length;
+  const status = (conn?.ai_key_status ?? "none") as KeyStatus;
+  const readiness = assistantReadiness({
+    hasPhone: Boolean(conn?.wa_phone_number_id), onboardingStatus: conn?.onboarding_status ?? null, clientStatus: conn?.status ?? null,
+    aiMode: (conn?.ai_mode ?? "platform") as AiMode, hasKey: status !== "none", keyStatus: status,
+    billingAllowed: access ? access.allowed : true, kbReady: Boolean(conn?.kb_text?.trim()) || (kbDocs ?? 0) > 0,
+  });
+  const attention = buildAttention(counts);
 
-  type Lead = { id: string; customer_name: string | null; customer_phone: string; project_type: string; status: LeadStatus; follow_up_at: string | null; created_at: string };
-  type Appt = { id: string; customer_name: string | null; customer_phone: string; purpose: string; preferred_date: string | null; preferred_time: string | null; scheduled_date: string | null; scheduled_time: string | null; status: AppointmentStatus; created_at: string };
-  type Ticket = { id: string; customer_name: string | null; customer_phone: string; subject: string; priority: string; status: TicketStatus; created_at: string };
-  const leads = (leadsRes.data ?? []) as Lead[];
-  const appts = (apptRes.data ?? []) as Appt[];
-  const tickets = (ticketRes.data ?? []) as Ticket[];
-  const lo = leadOverview(leads, today);
-  const ao = apptOverview(appts, today);
-  const to = ticketOverview(tickets);
-  const openTickets = tickets.filter((t) => isOpenTicket(t.status)).length;
-
-  // What needs the owner now, most urgent first. Each line links to the list that shows exactly those items.
-  const attention = [
-    { n: waiting, text: `chat${waiting === 1 ? "" : "s"} waiting for a person`, href: "/dashboard/handoff?status=requested", tone: "danger" as const },
-    { n: ao.pending, text: `appointment request${ao.pending === 1 ? "" : "s"} to confirm`, href: "/dashboard/appointments?status=pending&status=reschedule_requested", tone: "warn" as const },
-    { n: to.urgent, text: `high-priority open ticket${to.urgent === 1 ? "" : "s"}`, href: "/dashboard/tickets?status=open&status=in_progress&status=waiting_on_customer", tone: "danger" as const },
-    { n: lo.dueFollowUp, text: `lead follow-up${lo.dueFollowUp === 1 ? "" : "s"} due`, href: "/dashboard/leads", tone: "warn" as const },
-    { n: lo.fresh, text: `new or qualified lead${lo.fresh === 1 ? "" : "s"} to contact`, href: "/dashboard/leads?status=new&status=qualified", tone: "brand" as const },
-  ].filter((a) => a.n > 0);
-
+  type Lead = { id: string; customer_name: string | null; customer_phone: string; project_type: string; status: LeadStatus; created_at: string };
+  type Appt = { id: string; customer_name: string | null; customer_phone: string; purpose: string; preferred_date: string | null; preferred_time: string | null; status: AppointmentStatus };
+  type Ticket = { id: string; customer_name: string | null; customer_phone: string; subject: string; priority: string; status: TicketStatus };
+  const leads = (leadsRes.error ? [] : leadsRes.data ?? []) as Lead[];
+  const appts = (apptRes.error ? [] : apptRes.data ?? []) as Appt[];
+  const tix = (ticketRes.error ? [] : ticketRes.data ?? []) as Ticket[];
   const who = (name: string | null, phone: string) => name || `+${phone}`;
 
   return (
     <>
       <PageHeader title="Overview" description="What needs your attention, and the latest your assistant has collected." />
-      <OnboardingBanner status={conn?.onboarding_status} step={conn?.onboarding_step} />
-      <AiKeyBanner mode={(conn?.ai_mode ?? "platform") as AiMode} hasKey={(conn?.ai_key_status ?? "none") !== "none"} status={(conn?.ai_key_status ?? "none") as KeyStatus} />
 
-      <div className="stat-grid">
-        <Stat href="/dashboard/handoff?status=requested&status=assigned&status=human_active" value={handoffOpen} label="Chats handed to you" />
-        <Stat href="/dashboard/appointments?status=pending&status=reschedule_requested" value={ao.pending} label="Appointments to confirm" />
-        <Stat href="/dashboard/tickets?status=open&status=in_progress&status=waiting_on_customer" value={openTickets} label="Open tickets" />
-        <Stat href="/dashboard/leads?status=new&status=qualified" value={lo.fresh} label="New or qualified leads" />
-        <Stat href="/dashboard/leads" value={lo.dueFollowUp} label="Lead follow-ups due" />
-        <Stat href="/dashboard/contacts" value={contacts.count ?? 0} label="Contacts in total" />
-      </div>
-
-      <Card title="Needs your attention">
-        {attention.length === 0 ? (
-          <EmptyState icon="check" title="You're all caught up">Nothing is waiting for you right now. New requests from customers will show up here.</EmptyState>
-        ) : (
-          <ul className="reqs" style={{ gap: 10, fontSize: "0.95rem" }}>
-            {attention.map((a) => (
-              <li key={a.text}><Badge tone={a.tone}>{a.n}</Badge> <Link href={a.href}>{a.text}</Link></li>
-            ))}
-          </ul>
+      <Card title="Assistant status">
+        <ul className="readiness">
+          {readiness.rows.map((r) => (
+            <li key={r.key}>
+              <span className="muted">{r.label}</span>
+              <Badge tone={r.tone}>{r.state}</Badge>
+              {r.href && <Link href={r.href}>Fix</Link>}
+            </li>
+          ))}
+        </ul>
+        {readiness.problems.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <Alert kind="warn"><b>Your assistant is not answering customers.</b> {readiness.problems.join(" ")}</Alert>
+          </div>
         )}
       </Card>
 
+      <div className="metric-grid">
+        <Stat href={overviewLinks.handoffs} value={showCount(handoffs)} label="Human handoffs" />
+        <Stat href={overviewLinks.appointments} value={showCount(appointments)} label="Appointments to confirm" />
+        <Stat href={overviewLinks.tickets} value={showCount(tickets)} label="Open tickets" />
+        <Stat href={overviewLinks.newLeads} value={showCount(newLeads)} label="New leads" />
+        <Stat href={overviewLinks.followUps} value={showCount(followUps)} label="Follow-ups due" />
+        <Stat href={overviewLinks.contacts} value={showCount(contacts)} label="Total contacts" />
+      </div>
+
+      {attention.length === 0 ? (
+        <p className="caught-up" role="status">You&apos;re all caught up. Nothing needs your attention right now.</p>
+      ) : (
+        <Card title="Needs your attention">
+          <ul className="reqs" style={{ gap: 10, fontSize: "0.95rem" }}>
+            {attention.map((a) => (
+              <li key={a.key}><Badge tone={a.tone}>{a.n}</Badge> <Link href={a.href}>{a.text}</Link></li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <div className="overview-grid">
         <Card title="Latest leads" actions={<Link href="/dashboard/leads" className="btn btn-ghost btn-sm">View all</Link>}>
-          {leads.length === 0 ? <p className="muted">No leads yet. When a customer describes a project, it appears here.</p> : (
-            <ul className="latest">
-              {leads.slice(0, 5).map((l) => (
+          {leads.length === 0 ? <EmptyState icon="users" title="No leads yet">New enquiries collected by your assistant will appear here.</EmptyState> : (
+            <ul className="latest compact">
+              {leads.map((l) => (
                 <li key={l.id}>
-                  <div><Link href={`/dashboard/leads/${l.id}`}>{who(l.customer_name, l.customer_phone)}</Link><br /><span className="muted">{clip(l.project_type, 60)} · {fmtDay(l.created_at)}</span></div>
+                  <div><Link href={`/dashboard/leads/${l.id}`}>{who(l.customer_name, l.customer_phone)}</Link><br /><span className="muted">{clip(l.project_type, 50)} · {fmtDay(l.created_at)}</span></div>
                   <Badge tone={LEAD_TONES[l.status]}>{LEAD_LABELS[l.status]}</Badge>
                 </li>
               ))}
@@ -91,11 +117,11 @@ export default async function Overview() {
         </Card>
 
         <Card title="Latest appointment requests" actions={<Link href="/dashboard/appointments" className="btn btn-ghost btn-sm">View all</Link>}>
-          {appts.length === 0 ? <p className="muted">No appointment requests yet.</p> : (
-            <ul className="latest">
-              {appts.slice(0, 5).map((a) => (
+          {appts.length === 0 ? <EmptyState icon="calendar" title="No appointment requests yet">Requests collected by your assistant will appear here.</EmptyState> : (
+            <ul className="latest compact">
+              {appts.map((a) => (
                 <li key={a.id}>
-                  <div><Link href={`/dashboard/appointments/${a.id}`}>{who(a.customer_name, a.customer_phone)}</Link><br /><span className="muted">{clip(a.purpose, 50)}{whenText(a.scheduled_date ?? a.preferred_date, a.scheduled_time ?? a.preferred_time) ? ` · ${whenText(a.scheduled_date ?? a.preferred_date, a.scheduled_time ?? a.preferred_time)}` : ""}</span></div>
+                  <div><Link href={`/dashboard/appointments/${a.id}`}>{who(a.customer_name, a.customer_phone)}</Link><br /><span className="muted">{clip(a.purpose, 50)}{whenText(a.preferred_date, a.preferred_time) ? ` · ${whenText(a.preferred_date, a.preferred_time)}` : ""}</span></div>
                   <Badge tone={APPT_TONES[a.status]}>{APPT_LABELS[a.status]}</Badge>
                 </li>
               ))}
@@ -104,11 +130,11 @@ export default async function Overview() {
         </Card>
 
         <Card title="Latest tickets" actions={<Link href="/dashboard/tickets" className="btn btn-ghost btn-sm">View all</Link>}>
-          {tickets.length === 0 ? <p className="muted">No tickets yet. When a customer reports a problem, it appears here.</p> : (
-            <ul className="latest">
-              {tickets.slice(0, 5).map((t) => (
+          {tix.length === 0 ? <EmptyState icon="alert" title="No support tickets yet">Customer issues logged by your assistant will appear here.</EmptyState> : (
+            <ul className="latest compact">
+              {tix.map((t) => (
                 <li key={t.id}>
-                  <div><Link href={`/dashboard/tickets/${t.id}`}>{ticketRef(t.id)}: {clip(t.subject, 50)}</Link><br /><span className="muted">{who(t.customer_name, t.customer_phone)} · {fmtDay(t.created_at)}{t.priority === "high" ? " · high priority" : ""}</span></div>
+                  <div><Link href={`/dashboard/tickets/${t.id}`}>{ticketRef(t.id)}: {clip(t.subject, 45)}</Link><br /><span className="muted">{who(t.customer_name, t.customer_phone)} · {PRIORITY_LABELS[priorityOf(t.priority)]} priority</span></div>
                   <Badge tone={TICKET_TONES[t.status]}>{TICKET_LABELS[t.status]}</Badge>
                 </li>
               ))}

@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { checkKeyFormat, KEY_PROVIDERS, lastFour, type KeyProvider } from "../../../lib/ai-keys";
@@ -84,6 +85,7 @@ export async function saveAiKey(formData: FormData) {
   for (const h of paused ?? []) {
     await db.rpc("set_handoff_status", { p_client_id: clientId, p_handoff_id: h.id, p_action: "resume_ai", p_assignee: null });
   }
+  revalidatePath("/dashboard"); // the Overview changes too
   return back(status === "valid" ? "ai_key_saved" : "ai_key_saved_unverified", "ai");
 }
 
@@ -93,6 +95,7 @@ export async function removeAiKey() {
   await db.from("client_secrets").update({ ai_api_key_enc: null }).eq("client_id", clientId);
   await db.from("clients").update({ ai_key_status: "none", ai_key_last4: null, ai_key_checked_at: null })
     .eq("id", clientId).eq("ai_mode", "byok");
+  revalidatePath("/dashboard"); // the Overview changes too
   return back("ai_key_removed", "ai");
 }
 

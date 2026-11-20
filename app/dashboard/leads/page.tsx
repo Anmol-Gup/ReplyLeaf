@@ -6,7 +6,10 @@ import { requireClient } from "../../../lib/auth/session";
 import { clip, fmtDay, matches } from "../../../lib/dashboard";
 import { effectiveSelection } from "../../../lib/filters";
 import { isOpenLead, LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, leadOverview, type LeadStatus } from "../../../lib/leads";
+import { isFollowUpDue } from "../../../lib/overview";
 import { buildQuery, paginate } from "../../../lib/paginate";
+import { todayInZone } from "../../../lib/workflow";
+import { parseWorkflowSettings } from "../../../lib/workflow-settings";
 import Notice from "../Notice";
 
 type Row = {
@@ -14,11 +17,13 @@ type Row = {
   status: LeadStatus; follow_up_at: string | null; created_at: string;
 };
 
-export default async function Leads({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; page?: string }> }) {
-  const { notice, q, status: statusRaw, page: pageRaw } = await searchParams;
+export default async function Leads({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; due?: string; page?: string }> }) {
+  const { notice, q, status: statusRaw, due: dueRaw, page: pageRaw } = await searchParams;
+  const onlyDue = dueRaw === "1"; // the Overview's "Follow-ups due" opens this view
   const { selected: statuses, explicit } = effectiveSelection(statusRaw, LEAD_STATUSES, []); // nothing chosen = every status
-  const { db } = await requireClient(); // RLS: only this business's rows can come back
-  const today = new Date().toISOString().slice(0, 10);
+  const { db, clientId } = await requireClient(); // RLS: only this business's rows can come back
+  const { data: biz } = await db.from("clients").select("workflow_settings").eq("id", clientId).maybeSingle();
+  const today = todayInZone(new Date(), parseWorkflowSettings(biz?.workflow_settings).appointments.timezone); // the same "today" the Overview counts with
 
   const { data, error } = await db.from("leads")
     .select("id, contact_id, customer_name, customer_phone, project_type, description, budget, timeline, status, follow_up_at, created_at")
@@ -29,6 +34,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
 
   const matching = all.filter((r) =>
     (statuses.length === 0 || statuses.includes(r.status)) &&
+    (!onlyDue || isFollowUpDue(r, today)) &&
     matches(q, r.customer_name, r.customer_phone, r.project_type, r.description, r.budget, r.timeline, LEAD_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
   // What each customer asked for: the collected requirements of the leads on this page (still through the RLS client).
@@ -43,13 +49,14 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
       <Notice code={notice} />
       <div className="stat-grid">
         <Stat value={o.fresh} label="New or qualified" />
-        <Stat value={o.dueFollowUp} label="Follow-ups due" />
+        <Stat value={o.dueFollowUp} label="Follow-ups due" href="/dashboard/leads?due=1" />
         <Stat value={o.open} label="Open leads" />
         <Stat value={o.won} label="Won" />
       </div>
       <div className="filters">
-        <MultiSelectFilter action="/dashboard/leads" options={options} selected={statuses} hidden={{ q }} />
-        <SearchBox q={q} placeholder="Search by name, phone, project, requirements, budget or status" keep={{ status: explicit ? statuses : [] }} />
+        <MultiSelectFilter action="/dashboard/leads" options={options} selected={statuses} hidden={{ q, due: onlyDue ? "1" : undefined }} />
+        <SearchBox q={q} placeholder="Search by name, phone, project, requirements, budget or status" keep={{ status: explicit ? statuses : [], due: onlyDue ? "1" : undefined }} />
+        {onlyDue && <Link className="tab active" href={`/dashboard/leads${buildQuery({ status: explicit ? statuses : [], q })}`}>Follow-ups due ×</Link>}
       </div>
       {error ? <ErrorState>Your leads could not be loaded.</ErrorState> : (
         <div className="table-wrap">
@@ -78,7 +85,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
               ))}
               {paged.items.length === 0 && (
                 <tr><td colSpan={9}>
-                  {q || explicit
+                  {q || explicit || onlyDue
                     ? <EmptyState icon="search" title="No matching leads" action={{ href: "/dashboard/leads", label: "Show all leads" }}>Nothing matches this view.</EmptyState>
                     : <EmptyState icon="users" title="No leads yet">When a customer describes a project or service they need, the assistant collects the details and the lead appears here.</EmptyState>}
                 </td></tr>
@@ -87,7 +94,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
           </table>
         </div>
       )}
-      {!error && <Pagination p={paged} label="Leads" hrefFor={(n) => `/dashboard/leads${buildQuery({ status: explicit ? statuses : [], q, page: n > 1 ? n : null })}`} />}
+      {!error && <Pagination p={paged} label="Leads" hrefFor={(n) => `/dashboard/leads${buildQuery({ status: explicit ? statuses : [], due: onlyDue ? "1" : undefined, q, page: n > 1 ? n : null })}`} />}
     </>
   );
 }

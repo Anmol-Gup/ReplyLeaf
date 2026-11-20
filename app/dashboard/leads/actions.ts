@@ -21,6 +21,7 @@ export async function updateLead(formData: FormData) {
     .eq("id", v.id).eq("client_id", clientId).select("id");
   if (!data?.length) return redirect("/dashboard/leads?notice=not_found");
   revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(`/dashboard/leads/${v.id}`);
   return redirect(`/dashboard/leads/${v.id}?notice=lead_saved`);
 }
@@ -52,6 +53,7 @@ export async function updateLeadDetails(formData: FormData) {
   await db.from("lead_requirements").delete().eq("lead_id", v.id).eq("client_id", clientId);
   const reqs = parseRequirementLines(v.requirements);
   if (reqs.length) await db.from("lead_requirements").insert(reqs.map((r) => ({ client_id: clientId, lead_id: v.id, requirement_key: r.key, requirement_value: r.value })));
+  revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath("/dashboard/leads");
   revalidatePath(`/dashboard/leads/${v.id}`);
   return redirect(`/dashboard/leads/${v.id}?notice=lead_saved`);
