@@ -12,19 +12,26 @@ test("status names are short, and the owner picks from four of them", () => {
   assert.deepEqual([...OWNER_STATUSES], ["pending", "confirmed", "completed", "cancelled"]);
   for (const s of OWNER_STATUSES) assert.ok((APPOINTMENT_STATUSES as readonly string[]).includes(s));
   // older records may still carry other statuses and must stay valid
-  for (const old of ["rejected", "reschedule_requested"]) assert.equal(appointmentUpdateSchema.safeParse({ id: ID, status: old, scheduled_date: "", scheduled_time: "", notes: "" }).success, true);
+  for (const old of ["rejected", "reschedule_requested"]) assert.equal(appointmentUpdateSchema.safeParse({ id: ID, status: old, scheduled_date: "", scheduled_time: "", customer_email: "", notes: "" }).success, true);
 });
 
 test("the update form: any status, a date that is real or empty, a private note that is trimmed and capped", () => {
-  const ok = appointmentUpdateSchema.parse({ id: ID, status: "confirmed", scheduled_date: "2026-11-25", scheduled_time: " 3pm ", notes: "  called, agreed  " });
+  const ok = appointmentUpdateSchema.parse({ id: ID, status: "confirmed", scheduled_date: "2026-11-25", scheduled_time: " 3pm ", customer_email: "", notes: "  called, agreed  " });
   assert.deepEqual([ok.status, ok.scheduled_date, ok.scheduled_time, ok.notes], ["confirmed", "2026-11-25", "3pm", "called, agreed"]);
-  const base = { id: ID, status: "pending", scheduled_date: "", scheduled_time: "", notes: "" };
+  const base = { id: ID, status: "pending", scheduled_date: "", scheduled_time: "", customer_email: "", notes: "" };
   assert.equal(appointmentUpdateSchema.safeParse(base).success, true);
   assert.equal(appointmentUpdateSchema.safeParse({ ...base, status: "banana" }).success, false);
   assert.equal(appointmentUpdateSchema.safeParse({ ...base, scheduled_date: "2026-02-31" }).success, false);
   assert.equal(appointmentUpdateSchema.safeParse({ ...base, scheduled_date: "tomorrow" }).success, false);
   assert.equal(appointmentUpdateSchema.safeParse({ ...base, notes: "x".repeat(2001) }).success, false);
   assert.equal(appointmentUpdateSchema.safeParse({ ...base, id: "nope" }).success, false);
+});
+
+test("the email is optional; when given it must be a real address, and an empty one clears it", () => {
+  const base = { id: ID, status: "pending", scheduled_date: "", scheduled_time: "", notes: "" };
+  assert.equal(appointmentUpdateSchema.parse({ ...base, customer_email: "" }).customer_email, "");
+  assert.equal(appointmentUpdateSchema.parse({ ...base, customer_email: "  ravi@example.com " }).customer_email, "ravi@example.com");
+  for (const bad of ["ravi", "ravi@", "@example.com", "ravi example.com", "a@b", "x".repeat(200) + "@example.com"]) assert.equal(appointmentUpdateSchema.safeParse({ ...base, customer_email: bad }).success, false, bad);
 });
 
 test("confirming needs the agreed date and a real clock time", () => {
@@ -54,7 +61,7 @@ test("the customer's preferred date and time are separate from the agreed ones",
   assert.equal(whenText(null, "11 am"), "11 am");
   assert.equal(whenText(null, null), "");
   // the update schema has no field for the preferred date or time at all, so an update cannot overwrite what the customer asked for
-  assert.deepEqual(Object.keys(appointmentUpdateSchema.shape).sort(), ["id", "notes", "scheduled_date", "scheduled_time", "status"]);
+  assert.deepEqual(Object.keys(appointmentUpdateSchema.shape).sort(), ["customer_email", "id", "notes", "scheduled_date", "scheduled_time", "status"]);
 });
 
 test("a link to chat with the customer: digits only, unusable numbers give no link", () => {

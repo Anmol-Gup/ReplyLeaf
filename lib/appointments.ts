@@ -56,12 +56,13 @@ const realDate = (s: string) => {
 };
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "not a real date");
 
-/** What the owner can change: the status, the date and time they agreed with the customer, and a private note. */
+/** What the owner can change: the status, the date and time they agreed with the customer, the customer's email (optional) and a private note. */
 export const appointmentUpdateSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(APPOINTMENT_STATUSES),
   scheduled_date: z.union([z.literal(""), isoDate]),
   scheduled_time: z.string().trim().max(60),
+  customer_email: z.union([z.literal(""), z.string().trim().email().max(200)]), // optional; the owner fills it in
   notes: z.string().max(2000).transform((v) => v.replace(/\u0000/g, "").trim()),
 });
 

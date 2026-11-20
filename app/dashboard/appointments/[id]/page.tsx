@@ -41,6 +41,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
           <div><dt>For</dt><dd>{a.purpose}</dd></div>
           <div><dt>Customer asked for</dt><dd>{prefer || "-"}</dd></div>
           {agreed && <div><dt>Agreed</dt><dd>{agreed}</dd></div>}
+          {a.customer_email && <div><dt>Email</dt><dd>{a.customer_email}</dd></div>}
           {a.notes && <div><dt>Customer notes</dt><dd>{a.notes}</dd></div>}
         </dl>
         <p className="muted" style={{ marginTop: 12 }}><Link href={`/dashboard/conversations/${a.conversation_id}`}>Open the conversation</Link></p>
@@ -49,7 +50,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
       <div id="edit">
         <Card title="Update" description="After you have spoken to the customer, set the status here. Nothing is sent to them.">
           <AppointmentEditForm action={updateAppointment} statuses={options}
-            a={{ id: a.id, status, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time, preferred_date: a.preferred_date, preferred_time: a.preferred_time, internal_notes: a.internal_notes }} />
+            a={{ id: a.id, status, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time, preferred_date: a.preferred_date, preferred_time: a.preferred_time, customer_email: a.customer_email, internal_notes: a.internal_notes }} />
         </Card>
       </div>
     </>

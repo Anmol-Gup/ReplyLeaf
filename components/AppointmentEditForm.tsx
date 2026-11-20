@@ -8,7 +8,7 @@ import ChangeAwareSubmit from "./ChangeAwareSubmit";
 // values are still posted, so saving never wipes them.
 export default function AppointmentEditForm({ action, a, statuses }: {
   action: (formData: FormData) => void | Promise<void>;
-  a: { id: string; status: string; scheduled_date: string | null; scheduled_time: string | null; preferred_date: string | null; preferred_time: string | null; internal_notes: string | null };
+  a: { id: string; status: string; scheduled_date: string | null; scheduled_time: string | null; preferred_date: string | null; preferred_time: string | null; customer_email: string | null; internal_notes: string | null };
   statuses: { value: string; label: string }[];
 }) {
   const [status, setStatus] = useState(a.status);
@@ -32,6 +32,7 @@ export default function AppointmentEditForm({ action, a, statuses }: {
           <input type="hidden" name="scheduled_time" value={a.scheduled_time ?? ""} />
         </>
       )}
+      <label className="field">Email <span className="hint">Optional. Add it if the customer gives it to you.</span><input type="email" name="customer_email" maxLength={200} autoComplete="off" defaultValue={a.customer_email ?? ""} /></label>
       <label className="field">Note <span className="hint">Private. Only you see it.</span><textarea name="notes" rows={3} maxLength={2000} defaultValue={a.internal_notes ?? ""} /></label>
       <div><ChangeAwareSubmit pendingText="Saving...">Save</ChangeAwareSubmit></div>
     </form>

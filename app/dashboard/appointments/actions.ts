@@ -21,7 +21,7 @@ export async function updateAppointment(formData: FormData) {
   await requirePaidAccess(clientId);
   const rawId = String(formData.get("id") ?? "");
   const text = (n: string) => String(formData.get(n) ?? "");
-  const parsed = appointmentUpdateSchema.safeParse({ id: formData.get("id"), status: formData.get("status"), scheduled_date: text("scheduled_date"), scheduled_time: text("scheduled_time"), notes: text("notes") });
+  const parsed = appointmentUpdateSchema.safeParse({ id: formData.get("id"), status: formData.get("status"), scheduled_date: text("scheduled_date"), scheduled_time: text("scheduled_time"), customer_email: text("customer_email"), notes: text("notes") });
   if (!parsed.success) return z.string().uuid().safeParse(rawId).success ? go(rawId, "invalid") : redirect("/dashboard/appointments?notice=invalid");
   const v = parsed.data;
 
@@ -40,7 +40,7 @@ export async function updateAppointment(formData: FormData) {
   }
 
   const { error } = await db.from("appointments").update({
-    status: v.status, scheduled_date: v.scheduled_date || null, scheduled_time: v.scheduled_time || null,
+    status: v.status, scheduled_date: v.scheduled_date || null, scheduled_time: v.scheduled_time || null, customer_email: v.customer_email || null,
     internal_notes: v.notes || null, updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);
   // Two open requests for the same thing are not allowed (the same rule that stops the assistant saving a duplicate).
