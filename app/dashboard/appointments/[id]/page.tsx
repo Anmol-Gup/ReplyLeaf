@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Alert, Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { fmt, windowStatus } from "../../../../lib/dashboard";
 import {
-  allowedActions, customerMessage, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentAction, type AppointmentStatus,
+  allowedActions, APPOINTMENT_STATUSES, customerMessage, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentAction, type AppointmentStatus,
 } from "../../../../lib/appointments";
 import Notice from "../../Notice";
-import { appointmentTransition, saveAppointmentNote } from "../actions";
+import { appointmentTransition, saveAppointmentNote, updateAppointment } from "../actions";
 
 export default async function AppointmentDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
@@ -41,7 +42,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
       <PageHeader
         title={a.customer_name || "Appointment request"}
         description={`+${a.customer_phone} · requested ${fmt(a.created_at)}`}
-        actions={<Link className="btn btn-secondary btn-sm" href="/dashboard/appointments">All appointments</Link>}
+        actions={<span className="row"><a className="btn btn-primary btn-sm" href="#edit">Edit appointment</a><Link className="btn btn-secondary btn-sm" href="/dashboard/appointments">All appointments</Link></span>}
       />
       <Notice code={notice} />
       <Card title="Request" actions={<Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>}>
@@ -123,6 +124,43 @@ export default async function AppointmentDetail({ params, searchParams }: { para
           <p className="note" style={{ whiteSpace: "pre-wrap" }}>{manual}</p>
         </Card>
       )}
+
+      <div id="edit">
+        <Card title="Edit appointment" description="Change any detail or set the status yourself, whatever it is now. Nothing is sent to the customer unless you tick the box below. The Decide buttons above always tell the customer.">
+          <form action={updateAppointment} className="stack">
+            <input type="hidden" name="id" value={a.id} />
+            <div className="row">
+              <label className="field">Status
+                <select name="status" defaultValue={status}>
+                  {APPOINTMENT_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                </select>
+              </label>
+              <label className="field">Customer name <input name="customer_name" maxLength={100} defaultValue={a.customer_name ?? ""} /></label>
+            </div>
+            <label className="field">For <input name="purpose" required maxLength={300} defaultValue={a.purpose} /></label>
+            <div className="row">
+              <label className="field">Preferred date <input type="date" name="preferred_date" defaultValue={a.preferred_date ?? ""} /></label>
+              <label className="field">Preferred time <input name="preferred_time" maxLength={60} defaultValue={a.preferred_time ?? ""} /></label>
+              <label className="field">Scheduled date <input type="date" name="scheduled_date" defaultValue={a.scheduled_date ?? ""} /></label>
+              <label className="field">Scheduled time <input name="scheduled_time" maxLength={60} defaultValue={a.scheduled_time ?? ""} /></label>
+            </div>
+            <div className="row">
+              <label className="field">Type
+                <select name="appointment_type" defaultValue={a.appointment_type ?? ""}>
+                  <option value="">Not said</option><option value="online">Online</option><option value="in_person">In person</option>
+                </select>
+              </label>
+              <label className="field">Time zone <input name="timezone" maxLength={60} defaultValue={a.timezone ?? ""} /></label>
+            </div>
+            <label className="field">Message to the customer <span className="hint">Optional. The reason for a rejection, or the alternative you suggest for a reschedule.</span>
+              <input name="note" maxLength={500} defaultValue={a.reschedule_note ?? ""} />
+            </label>
+            <label className="check"><input type="checkbox" name="notify" /> Tell the customer about the new status (confirmed, rejected, reschedule or cancelled)</label>
+            <p className="hint">The message is plain text, never a WhatsApp template. It goes by WhatsApp if the customer wrote within the last 24 hours, otherwise by email if we have their address, otherwise you will see the text to send yourself.</p>
+            <div><ChangeAwareSubmit pendingText="Saving...">Save changes</ChangeAwareSubmit></div>
+          </form>
+        </Card>
+      </div>
 
       <Card title="Internal note" description="Only your team sees this. It is never sent to the customer.">
         <form action={saveAppointmentNote} className="stack-sm">

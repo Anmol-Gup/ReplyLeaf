@@ -12,9 +12,9 @@ export const APPOINTMENT_ACTIONS = ["confirm", "reject", "reschedule", "cancel",
 export type AppointmentAction = (typeof APPOINTMENT_ACTIONS)[number];
 
 export const STATUS_LABELS: Record<AppointmentStatus, string> = {
-  pending: "Waiting for confirmation",
+  pending: "Unconfirmed",
   confirmed: "Confirmed",
-  reschedule_requested: "Reschedule requested",
+  reschedule_requested: "Reschedule",
   rejected: "Rejected",
   cancelled: "Cancelled",
   completed: "Completed",
@@ -100,3 +100,25 @@ export function formProblem(action: AppointmentAction, f: { date?: string; time?
 /** The alternative the owner typed, as one line for the customer. */
 export const rescheduleNote = (f: { date?: string; time?: string; note?: string }) =>
   [whenText(f.date, f.time), f.note?.trim()].filter(Boolean).join(" - ");
+
+// ---- editing an appointment by hand (any field, any status)
+
+/** The customer message that goes with a status, when there is one (pending and completed have none). */
+export const statusMessageAction = (s: AppointmentStatus): Exclude<AppointmentAction, "complete"> | null =>
+  s === "confirmed" ? "confirm" : s === "rejected" ? "reject" : s === "reschedule_requested" ? "reschedule" : s === "cancelled" ? "cancel" : null;
+
+const optionalDate = z.union([z.literal(""), isoDate]);
+export const appointmentEditSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(APPOINTMENT_STATUSES),
+  customer_name: z.string().trim().max(100),
+  purpose: z.string().trim().min(1).max(300),
+  preferred_date: optionalDate,
+  preferred_time: z.string().trim().max(60),
+  scheduled_date: optionalDate,
+  scheduled_time: z.string().trim().max(60),
+  appointment_type: z.enum(["", "online", "in_person"]),
+  timezone: z.string().trim().max(60),
+  note: z.string().trim().max(500),          // the reason or alternative shown to the customer with a reject / reschedule message
+  notify: z.boolean(),
+});

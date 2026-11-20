@@ -36,7 +36,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Appointments" description="Appointment requests collected by the assistant. Nothing is booked until you confirm it. Working hours are information only: there is no calendar connection." />
+      <PageHeader title="Appointments" description="Requests collected by the assistant. Nothing is booked until you confirm it, and there is no calendar connection." />
       <Notice code={notice} />
       <div className="stat-grid">
         <Stat value={o.pending} label="Waiting for you" />

@@ -19,3 +19,10 @@ export function selectionSummary(selected: readonly string[], options: { value: 
   const names = options.filter((o) => selected.includes(o.value)).map((o) => o.label);
   return names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
 }
+
+import { buildQuery } from "./paginate";
+
+/** The address for a list with these statuses chosen. Nothing chosen = no status in the address (the page's default view). */
+export function filterHref(action: string, selected: readonly string[], hidden: Record<string, string | undefined> = {}, param = "status"): string {
+  return `${action}${buildQuery({ [param]: [...selected], ...hidden })}`;
+}

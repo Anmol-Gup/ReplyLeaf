@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requirePaidAccess } from "../../../lib/billing/gate";
 import { requireClient } from "../../../lib/auth/session";
 import { notifyCustomer } from "../../../lib/appointment-notify";
-import { appointmentFormSchema, customerMessage, formProblem, rescheduleNote, whenText } from "../../../lib/appointments";
+import { appointmentEditSchema, appointmentFormSchema, customerMessage, formProblem, rescheduleNote, statusMessageAction, whenText } from "../../../lib/appointments";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { notifyOwner } from "../../../lib/supabase-deps";
 
@@ -74,4 +74,46 @@ export async function saveAppointmentNote(formData: FormData) {
   if (!data?.length) return redirect("/dashboard/appointments?notice=not_found");
   revalidatePath(detail(id.data));
   return go(id.data, "saved");
+}
+
+// The owner fixes an appointment by hand: any detail, and any status (including moving a rejected or cancelled one back to
+// "Unconfirmed"). Unlike the guided buttons above, nothing is sent to the customer unless the owner ticks "Tell the customer".
+// That message is free-form text (never a template): WhatsApp if the 24-hour window is open, else email, else shown to copy.
+export async function updateAppointment(formData: FormData) {
+  const { clientId, clientName } = await requireClient();
+  await requirePaidAccess(clientId);
+  const rawId = String(formData.get("id") ?? "");
+  const text = (n: string) => String(formData.get(n) ?? "").replace(/\u0000/g, "");
+  const parsed = appointmentEditSchema.safeParse({
+    id: formData.get("id"), status: formData.get("status"), customer_name: text("customer_name"), purpose: text("purpose"),
+    preferred_date: text("preferred_date"), preferred_time: text("preferred_time"), scheduled_date: text("scheduled_date"), scheduled_time: text("scheduled_time"),
+    appointment_type: text("appointment_type"), timezone: text("timezone"), note: text("note"), notify: formData.get("notify") !== null,
+  });
+  if (!parsed.success) return z.string().uuid().safeParse(rawId).success ? go(rawId, "invalid") : redirect("/dashboard/appointments?notice=invalid");
+  const v = parsed.data;
+
+  const db = supabaseAdmin();
+  const { data: before } = await db.from("appointments").select("id, status, conversation_id").eq("id", v.id).eq("client_id", clientId).maybeSingle();
+  if (!before) return redirect("/dashboard/appointments?notice=not_found");
+
+  const { error } = await db.from("appointments").update({
+    status: v.status, customer_name: v.customer_name || null, purpose: v.purpose,
+    preferred_date: v.preferred_date || null, preferred_time: v.preferred_time || null,
+    scheduled_date: v.scheduled_date || null, scheduled_time: v.scheduled_time || null,
+    appointment_type: v.appointment_type || null, timezone: v.timezone || null,
+    reschedule_note: v.status === "rejected" || v.status === "reschedule_requested" ? (v.note || null) : null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", v.id).eq("client_id", clientId);
+  // Two open requests for the same thing are not allowed (the same rule that stops the assistant saving a duplicate).
+  if (error) return go(v.id, error.code === "23505" ? "appt_conflict" : "appt_failed");
+  revalidatePath("/dashboard/appointments");
+  revalidatePath(detail(v.id));
+
+  const action = statusMessageAction(v.status);
+  if (!v.notify || !action || before.status === v.status && !v.note) return go(v.id, "appt_done");
+  const when = action === "confirm" || action === "cancel" ? whenText(v.scheduled_date, v.scheduled_time) || whenText(v.preferred_date, v.preferred_time) : whenText(v.preferred_date, v.preferred_time);
+  const message = customerMessage(action, { purpose: v.purpose, when, note: v.note }, clientName);
+  const subject = ({ confirm: "Your appointment is confirmed", reject: "About your appointment request", reschedule: "Can we reschedule your appointment?", cancel: "Your appointment was cancelled" })[action];
+  const channel = await notifyCustomer(clientId, before.conversation_id, clientName, subject, message);
+  return go(v.id, channel === "whatsapp" ? "appt_done_whatsapp" : channel === "email" ? "appt_done_email" : "appt_done_not_sent");
 }

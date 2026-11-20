@@ -96,7 +96,8 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--brand); }
 .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .card-head .muted { margin-top: 2px; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-.page-header .muted { margin-top: 4px; max-width: 62ch; }
+.page-header > div:first-child { flex: 1 1 360px; min-width: 0; }
+.page-header .muted { margin-top: 4px; max-width: none; }  /* use the whole width so a description wraps only when it has to */
 
 .notice { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); font-size: 0.92rem; }
 .notice > svg { flex: none; margin-top: 2px; }

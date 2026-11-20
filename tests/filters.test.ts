@@ -32,3 +32,10 @@ test("buildQuery: arrays become repeated parameters and empty ones disappear", (
   assert.equal(buildQuery({ status: [], q: "" }), "");
   assert.equal(buildQuery({ q: "a b" }), "?q=a+b");
 });
+
+import { filterHref } from "../lib/filters";
+test("filterHref: the chosen statuses, the search text and other switches go into the address; nothing chosen means no status", () => {
+  assert.equal(filterHref("/dashboard/appointments", ["pending", "confirmed"], { q: "ravi", upcoming: "1" }), "/dashboard/appointments?status=pending&status=confirmed&q=ravi&upcoming=1");
+  assert.equal(filterHref("/dashboard/appointments", [], { q: undefined }), "/dashboard/appointments");
+  assert.equal(filterHref("/dashboard/leads", ["won"]), "/dashboard/leads?status=won");
+});
