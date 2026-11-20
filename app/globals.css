@@ -356,3 +356,7 @@ ul.latest li { display: flex; justify-content: space-between; gap: 10px; align-i
 ul.latest li:last-child { border-bottom: 0; padding-bottom: 0; }
 ul.latest li > div { min-width: 0; overflow-wrap: anywhere; }
 ul.latest li .badge { flex: none; }
+
+/* ---- compact two-column form rows ---- */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; }
+.stack-sm.tight, form.stack-sm { gap: 10px; }

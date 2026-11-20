@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
+import AppointmentEditForm from "../../../../components/AppointmentEditForm";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Alert, Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { fmt, windowStatus } from "../../../../lib/dashboard";
 import {
-  allowedActions, APPOINTMENT_STATUSES, customerMessage, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentAction, type AppointmentStatus,
+  allowedActions, APPOINTMENT_STATUSES, customerMessage, STATUS_LABELS, STATUS_TONES, whatsappLink, whenWithZone, type AppointmentAction, type AppointmentStatus,
 } from "../../../../lib/appointments";
+import { parseWorkflowSettings } from "../../../../lib/workflow-settings";
 import Notice from "../../Notice";
 import { appointmentTransition, saveAppointmentNote, updateAppointment } from "../actions";
 
@@ -26,8 +27,11 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   const actions = allowedActions(status);
   const can = (x: AppointmentAction) => actions.includes(x);
   const w = windowStatus(conv?.last_customer_message_at);
-  const prefer = whenText(a.preferred_date, a.preferred_time);
-  const scheduled = whenText(a.scheduled_date, a.scheduled_time);
+  // The zone times are in: the appointment's own, else the business's setting.
+  const { data: biz } = await db.from("clients").select("workflow_settings").eq("id", a.client_id).maybeSingle();
+  const zone = (a.timezone as string | null)?.trim() || parseWorkflowSettings(biz?.workflow_settings).appointments.timezone;
+  const prefer = whenWithZone(a.preferred_date, a.preferred_time, zone);
+  const scheduled = whenWithZone(a.scheduled_date, a.scheduled_time, zone);
 
   // The text the customer gets for the CURRENT status (shown so it can be sent by hand if they could not be reached).
   const manual = status === "confirmed" ? customerMessage("confirm", { purpose: a.purpose, when: scheduled }, clientName)
@@ -62,25 +66,27 @@ export default async function AppointmentDetail({ params, searchParams }: { para
         </p>
       </Card>
 
-      {actions.length > 0 && (
-        <Card title="Decide" description="The customer is told on WhatsApp if the 24-hour window is open, otherwise by email if we have their address.">
-          <div className="stack">
+      {/* The quick actions. A pending request can be confirmed, rescheduled or rejected; a confirmed one rescheduled, cancelled or completed;
+          rejected, cancelled and completed ones have none (you can still edit them below). */}
+      {actions.filter((x) => !(status === "pending" && x === "cancel")).length > 0 ? (
+        <Card title="Decide" description="The customer is told by WhatsApp if their 24-hour window is open, otherwise by email if they gave one. If neither works you will see it and can use Send from WhatsApp.">
+          <div className="stack-sm">
             {can("confirm") && (
               <form action={appointmentTransition} className="stack-sm">
                 {hidden("confirm")}
-                <div className="row">
-                  <label className="field">Date <input type="date" name="date" defaultValue={a.preferred_date ?? ""} /></label>
-                  <label className="field">Time <input name="time" maxLength={60} defaultValue={a.preferred_time ?? ""} placeholder="10:00 or 10am" /></label>
+                <div className="grid2">
+                  <label className="field">Scheduled date <input type="date" name="date" required defaultValue={a.preferred_date ?? ""} /></label>
+                  <label className="field">Scheduled time{zone ? ` (${zone})` : ""} <input name="time" required maxLength={60} defaultValue={a.preferred_time ?? ""} placeholder="10:30 or 3pm" /></label>
                 </div>
-                <div><SubmitButton pendingText="Confirming...">Confirm and tell the customer</SubmitButton></div>
+                <div><SubmitButton pendingText="Confirming...">Confirm appointment</SubmitButton> <span className="hint">The customer&apos;s preferred date and time are kept as they asked.</span></div>
               </form>
             )}
             {can("reschedule") && (
               <details className="handoff-more">
                 <summary>Ask the customer to reschedule</summary>
-                <form action={appointmentTransition} className="stack-sm" style={{ marginTop: 12 }}>
+                <form action={appointmentTransition} className="stack-sm" style={{ marginTop: 10 }}>
                   {hidden("reschedule")}
-                  <div className="row">
+                  <div className="grid2">
                     <label className="field">Suggested date <input type="date" name="date" /></label>
                     <label className="field">Suggested time <input name="time" maxLength={60} placeholder="3pm" /></label>
                   </div>
@@ -92,20 +98,20 @@ export default async function AppointmentDetail({ params, searchParams }: { para
             {can("reject") && (
               <details className="handoff-more">
                 <summary>Reject this request</summary>
-                <form action={appointmentTransition} className="stack-sm" style={{ marginTop: 12 }}>
+                <form action={appointmentTransition} className="stack-sm" style={{ marginTop: 10 }}>
                   {hidden("reject")}
                   <label className="field">Reason <span className="hint">Optional. Shown to the customer.</span><input name="note" maxLength={500} /></label>
-                  <div><SubmitButton variant="danger" pendingText="Rejecting...">Yes, reject and tell the customer</SubmitButton></div>
+                  <div><SubmitButton variant="danger" pendingText="Rejecting...">Reject and tell the customer</SubmitButton></div>
                 </form>
               </details>
             )}
-            {can("cancel") && (
+            {can("cancel") && status !== "pending" && (
               <details className="handoff-more">
                 <summary>Cancel this appointment</summary>
-                <form action={appointmentTransition} className="stack-sm" style={{ marginTop: 12 }}>
+                <form action={appointmentTransition} className="stack-sm" style={{ marginTop: 10 }}>
                   {hidden("cancel")}
-                  <p className="muted">The customer will be told it is cancelled. This cannot be undone.</p>
-                  <div><SubmitButton variant="danger" pendingText="Cancelling...">Yes, cancel and tell the customer</SubmitButton></div>
+                  <p className="muted">The customer will be told it is cancelled. This cannot be undone with a button, but you can edit the status below.</p>
+                  <div><SubmitButton variant="danger" pendingText="Cancelling...">Cancel and tell the customer</SubmitButton></div>
                 </form>
               </details>
             )}
@@ -117,6 +123,8 @@ export default async function AppointmentDetail({ params, searchParams }: { para
             )}
           </div>
         </Card>
+      ) : (
+        <p className="muted">This appointment is {STATUS_LABELS[status].toLowerCase()}, so there are no quick actions. You can still change anything in Edit appointment below.</p>
       )}
 
       {manual && (
@@ -132,39 +140,10 @@ export default async function AppointmentDetail({ params, searchParams }: { para
       )}
 
       <div id="edit">
-        <Card title="Edit appointment" description="Change any detail or set the status yourself, whatever it is now. Nothing is sent to the customer unless you tick the box below. The Decide buttons above always tell the customer.">
-          <form action={updateAppointment} className="stack">
-            <input type="hidden" name="id" value={a.id} />
-            <div className="row">
-              <label className="field">Status
-                <select name="status" defaultValue={status}>
-                  {APPOINTMENT_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-                </select>
-              </label>
-              <label className="field">Customer name <input name="customer_name" maxLength={100} defaultValue={a.customer_name ?? ""} /></label>
-            </div>
-            <label className="field">For <input name="purpose" required maxLength={300} defaultValue={a.purpose} /></label>
-            <div className="row">
-              <label className="field">Preferred date <input type="date" name="preferred_date" defaultValue={a.preferred_date ?? ""} /></label>
-              <label className="field">Preferred time <input name="preferred_time" maxLength={60} defaultValue={a.preferred_time ?? ""} /></label>
-              <label className="field">Scheduled date <input type="date" name="scheduled_date" defaultValue={a.scheduled_date ?? ""} /></label>
-              <label className="field">Scheduled time <input name="scheduled_time" maxLength={60} defaultValue={a.scheduled_time ?? ""} /></label>
-            </div>
-            <div className="row">
-              <label className="field">Type
-                <select name="appointment_type" defaultValue={a.appointment_type ?? ""}>
-                  <option value="">Not said</option><option value="online">Online</option><option value="in_person">In person</option>
-                </select>
-              </label>
-              <label className="field">Time zone <input name="timezone" maxLength={60} defaultValue={a.timezone ?? ""} /></label>
-            </div>
-            <label className="field">Message to the customer <span className="hint">Optional. The reason for a rejection, or the alternative you suggest for a reschedule.</span>
-              <input name="note" maxLength={500} defaultValue={a.reschedule_note ?? ""} />
-            </label>
-            <label className="check"><input type="checkbox" name="notify" /> Tell the customer about the new status (confirmed, rejected, reschedule or cancelled)</label>
-            <p className="hint">The message is plain text, never a WhatsApp template. It goes by WhatsApp if the customer wrote within the last 24 hours, otherwise by email if we have their address, otherwise you will see the text to send yourself.</p>
-            <div><ChangeAwareSubmit pendingText="Saving...">Save changes</ChangeAwareSubmit></div>
-          </form>
+        <Card title="Edit appointment" description="Change any detail or set the status yourself. Nothing is sent to the customer unless you tick the box at the bottom.">
+          <AppointmentEditForm action={updateAppointment} zone={zone}
+            statuses={APPOINTMENT_STATUSES.map((st) => ({ value: st, label: STATUS_LABELS[st] }))}
+            a={{ id: a.id, status, customer_name: a.customer_name, purpose: a.purpose, preferred_date: a.preferred_date, preferred_time: a.preferred_time, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time, appointment_type: a.appointment_type, timezone: a.timezone, reschedule_note: a.reschedule_note }} />
         </Card>
       </div>
 

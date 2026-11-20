@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requirePaidAccess } from "../../../lib/billing/gate";
 import { requireClient } from "../../../lib/auth/session";
 import { notifyCustomer } from "../../../lib/appointment-notify";
+import { deliveryNotice } from "../../../lib/appointments";
 import { cleanAssignedTo, isDone, resolvedAtFor, resolutionMessage, ticketFormSchema, ticketRef, type TicketStatus } from "../../../lib/tickets";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 
@@ -42,7 +43,7 @@ export async function updateTicket(formData: FormData) {
   if (formData.get("notify") !== null && isDone(v.status) && !isDone(prev)) {
     const text = resolutionMessage(clientName, before.subject, ticketRef(v.id), v.message);
     const channel = await notifyCustomer(clientId, before.conversation_id, clientName, "Update on your issue", text);
-    return redirect(`/dashboard/tickets/${v.id}?notice=${channel === "whatsapp" ? "tkt_done_whatsapp" : channel === "email" ? "tkt_done_email" : "tkt_done_not_sent"}`);
+    return redirect(`/dashboard/tickets/${v.id}?notice=${deliveryNotice("tkt", channel)}`);
   }
   return redirect(`/dashboard/tickets/${v.id}?notice=tkt_saved`);
 }

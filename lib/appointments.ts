@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseClockTime, todayInZone } from "./workflow";
 
 // Pure helpers for appointment requests (unit-tested). The same transition rules are enforced in SQL by
 // public.set_appointment_status; this copy decides which buttons the page shows and what the customer is told.
@@ -132,3 +133,34 @@ export function whatsappLink(phone: string | null | undefined, text: string): st
   if (digits.length < 7 || digits.length > 15) return null;
   return `https://wa.me/${digits}?text=${encodeURIComponent(text.slice(0, 1500))}`;
 }
+
+// ---- the scheduled date and time (what the owner approves; never touches the customer's preferred date and time)
+
+export type ScheduleProblem = "date" | "past" | "time";
+/**
+ * Confirming needs a real scheduled date and a real clock time ("10:30", "3pm"). The date may not be in the past, judged in the
+ * appointment's time zone (or the business's, or UTC), and it is the same zone that is shown next to the time and written in the
+ * customer's message, so the owner, the customer and the record all mean the same moment.
+ */
+export function validateSchedule(f: { date?: string | null; time?: string | null }, o: { timeZone: string | null; now: Date; checkPast?: boolean }):
+  { ok: true; date: string; time: string } | { ok: false; problem: ScheduleProblem; message: string } {
+  const date = (f.date ?? "").trim();
+  const time = (f.time ?? "").trim();
+  if (!isoDate.safeParse(date).success) return { ok: false, problem: "date", message: "Pick the date you are confirming." };
+  if (o.checkPast !== false && date < todayInZone(o.now, o.timeZone)) return { ok: false, problem: "past", message: "That date has already passed. Pick today or a later date." };
+  if (!time || parseClockTime(time) === null) return { ok: false, problem: "time", message: "Enter the time as a clock time, for example 10:30 or 3pm." };
+  return { ok: true, date, time };
+}
+
+/** "2026-11-21 11 am (Asia/Kolkata)": the date and time with the zone they are in, when known. */
+export const whenWithZone = (date: string | null | undefined, time: string | null | undefined, timeZone: string | null | undefined) => {
+  const w = whenText(date, time);
+  return w && timeZone?.trim() ? `${w} (${timeZone.trim()})` : w;
+};
+
+/** The notice code for a schedule problem. */
+export const scheduleNotice = (p: ScheduleProblem) => (p === "date" ? "appt_need_date" : p === "past" ? "appt_date_past" : "appt_need_time");
+
+/** The notice code that says what really happened when the customer was told: sent by WhatsApp, sent by email, tried but FAILED, or not reachable. */
+export const deliveryNotice = (prefix: "appt" | "tkt", channel: "whatsapp" | "email" | "failed" | "none") =>
+  `${prefix}_done_${channel === "none" ? "not_sent" : channel}`;
