@@ -342,3 +342,4 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; font-weight: 600; font-s
 td.col-service { min-width: 190px; max-width: 280px; overflow-wrap: anywhere; }
 td.col-reqs { min-width: 280px; max-width: 460px; overflow-wrap: anywhere; white-space: normal; }
 ul.reqs { margin: 0; padding-left: 16px; display: grid; gap: 3px; font-size: 0.88rem; }
+.msel-all { padding-bottom: 6px; border-bottom: 1px solid var(--border); }
