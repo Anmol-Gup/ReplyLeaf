@@ -15,13 +15,20 @@ import { isWithinWindow } from "./whatsapp/window";
 //   none             = nothing could be tried: the window is closed and there is no email on file
 export type CustomerChannel = "whatsapp" | "email" | "failed" | "none";
 
-export async function notifyCustomer(
+export type CustomerNotice = { channel: CustomerChannel; waMessageId: string | null };
+
+/** The channel as before, plus the WhatsApp message id when WhatsApp accepted the message (so its delivery can be looked up later). */
+export async function notifyCustomer(clientId: string, conversationId: string, businessName: string, subject: string, text: string): Promise<CustomerChannel> {
+  return (await notifyCustomerDetailed(clientId, conversationId, businessName, subject, text)).channel;
+}
+
+export async function notifyCustomerDetailed(
   clientId: string, conversationId: string, businessName: string, subject: string, text: string,
-): Promise<CustomerChannel> {
+): Promise<CustomerNotice> {
   const db = supabaseAdmin();
   const { data: conv } = await db.from("conversations").select("contact_id, last_customer_message_at")
     .eq("id", conversationId).eq("client_id", clientId).maybeSingle();
-  if (!conv) return "none";
+  if (!conv) return { channel: "none", waMessageId: null };
   const [{ data: client }, { data: contact }] = await Promise.all([
     db.from("clients").select("wa_phone_number_id").eq("id", clientId).single(),
     db.from("contacts").select("phone, email, notify_email").eq("id", conv.contact_id).eq("client_id", clientId).single(),
@@ -37,7 +44,7 @@ export async function notifyCustomer(
     try {
       const sent = await sendClientText(clientId, client.wa_phone_number_id, contact.phone, text);
       await record({ status: "sent", wa_message_id: sent.waMessageId });
-      return "whatsapp";
+      return { channel: "whatsapp", waMessageId: sent.waMessageId };
     } catch (e) {
       console.error("customer WhatsApp notice failed", e instanceof Error ? e.message : e);
       await record({ status: "failed", error: "send_failed" });
@@ -54,10 +61,10 @@ export async function notifyCustomer(
         text: `${text}\n\n- ${businessName}`,
         html: emailLayout({ preheader: text.slice(0, 90), heading: subject, paragraphs: [text], brandName: businessName, footer: `You are receiving this because you contacted ${businessName} on WhatsApp.` }),
       });
-      return "email";
+      return { channel: "email", waMessageId: null };
     } catch (e) {
       console.error("customer email notice failed", e instanceof Error ? e.message : e);
     }
   }
-  return attempted ? "failed" : "none";
+  return { channel: attempted ? "failed" : "none", waMessageId: null };
 }

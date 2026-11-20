@@ -3,6 +3,7 @@ import MultiSelectFilter from "../../../components/MultiSelectFilter";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
+import { listTeam } from "../../../lib/team";
 import { clip, fmtDay, matches } from "../../../lib/dashboard";
 import { effectiveSelection } from "../../../lib/filters";
 import { buildQuery, paginate } from "../../../lib/paginate";
@@ -11,7 +12,7 @@ import Notice from "../Notice";
 
 type Row = {
   id: string; customer_name: string | null; customer_phone: string; subject: string; category: string | null; priority: string;
-  status: TicketStatus; assigned_to: string | null; created_at: string;
+  status: TicketStatus; assigned_to: string | null; assigned_user_id?: string | null; created_at: string;
 };
 
 export default async function Tickets({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; status?: string | string[]; priority?: string | string[]; page?: string }> }) {
@@ -21,10 +22,16 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const { selected: priorities, explicit: priorityExplicit } = effectiveSelection(priorityRaw, PRIORITIES, []); // nothing chosen = every priority
   const { db } = await requireClient(); // RLS: only this business's rows can come back
 
-  const { data, error } = await db.from("tickets")
-    .select("id, customer_name, customer_phone, subject, category, priority, status, assigned_to, created_at")
-    .order("created_at", { ascending: false }).limit(500);
-  const all = (data ?? []) as Row[];
+  // assigned_user_id comes from the latest migration; without it the list still loads (assignee names just fall back to the old text).
+  const cols = "id, customer_name, customer_phone, subject, category, priority, status, assigned_to, created_at";
+  const first = await db.from("tickets").select(`${cols}, assigned_user_id`).order("created_at", { ascending: false }).limit(500);
+  const older = first.error ? await db.from("tickets").select(cols).order("created_at", { ascending: false }).limit(500) : null;
+  const data = (older ? older.data : first.data) as unknown[] | null;
+  const error = older ? older.error : first.error;
+  const all = (data ?? []) as unknown as Row[];
+  const { clientId } = await requireClient();
+  const team = new Map((await listTeam(clientId)).map((m) => [m.id, m.label]));
+  const assignee = (r: Row) => (r.assigned_user_id ? team.get(r.assigned_user_id) ?? "Former team member" : r.assigned_to);
   const o = ticketOverview(all);
   const options = TICKET_STATUSES.map((s) => ({ value: s as string, label: TICKET_LABELS[s], count: all.filter((r) => r.status === s).length }));
 
@@ -33,7 +40,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const matching = all.filter((r) =>
     (statuses.length === 0 || statuses.includes(r.status)) &&
     (priorities.length === 0 || priorities.includes(priorityOf(r.priority))) &&
-    matches(q, r.customer_name, r.customer_phone, r.subject, r.category, r.assigned_to, ticketRef(r.id), TICKET_LABELS[r.status]));
+    matches(q, r.customer_name, r.customer_phone, r.subject, r.category, assignee(r), ticketRef(r.id), TICKET_LABELS[r.status]));
   const paged = paginate(matching, pageRaw, 15);
 
   return (
@@ -63,7 +70,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
                   <td>{clip(r.subject, 70)}{r.category && <><br /><span className="muted">{r.category}</span></>}</td>
                   <td>{priorityOf(r.priority) === "high" ? <Badge tone="danger">High</Badge> : <span className="muted">{PRIORITY_LABELS[priorityOf(r.priority)]}</span>}</td>
                   <td><Badge tone={TICKET_TONES[r.status]}>{TICKET_LABELS[r.status]}</Badge></td>
-                  <td>{r.assigned_to ?? "-"}</td>
+                  <td>{assignee(r) ?? "-"}</td>
                   <td>{fmtDay(r.created_at)}</td>
                 <td><Link className="btn btn-secondary btn-sm" href={`/dashboard/tickets/${r.id}#edit`}>Edit</Link></td>
                 </tr>
