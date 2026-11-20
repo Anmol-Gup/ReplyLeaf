@@ -875,16 +875,16 @@ test("a plain delivery error still gets the old behaviour (alert and one fallbac
 });
 
 // ================= an email the customer volunteers for updates =================
-test("an email given during an appointment conversation is kept, for updates about that request only", async () => {
+test("an email given during an appointment conversation is NOT stored for updates (the owner contacts the customer directly)", async () => {
   const f = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({
-    intent: "appointment_request", reply: "Thanks! Anything else?", contact: { name: null, email: " Ravi@Example.com " },
+    intent: "appointment_request", reply: "Thanks! Anything else?", contact: { name: null, email: "Ravi@Example.com" },
     workflow: { flow: "appointment", stage: "collecting" }, appointment: { ...APPT_FIELDS },
   }) }) });
   await run(f.deps);
-  assert.deepEqual(f.log.notifyEmails, ["Ravi@Example.com"]);
+  assert.deepEqual(f.log.notifyEmails, []);
 });
 
-test("an email in a support conversation is kept too; an email in an ordinary chat or a junk address is not stored for updates", async () => {
+test("an email in a support conversation is kept for updates about that ticket; an ordinary chat, an appointment, or a junk address is not", async () => {
   const ticket = fakeDeps(makeCtx(), { gen: async () => ({ result: reply({ intent: "support_issue", workflow: { flow: "issue", stage: "collecting" }, ticket: { ...TICKET }, contact: { name: null, email: "a@b.co" } }) }) });
   await run(ticket.deps);
   assert.deepEqual(ticket.log.notifyEmails, ["a@b.co"]);

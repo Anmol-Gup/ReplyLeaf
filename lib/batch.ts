@@ -277,8 +277,9 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
     await safely(deps, client.id, "crm", () => deps.applyContactDetails(client.id, contact.id, { name, email: details.email }));
   }
 
-  // The customer typed an email in an appointment or ticket conversation: keep it, only for updates about that request.
-  const inRequestFlow = decision.kind === "appointment" || decision.kind === "ticket" || result.workflow.flow === "appointment" || result.workflow.flow === "issue";
+  // The customer typed an email in a support conversation: keep it, only for updates about that ticket. (Appointments and enquiries
+  // do not ask for one: the owner contacts the customer directly.)
+  const inRequestFlow = decision.kind === "ticket" || result.workflow.flow === "issue";
   if (inRequestFlow && details.email) {
     await safely(deps, client.id, "notify_email", () => deps.saveNotifyEmail(client.id, contact.id, details.email as string));
   }
