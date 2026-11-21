@@ -11,7 +11,8 @@ import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import Notice from "../../Notice";
-import { deleteAppointment, updateAppointment } from "../actions";
+import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
+import { deleteAppointment, saveAppointmentNote, updateAppointment } from "../actions";
 
 // One appointment: the editable details on the left, what the customer asked for in the middle, the customer on the right. The owner
 // talks to the customer directly; nothing here is sent to them.
@@ -84,6 +85,18 @@ export default async function AppointmentDetail({ params, searchParams }: { para
               <div className="rec-prop"><small>For</small><span>{a.purpose}</span></div>
               <div className="rec-prop"><small>Customer asked for</small><span>{prefer || "-"}</span></div>
               {a.notes && <div className="rec-prop"><small>Customer notes</small><span style={{ whiteSpace: "pre-wrap" }}>{a.notes}</span></div>}
+            </div>
+          </section>
+          <section className="card">
+            <h2 className="rec-title">Notes</h2>
+            <div className="rec-body">
+              <form action={saveAppointmentNote} className="stack-sm">
+                <input type="hidden" name="id" value={a.id} />
+                <label className="field">Private note <span className="hint">Only your team sees this. It is never sent to the customer.</span>
+                  <textarea name="notes" rows={4} maxLength={2000} defaultValue={a.internal_notes ?? ""} />
+                </label>
+                <div><ChangeAwareSubmit pendingText="Saving...">Save note</ChangeAwareSubmit></div>
+              </form>
             </div>
           </section>
         </main>

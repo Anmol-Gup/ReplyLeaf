@@ -16,12 +16,14 @@ import {
 } from "../../../../lib/tickets";
 import { parseWorkflowSettings } from "../../../../lib/workflow-settings";
 import Notice from "../../Notice";
-import { deleteTicket, updateTicket } from "../actions";
+import { addTicketNote, deleteTicket, updateTicket } from "../actions";
 
+type Note = { id: string; author_label: string | null; body: string; created_at: string };
 type Event = { id: string; kind: string; detail: Record<string, unknown> | null; actor_label: string | null; created_at: string };
 
 // One ticket: its properties on the left (editable in place), the problem and its activity in the middle, the customer on the right. Reads of the new notes and activity are separate, so a database that has not had the
 // latest migration still shows the ticket.
+const SHOWN_NOTES = 3;
 const SHOWN_EVENTS = 5; // the page shows the latest few and folds the rest away, so a busy ticket never makes it endless
 
 export default async function TicketDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; edit?: string }> }) {
@@ -32,12 +34,19 @@ export default async function TicketDetail({ params, searchParams }: { params: P
   const { data: t } = await db.from("tickets").select("*").eq("id", id).maybeSingle();
   if (!t) notFound(); // also what another business's id looks like: RLS returns nothing
 
-  const [{ data: contact }, eventsRes, { data: biz }, team] = await Promise.all([
+  const [{ data: contact }, notesRes, eventsRes, { data: biz }, team] = await Promise.all([
     db.from("contacts").select("id, name, phone, email, status").eq("id", t.contact_id).maybeSingle(),
+    db.from("ticket_notes").select("id, author_label, body, created_at").eq("ticket_id", id).order("created_at", { ascending: false }).limit(200),
     db.from("ticket_events").select("id, kind, detail, actor_label, created_at").eq("ticket_id", id).order("created_at", { ascending: false }).limit(200),
     db.from("clients").select("workflow_settings").eq("id", clientId).maybeSingle(),
     listTeam(clientId),
   ]);
+  const notes = (notesRes.error ? [] : notesRes.data ?? []) as Note[];
+  // The newest notes first; the single note written before notes were dated goes last.
+  const allNotes: Note[] = [...notes, ...(t.internal_notes ? [{ id: "earlier", author_label: null, body: t.internal_notes as string, created_at: "" }] : [])];
+  const renderNote = (n: Note) => (
+    <li key={n.id}><div><span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span><br /><span className="muted">{n.id === "earlier" ? "Earlier note (written before notes were dated)" : `${shortName(n.author_label) || "A team member"} · ${fmt(n.created_at)}`}</span></div></li>
+  );
   const events = (eventsRes.error ? [] : eventsRes.data ?? []) as Event[];
 
   // WhatsApp's own report for the messages we told customers about, so "sent" is never shown as "delivered".
@@ -139,10 +148,23 @@ export default async function TicketDetail({ params, searchParams }: { params: P
 
         <main className="rec-col">
           <section className="card">
-            <h2 className="rec-title">The problem</h2>
+            <h2 className="rec-title">Description</h2>
             <div className="rec-body">
               <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{t.description}</p>
               {t.reference_info && <div className="rec-prop" style={{ marginTop: 12 }}><small>Reference given</small><span>{t.reference_info}</span></div>}
+            </div>
+          </section>
+          <section className="card">
+            <h2 className="rec-title">Notes</h2>
+            <div className="rec-body">
+              <p className="muted" style={{ marginTop: 0 }}>Private. Only your team sees these; they are never sent to the customer or used by the assistant.</p>
+              <form action={addTicketNote} className="stack-sm">
+                <input type="hidden" name="id" value={t.id} />
+                <label className="sr-only" htmlFor="note-body">Add a note</label>
+                <textarea id="note-body" name="body" required rows={2} maxLength={4000} placeholder="Add a note" />
+                <div><SubmitButton small variant="secondary" pendingText="Adding...">Add note</SubmitButton></div>
+              </form>
+              {allNotes.length === 0 ? <p className="muted" style={{ marginBottom: 0 }}>No notes yet.</p> : <div style={{ marginTop: 10 }}><ShowMore initial={SHOWN_NOTES} noun="note">{allNotes.map(renderNote)}</ShowMore></div>}
             </div>
           </section>
           <section className="card">

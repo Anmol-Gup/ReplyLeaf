@@ -73,3 +73,17 @@ export async function bulkDeleteAppointments(formData: FormData) {
   revalidatePath("/dashboard"); // the Overview counts change too
   redirect("/dashboard/appointments?notice=record_deleted");
 }
+
+// The private note on an appointment: one note, kept as the owner writes it. Never sent to the customer.
+export async function saveAppointmentNote(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = z.string().uuid().safeParse(formData.get("id"));
+  const note = z.string().max(2000).safeParse(String(formData.get("notes") ?? ""));
+  if (!id.success || !note.success) return redirect("/dashboard/appointments?notice=invalid");
+  const { data } = await supabaseAdmin().from("appointments")
+    .update({ internal_notes: note.data.replace(/\u0000/g, "").trim() || null, updated_at: new Date().toISOString() })
+    .eq("id", id.data).eq("client_id", clientId).select("id");
+  if (!data?.length) return redirect("/dashboard/appointments?notice=not_found");
+  revalidatePath(detail(id.data));
+  return go(id.data, "saved");
+}
