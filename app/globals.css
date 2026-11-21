@@ -549,3 +549,4 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .link-button { background: none; border: 0; padding: 0; color: var(--brand-text); text-decoration: underline; cursor: pointer; font: inherit; }
 @media (max-width: 640px) { .drawer { width: 100vw; } .drawer-filters .pill, .drawer-head .btn { min-height: 40px; } }
 @media (prefers-reduced-motion: reduce) { .drawer, .drawer-overlay { transition: none; } }
+.drawer-filters { flex-wrap: wrap; overflow-x: visible; } /* all five filters visible, wrapping onto a second line instead of a side scrollbar */
