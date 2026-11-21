@@ -505,3 +505,6 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .search.conv-search-left { flex: none; margin: 10px 12px; }
 .search.conv-search input[type="search"] { padding-left: 38px; }
 .search.conv-search svg { left: 13px; pointer-events: none; }
+/* the .search wrapper already lays the icon and the input out side by side: no absolute icon */
+.search.conv-search svg { position: static; flex: none; }
+.search.conv-search input[type="search"] { padding: 0 !important; flex: 1; min-width: 0; }
