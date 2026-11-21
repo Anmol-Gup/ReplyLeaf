@@ -32,9 +32,12 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       <PageHeader
         title={l.customer_name || "Project enquiry"}
         description={`+${l.customer_phone}${emailOf ? ` · ${emailOf}` : ""} · received ${fmt(l.created_at)}`}
-        actions={<span className="row"><a className="btn btn-primary btn-sm" href="#edit">Edit details</a><Link className="btn btn-secondary btn-sm" href="/dashboard/leads">All leads</Link></span>}
+        actions={<span className="row"><Link className="btn btn-secondary btn-sm" href="/dashboard/leads">All leads</Link><ConfirmForm action={deleteLead} message="Delete this lead permanently? This cannot be undone."><input type="hidden" name="id" value={l.id} /><SubmitButton variant="danger" small pendingText="Deleting...">Delete</SubmitButton></ConfirmForm></span>}
       />
       <Notice code={notice} />
+
+      <div className="dcols">
+        <div className="rec-col">
       <Card title={l.project_type} actions={<Badge tone={LEAD_TONES[status]}>{LEAD_LABELS[status]}</Badge>}>
         <dl className="handoff-facts">
           <div><dt>AI summary</dt><dd>{l.ai_summary || "-"}</dd></div>
@@ -70,17 +73,15 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
         </Card>
       </div>
 
+        </div>
+        <div className="rec-col">
       <Card title="Project brief" description="A plain-text summary you can paste into a proposal or send to a teammate. It does not include your internal notes."
         actions={<span className="row"><CopyButton text={brief} label="Copy brief" /><a className="btn btn-secondary btn-sm" href={`/dashboard/leads/${l.id}/brief`}>Download .txt</a></span>}>
         <pre className="brief">{brief}</pre>
       </Card>
 
-      <Card title="Delete this lead" description="Permanently deletes this lead. The customer's contact and conversation are kept. It cannot be undone.">
-        <ConfirmForm action={deleteLead} message="Delete this lead permanently? This cannot be undone.">
-          <input type="hidden" name="id" value={l.id} />
-          <SubmitButton variant="danger" pendingText="Deleting...">Delete lead</SubmitButton>
-        </ConfirmForm>
-      </Card>
+        </div>
+      </div>
     </>
   );
 }

@@ -608,3 +608,8 @@ th.check-col, td.check-col { width: 36px; padding-right: 0; }
 .rec-assoc { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .rec-assoc small { display: block; }
 .rec-all { margin: 4px 0 0; font-size: 0.88rem; font-weight: 600; }
+
+/* ---- detail pages (ticket, lead, appointment): two columns, full width */
+.content:has(.dcols) { max-width: none; }
+.dcols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .dcols { grid-template-columns: minmax(0, 1fr); } }

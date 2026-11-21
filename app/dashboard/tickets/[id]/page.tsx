@@ -4,6 +4,7 @@ import ConfirmForm from "../../../../components/ConfirmForm";
 import ShowMore from "../../../../components/ShowMore";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
+import { shortName } from "../../../../lib/notifications";
 import { whatsappLink } from "../../../../lib/appointments";
 import { requireClient } from "../../../../lib/auth/session";
 import { emailsByContact } from "../../../../lib/contact-emails";
@@ -56,7 +57,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
       <li key={e.id}>
         <div>
           {describeTicketEvent(e.kind, d)}{outcome && <>: <Badge tone={outcome.tone}>{outcome.label}</Badge></>}<br />
-          <span className="muted">{e.actor_label ?? "Assistant"} · {fmt(e.created_at)}</span>
+          <span className="muted">{shortName(e.actor_label) || "Assistant"} · {fmt(e.created_at)}</span>
         </div>
       </li>
     );
@@ -64,14 +65,14 @@ export default async function TicketDetail({ params, searchParams }: { params: P
   // The newest notes first; the single note written before notes were dated goes last.
   const allNotes: Note[] = [...notes, ...(t.internal_notes ? [{ id: "earlier", author_label: null, body: t.internal_notes as string, created_at: "" }] : [])];
   const renderNote = (n: Note) => (
-    <li key={n.id}><div><span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span><br /><span className="muted">{n.id === "earlier" ? "Earlier note (written before notes were dated)" : `${n.author_label ?? "A team member"} · ${fmt(n.created_at)}`}</span></div></li>
+    <li key={n.id}><div><span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span><br /><span className="muted">{n.id === "earlier" ? "Earlier note (written before notes were dated)" : `${shortName(n.author_label) || "A team member"} · ${fmt(n.created_at)}`}</span></div></li>
   );
 
   const status = t.status as TicketStatus;
   const priority = priorityOf(t.priority);
   const link = whatsappLink(t.customer_phone);
   const categories = categoryOptions(parseWorkflowSettings(biz?.workflow_settings).support.categories, t.category);
-  const assignedLabel = team.find((m) => m.id === t.assigned_user_id)?.label ?? null;
+  const assignedLabel = shortName(team.find((m) => m.id === t.assigned_user_id)?.label) || null;
   // A person who has since left the business is still shown by name once, rather than silently dropped.
   const assigneeOptions = t.assigned_user_id && !assignedLabel ? [...team, { id: t.assigned_user_id as string, label: "Former team member" }] : team;
 
@@ -80,10 +81,12 @@ export default async function TicketDetail({ params, searchParams }: { params: P
       <PageHeader
         title={`${ticketRef(t.id)}: ${t.subject}`}
         description={`${t.customer_name || "Customer"} · +${t.customer_phone}${emailOf ? ` · ${emailOf}` : ""} · raised ${fmt(t.created_at)}`}
-        actions={<span className="row">{link && <a className="btn btn-secondary btn-sm" href={link} target="_blank" rel="noopener noreferrer">Message on WhatsApp</a>}<a className="btn btn-primary btn-sm" href="#edit">Edit</a><Link className="btn btn-ghost btn-sm" href="/dashboard/tickets">All tickets</Link></span>}
+        actions={<span className="row">{link && <a className="btn btn-secondary btn-sm" href={link} target="_blank" rel="noopener noreferrer">Message on WhatsApp</a>}<Link className="btn btn-ghost btn-sm" href="/dashboard/tickets">All tickets</Link><ConfirmForm action={deleteTicket} message="Delete this ticket permanently? This cannot be undone."><input type="hidden" name="id" value={t.id} /><SubmitButton variant="danger" small pendingText="Deleting...">Delete</SubmitButton></ConfirmForm></span>}
       />
       <Notice code={notice} />
 
+      <div className="dcols">
+        <div className="rec-col">
       <Card title="The problem" actions={<span className="row">{priority === "high" && <Badge tone="danger">High priority</Badge>}<Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge></span>}>
         <dl className="handoff-facts">
           <div><dt>What happened</dt><dd>{t.description}</dd></div>
@@ -116,7 +119,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
             <label className="field">Assigned to
               <select name="assigned_user_id" defaultValue={t.assigned_user_id ?? ""}>
                 <option value="">Unassigned</option>
-                {assigneeOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                {assigneeOptions.map((m) => <option key={m.id} value={m.id}>{shortName(m.label)}</option>)}
               </select>
             </label>
           </div>
@@ -134,6 +137,8 @@ export default async function TicketDetail({ params, searchParams }: { params: P
         </Card>
       </form>
 
+        </div>
+        <div className="rec-col">
       <Card title="Internal notes" description="Private. Only your team sees these, and they are never sent to the customer or used by the assistant.">
         <div className="stack-sm">
           <form action={addTicketNote} className="stack-sm">
@@ -147,18 +152,13 @@ export default async function TicketDetail({ params, searchParams }: { params: P
       </Card>
 
 
-      <Card title="Delete this ticket" description="Permanently deletes this ticket. The customer's contact and conversation are kept. It cannot be undone.">
-        <ConfirmForm action={deleteTicket} message="Delete this ticket permanently? This cannot be undone.">
-          <input type="hidden" name="id" value={t.id} />
-          <SubmitButton variant="danger" pendingText="Deleting...">Delete ticket</SubmitButton>
-        </ConfirmForm>
-      </Card>
-
       <Card title="Activity">
         {events.length === 0 ? <p className="muted">Nothing has happened to this ticket since activity tracking began.</p> : (
           <ShowMore initial={SHOWN_EVENTS} noun="event">{events.map(renderEvent)}</ShowMore>
         )}
       </Card>
+        </div>
+      </div>
     </>
   );
 }

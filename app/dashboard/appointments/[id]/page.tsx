@@ -36,10 +36,13 @@ export default async function AppointmentDetail({ params, searchParams }: { para
         actions={<span className="row">
           {contactLink && <a className="btn btn-secondary btn-sm" href={contactLink} target="_blank" rel="noopener noreferrer">Message on WhatsApp</a>}
           <Link className="btn btn-ghost btn-sm" href="/dashboard/appointments">All appointments</Link>
+          <ConfirmForm action={deleteAppointment} message="Delete this appointment permanently? This cannot be undone."><input type="hidden" name="id" value={a.id} /><SubmitButton variant="danger" small pendingText="Deleting...">Delete</SubmitButton></ConfirmForm>
         </span>}
       />
       <Notice code={notice} />
 
+      <div className="dcols">
+        <div className="rec-col">
       <Card title="Request" actions={<Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>}>
         <dl className="handoff-facts">
           <div><dt>For</dt><dd>{a.purpose}</dd></div>
@@ -51,6 +54,8 @@ export default async function AppointmentDetail({ params, searchParams }: { para
         <p className="muted" style={{ marginTop: 12 }}><Link href={`/dashboard/conversations/${a.conversation_id}`}>Open the conversation</Link></p>
       </Card>
 
+        </div>
+        <div className="rec-col">
       <div id="edit">
         <Card title="Update" description="After you have spoken to the customer, set the status here. Nothing is sent to them.">
           <AppointmentEditForm action={updateAppointment} statuses={options}
@@ -58,12 +63,8 @@ export default async function AppointmentDetail({ params, searchParams }: { para
         </Card>
       </div>
 
-      <Card title="Delete this appointment" description="Permanently deletes this appointment. The customer's contact and conversation are kept. It cannot be undone.">
-        <ConfirmForm action={deleteAppointment} message="Delete this appointment permanently? This cannot be undone.">
-          <input type="hidden" name="id" value={a.id} />
-          <SubmitButton variant="danger" pendingText="Deleting...">Delete appointment</SubmitButton>
-        </ConfirmForm>
-      </Card>
+        </div>
+      </div>
     </>
   );
 }
