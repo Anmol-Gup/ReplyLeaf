@@ -607,3 +607,4 @@ th.check-col, td.check-col { width: 36px; padding-right: 0; }
 .rec-main p { margin: 3px 0 6px; color: var(--muted); overflow-wrap: anywhere; }
 .rec-assoc { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .rec-assoc small { display: block; }
+.rec-all { margin: 4px 0 0; font-size: 0.88rem; font-weight: 600; }

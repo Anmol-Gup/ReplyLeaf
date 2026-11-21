@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import ActivityList from "../../../../components/ActivityList";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import Icon from "../../../../components/Icon";
-import ShowMore from "../../../../components/ShowMore";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Alert, Badge } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
@@ -129,25 +128,25 @@ export default async function ContactPage({
           <details className="card rec-card" open>
             <summary>Leads ({leadRows.length})</summary>
             <div className="rec-body">
-              {leadRows.length === 0 ? <p className="muted">None.</p> : <ShowMore plain initial={3} step={3} noun="lead">{leadRows.map((l) => (
+              {leadRows.length === 0 ? <p className="muted">None.</p> : <>{leadRows.slice(0, 2).map((l) => (
                 <div key={l.id} className="rec-assoc"><div><Link href={`/dashboard/leads/${l.id}`}>{l.project_type}</Link>{l.budget && <small className="muted">Budget {l.budget}</small>}</div><Badge tone={LEAD_TONES[l.status]}>{LEAD_LABELS[l.status]}</Badge></div>
-              ))}</ShowMore>}
+              ))}{leadRows.length > 2 && <p className="rec-all"><a href={`/dashboard/leads?q=${encodeURIComponent(c.phone)}`} target="_blank" rel="noopener noreferrer">View all {leadRows.length} leads ↗</a></p>}</>}
             </div>
           </details>
           <details className="card rec-card" open>
             <summary>Tickets ({ticketRows.length})</summary>
             <div className="rec-body">
-              {ticketRows.length === 0 ? <p className="muted">None.</p> : <ShowMore plain initial={3} step={3} noun="ticket">{ticketRows.map((t) => (
+              {ticketRows.length === 0 ? <p className="muted">None.</p> : <>{ticketRows.slice(0, 2).map((t) => (
                 <div key={t.id} className="rec-assoc"><div><Link href={`/dashboard/tickets/${t.id}`}>{ticketRef(t.id)}</Link><small className="muted">{t.subject}</small></div><Badge tone={TICKET_TONES[t.status]}>{TICKET_LABELS[t.status]}</Badge></div>
-              ))}</ShowMore>}
+              ))}{ticketRows.length > 2 && <p className="rec-all"><a href={`/dashboard/tickets?q=${encodeURIComponent(c.phone)}`} target="_blank" rel="noopener noreferrer">View all {ticketRows.length} tickets ↗</a></p>}</>}
             </div>
           </details>
           <details className="card rec-card" open>
             <summary>Appointments ({apptRows.length})</summary>
             <div className="rec-body">
-              {apptRows.length === 0 ? <p className="muted">None.</p> : <ShowMore plain initial={3} step={3} noun="appointment">{apptRows.map((a) => (
+              {apptRows.length === 0 ? <p className="muted">None.</p> : <>{apptRows.slice(0, 2).map((a) => (
                 <div key={a.id} className="rec-assoc"><div><Link href={`/dashboard/appointments/${a.id}`}>{a.purpose}</Link><small className="muted">{whenText(a.scheduled_date ?? a.preferred_date, a.scheduled_time ?? a.preferred_time) || "No time yet"}</small></div><Badge tone={APPT_TONES[a.status]}>{APPT_LABELS[a.status]}</Badge></div>
-              ))}</ShowMore>}
+              ))}{apptRows.length > 2 && <p className="rec-all"><a href={`/dashboard/appointments?q=${encodeURIComponent(c.phone)}`} target="_blank" rel="noopener noreferrer">View all {apptRows.length} appointments ↗</a></p>}</>}
             </div>
           </details>
         </aside>
