@@ -53,6 +53,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
         <Link className={`tab${onlyUpcoming ? " active" : ""}`} aria-pressed={onlyUpcoming}
           href={`/dashboard/appointments${buildQuery({ status: keepStatus, upcoming: onlyUpcoming ? null : "1", q })}`}>Upcoming only</Link>
         <SearchBox q={q} placeholder="Search by name, phone, purpose or date" keep={{ status: keepStatus, upcoming: onlyUpcoming ? "1" : undefined }} />
+        <div id="bulk-slot" className="bulk-slot" />
       </div>
       {error ? <ErrorState>Your appointments could not be loaded.</ErrorState> : (
         <BulkDelete action={bulkDeleteAppointments} noun="appointment">

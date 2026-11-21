@@ -58,6 +58,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
       <div className="filters">
         <MultiSelectFilter action="/dashboard/leads" options={options} selected={statuses} hidden={{ q, due: onlyDue ? "1" : undefined }} />
         <SearchBox q={q} placeholder="Search by name, phone, project, requirements, budget or status" keep={{ status: explicit ? statuses : [], due: onlyDue ? "1" : undefined }} />
+        <div id="bulk-slot" className="bulk-slot" />
         {onlyDue && <Link className="tab active" href={`/dashboard/leads${buildQuery({ status: explicit ? statuses : [], q })}`}>Follow-ups due ×</Link>}
       </div>
       {error ? <ErrorState>Your leads could not be loaded.</ErrorState> : (

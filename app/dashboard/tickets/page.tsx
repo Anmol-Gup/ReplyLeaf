@@ -59,6 +59,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
         <MultiSelectFilter action="/dashboard/tickets" options={options} selected={statuses} hidden={{ q, priority: priorityExplicit ? priorities : [] }} />
         <MultiSelectFilter action="/dashboard/tickets" label="Priority" plural="priorities" param="priority" options={priorityOptions} selected={priorities} hidden={{ q, status: explicit ? statuses : [] }} />
         <SearchBox q={q} placeholder="Search by name, phone, issue, category, reference or assignee" keep={{ status: explicit ? statuses : [], priority: priorityExplicit ? priorities : [] }} />
+        <div id="bulk-slot" className="bulk-slot" />
       </div>
       {error ? <ErrorState>Your tickets could not be loaded.</ErrorState> : (
         <BulkDelete action={bulkDeleteTickets} noun="ticket">

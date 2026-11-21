@@ -35,6 +35,7 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
       <div className="filters">
         <MultiSelectFilter action="/dashboard/contacts" options={options} selected={statuses} hidden={{ q }} />
         <SearchBox q={q} placeholder="Search by name, phone, email, status or tag" keep={{ status: explicit ? statuses : [] }} />
+        <div id="bulk-slot" className="bulk-slot" />
       </div>
       {error ? <ErrorState>Your contacts could not be loaded.</ErrorState> : (
         <BulkDelete action={bulkDeleteContacts} noun="contact">
