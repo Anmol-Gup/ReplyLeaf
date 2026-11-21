@@ -76,7 +76,6 @@ export default function ConversationsWorkspace({ children }: { children: React.R
                       <div className="preview">{c.preview}{c.unread && <span className="unread-dot" aria-label="Unread" />}</div>
                       <div className="meta">
                         <span className={`state state-${c.state}`}>{STATE_LABELS[c.state]}</span>
-                        {!c.windowOpen && <span className="state state-closed">Window closed</span>}
                       </div>
                     </div>
                   </ConversationLink>

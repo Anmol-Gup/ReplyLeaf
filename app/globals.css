@@ -472,3 +472,33 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .handoff-table .table-wrap, .table-wrap.handoff-table { overflow-x: auto; overflow-y: visible; }
 .table-wrap.handoff-table:has(.menu[open]) { padding-bottom: 190px; } /* room for the open menu inside the scrolling wrapper */
 .handoff-table td:last-child { white-space: nowrap; } .handoff-table td:nth-child(5) { overflow-wrap: anywhere; max-width: 170px; }
+
+/* ---- refinement: two-column conversations, fixed composer, handoff cards and detail */
+.conv { grid-template-columns: 290px minmax(0, 1fr); }
+.conv-main { display: block; }
+.conv-list { max-height: calc(100vh - 250px); min-height: 460px; }
+.conv-main .chat-panel { height: calc(100vh - 250px); min-height: 460px; }
+.conv-main .chat-log { flex: 1 1 auto; max-height: none; min-height: 0; }
+.conv-main .reply { flex: none; background: var(--surface); }
+.reply textarea { background: var(--surface-2); border-radius: var(--radius-sm); resize: none; }
+.reply-note { margin: 0 0 8px; font-size: 0.82rem; color: var(--muted); }
+.conv-toolbar { flex-wrap: wrap; }
+.conv-toolbar .conv-filters { flex-wrap: nowrap; overflow-x: auto; }
+.pill { white-space: nowrap; }
+.stat-card { padding: 14px 16px; gap: 12px; }
+.stat-card b { font-size: 1.5rem; }
+.stat-icon { width: 40px; height: 40px; }
+.handoff-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.hcard { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.hcard-waiting { background: #fff7f6; border-color: #f3c9c4; box-shadow: inset 4px 0 0 var(--danger); }
+.hcard-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hcard-top a { color: var(--text); text-decoration: none; }
+.hcard-summary, .hcard-last { margin: 0; font-size: 0.9rem; overflow-wrap: anywhere; }
+.hcard-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.85rem; }
+.hdetail { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.recent-msgs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.recent-msgs li { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: var(--radius-sm); max-width: 90%; overflow-wrap: anywhere; }
+.recent-msgs li.from-customer { background: var(--surface-2); align-self: flex-start; }
+.recent-msgs li.from-us { background: var(--brand-soft); align-self: flex-end; }
+@media (max-width: 1000px) { .hdetail { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .conv-list, .conv-main .chat-panel { height: auto; max-height: none; } .conv-main .chat-panel { min-height: 70vh; } .handoff-cards { grid-template-columns: minmax(0, 1fr); } }

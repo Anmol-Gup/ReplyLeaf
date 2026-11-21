@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Avatar } from "../../../components/ConversationList";
 import Icon from "../../../components/Icon";
 import Pagination from "../../../components/Pagination";
-import SubmitButton from "../../../components/SubmitButton";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { clip, fmt, matches, windowStatus } from "../../../lib/dashboard";
@@ -13,7 +12,6 @@ import {
 } from "../../../lib/handoff";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
-import { assignHandoff, queueResumeAi, queueTakeOver } from "./actions";
 
 type Handoff = {
   id: string; conversation_id: string; source: HandoffSource; reason: string | null; ai_summary: string | null;
@@ -98,60 +96,33 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
           ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/handoff", label: "Show open requests" }}>No handoff requests match this view.</EmptyState>
           : <EmptyState icon="shield" title="No chats are waiting for you">When a customer asks for a person, or the assistant can&apos;t help, the chat appears here and you get an email.</EmptyState>
       ) : (
-        <div className="table-wrap handoff-table">
-          <table>
-            <thead><tr><th>Customer</th><th>Handoff reason &amp; AI summary</th><th>Last message</th><th>Status</th><th>Assigned to</th><th>Waiting since</th><th>Actions</th></tr></thead>
-            <tbody>
-              {paged.items.map(({ h, name, phone, last }) => {
-                const open = isOpen(h);
-                const mine = h.assigned_user_id === user.id;
-                const owner = nameOf(h.assigned_user_id) ?? h.assigned_to;
-                const waiting = open && !owner;
-                const canAct = open && (!h.assigned_user_id || mine);
-                return (
-                  <tr key={h.id} className={waiting ? "row-waiting" : undefined}>
-                    <td>
-                      <div className="who-cell"><Avatar name={name || "?"} phone={!name} />
-                        <div>{name && <b>{name}</b>}<span className="muted">+{phone}</span></div></div>
-                    </td>
-                    <td className="col-summary">
-                      <span className="reason-chip">{h.reason ?? SOURCE_LABELS[h.source]}</span>
-                      <span>{clip(h.ai_summary || "-", 140)}</span>
-                    </td>
-                    <td className="col-last"><span>{last ? clip(last, 90) : "-"}</span>{lastAt.get(h.conversation_id) && <span className="muted">{fmt(lastAt.get(h.conversation_id))}</span>}</td>
-                    <td><Badge tone={!open ? "success" : owner ? "brand" : "warn"}>{!open ? "Resolved" : owner ? "Assigned" : "Waiting"}</Badge></td>
-                    <td>{owner ? (mine ? "You" : owner) : open ? "Unassigned" : <span className="muted">-</span>}</td>
-                    <td>{open ? <span className={waiting ? "since since-hot" : "since"}>{ago(h.created_at)}</span> : <span className="muted">{fmt(h.resolved_at)}</span>}</td>
-                    <td>
-                      <div className="row" style={{ flexWrap: "nowrap" }}>
-                        <Link className="btn btn-primary btn-sm" href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
-                        {open && (
-                          <details className="menu">
-                            <summary aria-label="More actions">⋮</summary>
-                            <div className="menu-panel">
-                              {canAct && <form action={queueTakeOver}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} /><SubmitButton small variant="ghost" pendingText="Taking over...">Take over</SubmitButton></form>}
-                              {canAct && <form action={queueResumeAi}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} /><SubmitButton small variant="ghost" pendingText="Resuming...">Resume AI</SubmitButton></form>}
-                              <form action={assignHandoff} className="stack-sm">
-                                <input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} />
-                                <label className="field">Assign to
-                                  <select name="assignee" defaultValue={h.assigned_user_id ?? ""}>
-                                    <option value="">Unassigned</option>
-                                    {team.map((m) => <option key={m.id} value={m.id}>{m.label}{m.id === user.id ? " (you)" : ""}</option>)}
-                                  </select>
-                                </label>
-                                <SubmitButton small variant="secondary" pendingText="Saving...">Save</SubmitButton>
-                              </form>
-                            </div>
-                          </details>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="handoff-cards">
+          {paged.items.map(({ h, name, phone, last }) => {
+            const open = isOpen(h);
+            const owner = nameOf(h.assigned_user_id) ?? h.assigned_to;
+            const mine = h.assigned_user_id === user.id;
+            const waiting = open && !owner;
+            return (
+              <li key={h.id} className={`hcard${waiting ? " hcard-waiting" : ""}`}>
+                <div className="hcard-top">
+                  <div className="who-cell"><Avatar name={name || "?"} phone={!name} />
+                    <div><Link href={`/dashboard/handoff/${h.id}`}><b>{name || `+${phone}`}</b></Link>{name && <span className="muted">+{phone}</span>}</div></div>
+                  <Badge tone={!open ? "success" : owner ? "brand" : "warn"}>{!open ? "Resolved" : owner ? "Assigned" : "Waiting"}</Badge>
+                </div>
+                <div><span className="reason-chip">{h.reason ?? SOURCE_LABELS[h.source]}</span></div>
+                <p className="hcard-summary">{clip(h.ai_summary || "No summary.", 180)}</p>
+                <p className="hcard-last"><span className="muted">Customer said:</span> {last ? clip(last, 110) : "-"}</p>
+                <div className="hcard-foot">
+                  <span className="muted">
+                    {open ? <><span className={waiting ? "since-hot" : undefined}>Waiting {ago(h.created_at).replace(" ago", "")}</span> · </> : <>Resolved {fmt(h.resolved_at)} · </>}
+                    {owner ? (mine ? "Assigned to you" : `Assigned to ${owner}`) : "Unassigned"}
+                  </span>
+                  <Link className="btn btn-primary btn-sm" href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
       {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ view: view === "all" ? null : view, q, page: n > 1 ? n : null })}`} />}
     </>

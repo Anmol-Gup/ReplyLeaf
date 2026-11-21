@@ -67,6 +67,22 @@ export async function assignHandoff(formData: FormData) {
   return go(to, "handoff_updated");
 }
 
+// Mark resolved: closes the request and leaves the chat as it is (the assistant stays paused until someone resumes it).
+export async function queueResolve(formData: FormData) {
+  const { clientId, user } = await requireClient();
+  const to = back(formData);
+  const id = uuid.safeParse(formData.get("id"));
+  if (!id.success) return go(to, "invalid");
+  const db = supabaseAdmin();
+  const { data: row } = await db.from("handoff_requests").select("conversation_id, assigned_user_id").eq("id", id.data).eq("client_id", clientId).maybeSingle();
+  if (!row) return go(to, "not_found");
+  if (row.assigned_user_id && row.assigned_user_id !== user.id) return go(to, "assigned_other");
+  const { error } = await db.rpc("set_handoff_status", { p_client_id: clientId, p_handoff_id: id.data, p_action: "resolve", p_assignee: null });
+  if (error) return go(to, "handoff_failed");
+  refreshAll(row.conversation_id as string);
+  return go(to, "handoff_resolved");
+}
+
 export async function queueResumeAi(formData: FormData) {
   const { clientId, user } = await requireClient();
   const to = back(formData);
