@@ -14,7 +14,7 @@ import { supabaseAdmin } from "../../../lib/supabase-admin";
 const LIST = "/dashboard/handoff";
 const back = (formData: FormData) => {
   const raw = String(formData.get("back") ?? "");
-  return raw.startsWith(LIST) && !raw.startsWith("//") && !raw.includes("\\") ? raw : LIST; // never an open redirect
+  return (raw.startsWith(LIST) || raw.startsWith("/dashboard/conversations/")) && !raw.startsWith("//") && !raw.includes("\\") ? raw : LIST; // never an open redirect
 };
 const go = (to: string, notice: string): never => {
   const [path, query] = to.split("?");

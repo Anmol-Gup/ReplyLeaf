@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Avatar } from "../../../components/ConversationList";
+import Icon from "../../../components/Icon";
 import Pagination from "../../../components/Pagination";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox } from "../../../components/ui";
@@ -11,7 +13,7 @@ import {
 } from "../../../lib/handoff";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
-import { assignHandoff, queueResumeAi, queueTakeOver, saveHandoffNote } from "./actions";
+import { assignHandoff, queueResumeAi, queueTakeOver } from "./actions";
 
 type Handoff = {
   id: string; conversation_id: string; source: HandoffSource; reason: string | null; ai_summary: string | null;
@@ -48,7 +50,8 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
   const { data: contacts } = contactIds.length ? await db.from("contacts").select("id, name, phone").in("id", contactIds) : { data: [] };
   const contactById = new Map((contacts ?? []).map((c) => [c.id as string, c]));
   const lastMessage = new Map<string, string>();
-  for (const m of inbound.data ?? []) if (!lastMessage.has(m.conversation_id as string) && m.body) lastMessage.set(m.conversation_id as string, m.body as string);
+  const lastAt = new Map<string, string>();
+  for (const m of inbound.data ?? []) if (!lastMessage.has(m.conversation_id as string) && m.body) { lastMessage.set(m.conversation_id as string, m.body as string); lastAt.set(m.conversation_id as string, m.created_at as string); }
 
   const toRow = (h: Handoff) => {
     const conv = convById.get(h.conversation_id);
@@ -64,6 +67,7 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
     mine: rows.filter((r) => isOpen(r.h) && r.h.assigned_user_id === user.id).length,
     resolved: rows.filter((r) => r.h.status === "resolved").length,
   };
+  const viewCount: Record<View, number> = { all: rows.length, waiting: counts.waiting, assigned: rows.filter((r) => isOpen(r.h) && !!r.h.assigned_user_id).length, resolved: counts.resolved };
   const inView = (h: Handoff) => view === "all" ? true : view === "waiting" ? (h.status === "requested" || h.status === "assigned") : view === "assigned" ? (isOpen(h) && !!h.assigned_user_id) : h.status === "resolved";
   // Open requests first (oldest waiting first), then resolved ones, newest first.
   const matching = rows
@@ -74,17 +78,17 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Human handoff" description="Customers who need a person. Open a request to reply in Conversations. The assistant stays silent in a chat until you resume it; your other chats are not affected." />
+      <PageHeader title="Human handoff" description="Conversations where the assistant has stepped aside for a human response." />
       <Notice code={notice} />
       <div className="stat-grid" style={{ marginBottom: 14 }}>
-        <div className="stat"><b>{counts.waiting}</b><span>Waiting</span></div>
-        <div className="stat"><b>{counts.unassigned}</b><span>Unassigned</span></div>
-        <div className="stat"><b>{counts.mine}</b><span>Assigned to me</span></div>
-        <div className="stat"><b>{counts.resolved}</b><span>Resolved</span></div>
+        <div className="stat stat-card stat-danger"><span className="stat-icon"><Icon name="alert" /></span><div><span>Waiting</span><b>{counts.waiting}</b><small>Customers waiting for a human</small></div></div>
+        <div className="stat stat-card stat-blue"><span className="stat-icon"><Icon name="users" /></span><div><span>Unassigned</span><b>{counts.unassigned}</b><small>Waiting to be taken over</small></div></div>
+        <div className="stat stat-card stat-green"><span className="stat-icon"><Icon name="users" /></span><div><span>Assigned to me</span><b>{counts.mine}</b><small>Conversations you are handling</small></div></div>
+        <div className="stat stat-card"><span className="stat-icon"><Icon name="check" /></span><div><span>Resolved</span><b>{counts.resolved}</b><small>Completed handoffs</small></div></div>
       </div>
       <div className="filters">
         <div className="conv-filters" role="group" aria-label="Filter requests">
-          {VIEWS.map((v) => <Link key={v} className={`pill${v === view ? " on" : ""}`} aria-current={v === view ? "true" : undefined} href={`/dashboard/handoff${buildQuery({ view: v === "all" ? null : v, q })}`}>{VIEW_LABELS[v]}</Link>)}
+          {VIEWS.map((v) => <Link key={v} className={`pill${v === view ? " on" : ""}`} aria-current={v === view ? "true" : undefined} href={`/dashboard/handoff${buildQuery({ view: v === "all" ? null : v, q })}`}>{VIEW_LABELS[v]} <span className="pill-count">{viewCount[v]}</span></Link>)}
         </div>
         <SearchBox q={q} placeholder="Search by name, phone, message, summary or assignee" keep={{ view: view === "all" ? [] : [view] }} />
       </div>
@@ -94,69 +98,60 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
           ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/handoff", label: "Show open requests" }}>No handoff requests match this view.</EmptyState>
           : <EmptyState icon="shield" title="No chats are waiting for you">When a customer asks for a person, or the assistant can&apos;t help, the chat appears here and you get an email.</EmptyState>
       ) : (
-        <ul className="handoff-list">
-          {paged.items.map(({ h, name, phone, last }) => {
-            const open = isOpen(h);
-            const mine = h.assigned_user_id === user.id;
-            const owner = nameOf(h.assigned_user_id) ?? h.assigned_to;
-            return (
-              <li key={h.id} className="card handoff-card">
-                <div className="handoff-top">
-                  <div style={{ minWidth: 0 }}>
-                    <h2><Link href={`/dashboard/conversations/${h.conversation_id}`}>{name || "Unknown customer"}</Link></h2>
-                    <p className="muted">+{phone} · {open ? `waiting ${ago(h.created_at).replace(" ago", "")}` : `resolved ${fmt(h.resolved_at)}`}</p>
-                  </div>
-                  <Badge tone={STATUS_TONES[h.status]}>{!open ? "Resolved" : owner ? (mine ? "Assigned to you" : `Assigned to ${owner}`) : "Waiting for human"}</Badge>
-                </div>
-                <dl className="handoff-facts">
-                  <div><dt>Reason</dt><dd>{h.reason ?? SOURCE_LABELS[h.source]}</dd></div>
-                  <div><dt>AI summary</dt><dd>{h.ai_summary || "-"}</dd></div>
-                  <div><dt>Last message</dt><dd>{last ? clip(last, 200) : "-"}</dd></div>
-                  <div><dt>Assigned to</dt><dd>{owner ?? "Nobody yet"}</dd></div>
-                  {h.internal_notes && <div><dt>Internal note</dt><dd className="note">{h.internal_notes}</dd></div>}
-                </dl>
-                <div className="handoff-actions">
-                  <Link className="btn btn-secondary btn-sm" href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
-                  {open && (!h.assigned_user_id || mine) && !(h.status === "human_active" && mine) && (
-                    <form action={queueTakeOver}>
-                      <input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} />
-                      <SubmitButton small pendingText="Taking over...">Take over</SubmitButton>
-                    </form>
-                  )}
-                  {open && (!h.assigned_user_id || mine) && (
-                    <form action={queueResumeAi}>
-                      <input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} />
-                      <SubmitButton small variant="secondary" pendingText="Resuming...">Resume AI</SubmitButton>
-                    </form>
-                  )}
-                </div>
-                {open && (
-                  <details className="handoff-more">
-                    <summary>Assign or add a note</summary>
-                    <div className="handoff-forms">
-                      <form action={assignHandoff} className="row">
-                        <input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} />
-                        <label className="sr-only" htmlFor={`as-${h.id}`}>Assign to</label>
-                        <select id={`as-${h.id}`} name="assignee" defaultValue={h.assigned_user_id ?? ""}>
-                          <option value="">Unassigned</option>
-                          {team.map((m) => <option key={m.id} value={m.id}>{m.label}{m.id === user.id ? " (you)" : ""}</option>)}
-                        </select>
-                        <SubmitButton small variant="secondary" pendingText="Saving...">Save</SubmitButton>
-                      </form>
-                      <form action={saveHandoffNote} className="stack-sm">
-                        <input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} />
-                        <label className="field">Internal note <span className="hint">Only your team sees this. It is never sent to the customer.</span>
-                          <textarea name="notes" rows={3} maxLength={2000} defaultValue={h.internal_notes ?? ""} />
-                        </label>
-                        <div><SubmitButton small variant="secondary" pendingText="Saving...">Save note</SubmitButton></div>
-                      </form>
-                    </div>
-                  </details>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="table-wrap handoff-table">
+          <table>
+            <thead><tr><th>Customer</th><th>Handoff reason &amp; AI summary</th><th>Last message</th><th>Status</th><th>Assigned to</th><th>Waiting since</th><th>Actions</th></tr></thead>
+            <tbody>
+              {paged.items.map(({ h, name, phone, last }) => {
+                const open = isOpen(h);
+                const mine = h.assigned_user_id === user.id;
+                const owner = nameOf(h.assigned_user_id) ?? h.assigned_to;
+                const waiting = open && !owner;
+                const canAct = open && (!h.assigned_user_id || mine);
+                return (
+                  <tr key={h.id} className={waiting ? "row-waiting" : undefined}>
+                    <td>
+                      <div className="who-cell"><Avatar name={name || "?"} phone={!name} />
+                        <div>{name && <b>{name}</b>}<span className="muted">+{phone}</span></div></div>
+                    </td>
+                    <td className="col-summary">
+                      <span className="reason-chip">{h.reason ?? SOURCE_LABELS[h.source]}</span>
+                      <span>{clip(h.ai_summary || "-", 140)}</span>
+                    </td>
+                    <td className="col-last"><span>{last ? clip(last, 90) : "-"}</span>{lastAt.get(h.conversation_id) && <span className="muted">{fmt(lastAt.get(h.conversation_id))}</span>}</td>
+                    <td><Badge tone={!open ? "success" : owner ? "brand" : "warn"}>{!open ? "Resolved" : owner ? "Assigned" : "Waiting"}</Badge></td>
+                    <td>{owner ? (mine ? "You" : owner) : open ? "Unassigned" : <span className="muted">-</span>}</td>
+                    <td>{open ? <span className={waiting ? "since since-hot" : "since"}>{ago(h.created_at)}</span> : <span className="muted">{fmt(h.resolved_at)}</span>}</td>
+                    <td>
+                      <div className="row" style={{ flexWrap: "nowrap" }}>
+                        <Link className="btn btn-primary btn-sm" href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
+                        {open && (
+                          <details className="menu">
+                            <summary aria-label="More actions">⋮</summary>
+                            <div className="menu-panel">
+                              {canAct && <form action={queueTakeOver}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} /><SubmitButton small variant="ghost" pendingText="Taking over...">Take over</SubmitButton></form>}
+                              {canAct && <form action={queueResumeAi}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} /><SubmitButton small variant="ghost" pendingText="Resuming...">Resume AI</SubmitButton></form>}
+                              <form action={assignHandoff} className="stack-sm">
+                                <input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} />
+                                <label className="field">Assign to
+                                  <select name="assignee" defaultValue={h.assigned_user_id ?? ""}>
+                                    <option value="">Unassigned</option>
+                                    {team.map((m) => <option key={m.id} value={m.id}>{m.label}{m.id === user.id ? " (you)" : ""}</option>)}
+                                  </select>
+                                </label>
+                                <SubmitButton small variant="secondary" pendingText="Saving...">Save</SubmitButton>
+                              </form>
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ view: view === "all" ? null : view, q, page: n > 1 ? n : null })}`} />}
     </>
