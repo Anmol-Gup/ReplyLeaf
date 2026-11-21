@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ConfirmForm from "../../../../components/ConfirmForm";
+import ShowMore from "../../../../components/ShowMore";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { whatsappLink } from "../../../../lib/appointments";
@@ -141,35 +142,22 @@ export default async function TicketDetail({ params, searchParams }: { params: P
             <div><SubmitButton variant="secondary" pendingText="Adding...">Add note</SubmitButton></div>
           </form>
           {allNotes.length === 0 && <p className="muted">No notes yet.</p>}
-          {allNotes.length > 0 && <ul className="latest compact">{allNotes.slice(0, SHOWN_NOTES).map(renderNote)}</ul>}
-          {allNotes.length > SHOWN_NOTES && (
-            <details className="handoff-more fold">
-              <summary>Show {allNotes.length - SHOWN_NOTES} earlier note{allNotes.length - SHOWN_NOTES === 1 ? "" : "s"}</summary>
-              <ul className="latest compact scroll">{allNotes.slice(SHOWN_NOTES).map(renderNote)}</ul>
-            </details>
-          )}
+          {allNotes.length > 0 && <ShowMore initial={SHOWN_NOTES} noun="note">{allNotes.map(renderNote)}</ShowMore>}
         </div>
       </Card>
 
-      <Card title="Activity">
-        {events.length === 0 ? <p className="muted">Nothing has happened to this ticket since activity tracking began.</p> : (
-          <>
-            <ul className="latest compact">{events.slice(0, SHOWN_EVENTS).map(renderEvent)}</ul>
-            {events.length > SHOWN_EVENTS && (
-              <details className="handoff-more fold">
-                <summary>Show {events.length - SHOWN_EVENTS} earlier event{events.length - SHOWN_EVENTS === 1 ? "" : "s"}</summary>
-                <ul className="latest compact scroll">{events.slice(SHOWN_EVENTS).map(renderEvent)}</ul>
-              </details>
-            )}
-          </>
-        )}
-      </Card>
 
       <Card title="Delete this ticket" description="Permanently deletes this ticket. The customer's contact and conversation are kept. It cannot be undone.">
         <ConfirmForm action={deleteTicket} message="Delete this ticket permanently? This cannot be undone.">
           <input type="hidden" name="id" value={t.id} />
           <SubmitButton variant="danger" pendingText="Deleting...">Delete ticket</SubmitButton>
         </ConfirmForm>
+      </Card>
+
+      <Card title="Activity">
+        {events.length === 0 ? <p className="muted">Nothing has happened to this ticket since activity tracking began.</p> : (
+          <ShowMore initial={SHOWN_EVENTS} noun="event">{events.map(renderEvent)}</ShowMore>
+        )}
       </Card>
     </>
   );
