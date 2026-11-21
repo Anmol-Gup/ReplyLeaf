@@ -1,17 +1,19 @@
 import Link from "next/link";
+import SubmitButton from "../../../components/SubmitButton";
 import { Avatar } from "../../../components/ConversationList";
 import Icon from "../../../components/Icon";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
 import { clip, fmt, matches, windowStatus } from "../../../lib/dashboard";
-import { ago } from "../../../lib/notifications";
+import { ago, shortName, whenText } from "../../../lib/notifications";
 import { listTeam } from "../../../lib/team";
 import {
-  allowedActions, HANDOFF_STATUSES, SOURCE_LABELS, STATUS_LABELS, STATUS_TONES, type HandoffSource, type HandoffStatus,
+  allowedActions, HANDOFF_STATUSES, SHORT_SOURCE_LABELS, SOURCE_LABELS, STATUS_LABELS, STATUS_TONES, type HandoffSource, type HandoffStatus,
 } from "../../../lib/handoff";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
+import { queueTakeOver } from "./actions";
 
 type Handoff = {
   id: string; conversation_id: string; source: HandoffSource; reason: string | null; ai_summary: string | null;
@@ -19,16 +21,16 @@ type Handoff = {
 };
 
 // A focused queue: who needs a person, who has it, and a way into the conversation. The chat itself lives in Conversations.
-const VIEWS = ["all", "waiting", "assigned", "resolved"] as const;
+const VIEWS = ["open", "waiting", "assigned", "resolved"] as const;
 type View = (typeof VIEWS)[number];
-const VIEW_LABELS: Record<View, string> = { all: "All", waiting: "Waiting", assigned: "Assigned", resolved: "Resolved" };
+const VIEW_LABELS: Record<View, string> = { open: "Open", waiting: "Waiting", assigned: "Assigned", resolved: "Resolved" };
 
 export default async function HumanHandoff({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; view?: string; page?: string }> }) {
   const { notice, q, view: viewRaw, page: pageRaw } = await searchParams;
-  const view: View = (VIEWS as readonly string[]).includes(viewRaw ?? "") ? (viewRaw as View) : "all";
+  const view: View = (VIEWS as readonly string[]).includes(viewRaw ?? "") ? (viewRaw as View) : "open";
   const { db, user, clientId } = await requireClient(); // RLS: only this business's rows can come back
   const team = await listTeam(clientId);
-  const nameOf = (id: string | null) => (id ? team.find((m) => m.id === id)?.label ?? "Former team member" : null);
+  const nameOf = (id: string | null) => (id ? shortName(team.find((m) => m.id === id)?.label) || "Former team member" : null);
 
   const { data, error } = await db.from("handoff_requests")
     .select("id, conversation_id, source, reason, ai_summary, status, assigned_to, assigned_user_id, internal_notes, created_at, resolved_at")
@@ -65,14 +67,14 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
     mine: rows.filter((r) => isOpen(r.h) && r.h.assigned_user_id === user.id).length,
     resolved: rows.filter((r) => r.h.status === "resolved").length,
   };
-  const viewCount: Record<View, number> = { all: rows.length, waiting: counts.waiting, assigned: rows.filter((r) => isOpen(r.h) && !!r.h.assigned_user_id).length, resolved: counts.resolved };
-  const inView = (h: Handoff) => view === "all" ? true : view === "waiting" ? (h.status === "requested" || h.status === "assigned") : view === "assigned" ? (isOpen(h) && !!h.assigned_user_id) : h.status === "resolved";
+  const viewCount: Record<View, number> = { open: rows.filter((r) => isOpen(r.h)).length, waiting: counts.waiting, assigned: rows.filter((r) => isOpen(r.h) && !!r.h.assigned_user_id).length, resolved: counts.resolved };
+  const inView = (h: Handoff) => view === "open" ? isOpen(h) : view === "waiting" ? (h.status === "requested" || h.status === "assigned") : view === "assigned" ? (isOpen(h) && !!h.assigned_user_id) : h.status === "resolved";
   // Open requests first (oldest waiting first), then resolved ones, newest first.
   const matching = rows
     .filter((r) => inView(r.h) && matches(q, r.name, r.phone, r.last, r.h.ai_summary, r.h.reason, nameOf(r.h.assigned_user_id)))
     .sort((a, b) => (isOpen(a.h) === isOpen(b.h) ? (isOpen(a.h) ? a.h.created_at.localeCompare(b.h.created_at) : b.h.created_at.localeCompare(a.h.created_at)) : isOpen(a.h) ? -1 : 1));
   const paged = paginate(matching, pageRaw, 10);
-  const here = `/dashboard/handoff${buildQuery({ view: view === "all" ? null : view, q, page: paged.page > 1 ? paged.page : null })}`;
+  const here = `/dashboard/handoff${buildQuery({ view: view === "open" ? null : view, q, page: paged.page > 1 ? paged.page : null })}`;
 
   return (
     <>
@@ -86,13 +88,13 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
       </div>
       <div className="filters">
         <div className="conv-filters" role="group" aria-label="Filter requests">
-          {VIEWS.map((v) => <Link key={v} className={`pill${v === view ? " on" : ""}`} aria-current={v === view ? "true" : undefined} href={`/dashboard/handoff${buildQuery({ view: v === "all" ? null : v, q })}`}>{VIEW_LABELS[v]} <span className="pill-count">{viewCount[v]}</span></Link>)}
+          {VIEWS.map((v) => <Link key={v} className={`pill${v === view ? " on" : ""}`} aria-current={v === view ? "true" : undefined} href={`/dashboard/handoff${buildQuery({ view: v === "open" ? null : v, q })}`}>{VIEW_LABELS[v]} <span className="pill-count">{viewCount[v]}</span></Link>)}
         </div>
-        <SearchBox q={q} placeholder="Search by name, phone, message, summary or assignee" keep={{ view: view === "all" ? [] : [view] }} />
+        <SearchBox live q={q} placeholder="Search by name, phone, message, summary or assignee" keep={{ view: view === "open" ? [] : [view] }} />
       </div>
 
       {error ? <ErrorState>Your handoff requests could not be loaded.</ErrorState> : paged.items.length === 0 ? (
-        q || view !== "all"
+        q || view !== "open"
           ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/handoff", label: "Show open requests" }}>No handoff requests match this view.</EmptyState>
           : <EmptyState icon="shield" title="No chats are waiting for you">When a customer asks for a person, or the assistant can&apos;t help, the chat appears here and you get an email.</EmptyState>
       ) : (
@@ -109,22 +111,27 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
                     <div><Link href={`/dashboard/handoff/${h.id}`}><b>{name || `+${phone}`}</b></Link>{name && <span className="muted">+{phone}</span>}</div></div>
                   <Badge tone={!open ? "success" : owner ? "brand" : "warn"}>{!open ? "Resolved" : owner ? "Assigned" : "Waiting"}</Badge>
                 </div>
-                <div><span className="reason-chip">{h.reason ?? SOURCE_LABELS[h.source]}</span></div>
+                <div><span className="reason-chip" title={h.reason ?? SOURCE_LABELS[h.source]}>{SHORT_SOURCE_LABELS[h.source]}</span></div>
                 <p className="hcard-summary">{clip(h.ai_summary || "No summary.", 180)}</p>
                 <p className="hcard-last"><span className="muted">Customer said:</span> {last ? clip(last, 110) : "-"}</p>
                 <div className="hcard-foot">
                   <span className="muted">
-                    {open ? <><span className={waiting ? "since-hot" : undefined}>Waiting {ago(h.created_at).replace(" ago", "")}</span> · </> : <>Resolved {fmt(h.resolved_at)} · </>}
+                    {open ? <><span className={waiting ? "since-hot" : undefined}>Waiting {ago(h.created_at).replace(" ago", "")}</span> · </> : <>Resolved {whenText(h.resolved_at)} · </>}
                     {owner ? (mine ? "Assigned to you" : `Assigned to ${owner}`) : "Unassigned"}
                   </span>
-                  <Link className="btn btn-primary btn-sm" href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
+                  <div className="row" style={{ flexWrap: "nowrap", marginLeft: "auto" }}>
+                    {waiting && (
+                      <form action={queueTakeOver}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} /><SubmitButton small pendingText="Taking over...">Take over</SubmitButton></form>
+                    )}
+                    <Link className={`btn btn-sm ${!open || waiting ? "btn-secondary" : "btn-primary"}`} href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
+                  </div>
                 </div>
               </li>
             );
           })}
         </ul>
       )}
-      {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ view: view === "all" ? null : view, q, page: n > 1 ? n : null })}`} />}
+      {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ view: view === "open" ? null : view, q, page: n > 1 ? n : null })}`} />}
     </>
   );
 }

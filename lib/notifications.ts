@@ -27,3 +27,10 @@ export function ago(iso: string, now = Date.now()): string {
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
   return `${Math.floor(s / 86400)} d ago`;
 }
+
+/** A team member shown by name: an email address is shortened to the part before the @. */
+export const shortName = (label: string | null | undefined): string => (label ? (label.includes("@") ? label.split("@")[0] : label) : "");
+
+/** Recent times as "5 min ago", older ones as a date. */
+export const whenText = (iso: string | null | undefined, now = Date.now()): string =>
+  !iso ? "-" : now - new Date(iso).getTime() < 7 * 86400000 ? ago(iso, now) : iso.slice(0, 10);

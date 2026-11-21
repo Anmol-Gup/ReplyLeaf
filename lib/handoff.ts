@@ -21,6 +21,12 @@ export const STATUS_LABELS: Record<HandoffStatus, string> = {
 };
 export const STATUS_TONES: Record<HandoffStatus, Tone> = { requested: "danger", assigned: "warn", human_active: "brand", resolved: "success" };
 
+/** The same reasons in a few words, for chips and cards. */
+export const SHORT_SOURCE_LABELS: Record<HandoffSource, string> = {
+  customer_request: "Asked for a person", failed_answers: "Assistant couldn't answer", booking_without_link: "Wants to book",
+  owner: "Taken over by you", action_failed: "Request not saved", ai_unavailable: "Assistant unavailable",
+};
+
 export const SOURCE_LABELS: Record<HandoffSource, string> = {
   customer_request: "The customer asked for a person, is upset, or needs something sensitive",
   failed_answers: "The assistant could not answer twice in a row",

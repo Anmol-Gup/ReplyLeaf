@@ -6,7 +6,7 @@ import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { clip, fmt, fmtTime, windowStatus } from "../../../../lib/dashboard";
 import { SOURCE_LABELS, type HandoffSource } from "../../../../lib/handoff";
-import { ago } from "../../../../lib/notifications";
+import { ago, shortName } from "../../../../lib/notifications";
 import { listTeam } from "../../../../lib/team";
 import Notice from "../../Notice";
 import { assignHandoff, queueResolve, queueResumeAi, queueTakeOver } from "../actions";
@@ -29,6 +29,7 @@ export default async function HandoffDetail({ params, searchParams }: { params: 
   const messages = [...(recent ?? [])].reverse();
   const open = h.status !== "resolved";
   const owner = team.find((m) => m.id === h.assigned_user_id)?.label ?? (h.assigned_user_id ? "Former team member" : null);
+  const ownerName = owner ? shortName(owner) : null;
   const mine = h.assigned_user_id === user.id;
   const canAct = open && (!h.assigned_user_id || mine);
   const w = windowStatus(conv?.last_customer_message_at as string | null | undefined);
@@ -74,7 +75,7 @@ export default async function HandoffDetail({ params, searchParams }: { params: 
               <Link href={`/dashboard/contacts/${contact?.id}`}>Contact details</Link>
             </p>
             <dl className="handoff-facts" style={{ marginTop: 10 }}>
-              <div><dt>Assigned to</dt><dd>{owner ? (mine ? "You" : owner) : "Nobody yet"}</dd></div>
+              <div><dt>Assigned to</dt><dd>{owner ? (mine ? "You" : ownerName) : "Nobody yet"}</dd></div>
               <div><dt>Created</dt><dd>{fmt(h.created_at)}</dd></div>
               {!open && <div><dt>Resolved</dt><dd>{fmt(h.resolved_at)}</dd></div>}
               <div><dt>WhatsApp 24-hour window</dt><dd><span className="window"><span className={`dot${w.open ? " on" : ""}`} aria-hidden="true" /> {w.label}</span></dd></div>
