@@ -26,3 +26,8 @@ import { buildQuery } from "./paginate";
 export function filterHref(action: string, selected: readonly string[], hidden: Record<string, string | string[] | undefined> = {}, param = "status"): string {
   return `${action}${buildQuery({ [param]: [...selected], ...hidden })}`;
 }
+
+/** The address for a search: the page, the search text, and the other filters that stay (status, priority...). A new search starts on page 1. */
+export function searchHref(path: string, q: string, keep: Record<string, string | string[] | undefined> = {}): string {
+  return `${path}${buildQuery({ ...keep, q: q.trim() })}`;
+}

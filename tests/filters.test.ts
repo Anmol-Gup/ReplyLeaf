@@ -39,3 +39,11 @@ test("filterHref: the chosen statuses, the search text and other switches go int
   assert.equal(filterHref("/dashboard/appointments", [], { q: undefined }), "/dashboard/appointments");
   assert.equal(filterHref("/dashboard/leads", ["won"]), "/dashboard/leads?status=won");
 });
+
+import { searchHref } from "../lib/filters";
+test("searchHref: the search text, the filters that stay, and no page number (a new search starts on page 1)", () => {
+  assert.equal(searchHref("/dashboard/tickets", "  order  ", { status: ["open", "closed"], priority: ["high"] }), "/dashboard/tickets?status=open&status=closed&priority=high&q=order");
+  assert.equal(searchHref("/dashboard/leads", "", { status: [] }), "/dashboard/leads");                 // clearing the box removes q
+  assert.equal(searchHref("/dashboard/leads", "ravi", { due: "1" }), "/dashboard/leads?due=1&q=ravi");
+  assert.equal(searchHref("/dashboard/contacts", "a b&c"), "/dashboard/contacts?q=a+b%26c");            // special characters are encoded
+});
