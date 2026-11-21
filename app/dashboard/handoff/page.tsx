@@ -27,7 +27,7 @@ const VIEW_LABELS: Record<View, string> = { all: "All", open: "Open", waiting: "
 
 export default async function HumanHandoff({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; view?: string; page?: string }> }) {
   const { notice, q, view: viewRaw, page: pageRaw } = await searchParams;
-  const view: View = (VIEWS as readonly string[]).includes(viewRaw ?? "") ? (viewRaw as View) : "open";
+  const view: View = (VIEWS as readonly string[]).includes(viewRaw ?? "") ? (viewRaw as View) : "all";
   const { db, user, clientId } = await requireClient(); // RLS: only this business's rows can come back
   const team = await listTeam(clientId);
   const nameOf = (id: string | null) => (id ? shortName(team.find((m) => m.id === id)?.label) || "Former team member" : null);
@@ -74,7 +74,7 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
     .filter((r) => inView(r.h) && matches(q, r.name, r.phone, r.last, r.h.ai_summary, r.h.reason, nameOf(r.h.assigned_user_id)))
     .sort((a, b) => (isOpen(a.h) === isOpen(b.h) ? (isOpen(a.h) ? a.h.created_at.localeCompare(b.h.created_at) : b.h.created_at.localeCompare(a.h.created_at)) : isOpen(a.h) ? -1 : 1));
   const paged = paginate(matching, pageRaw, 10);
-  const here = `/dashboard/handoff${buildQuery({ view: view === "open" ? null : view, q, page: paged.page > 1 ? paged.page : null })}`;
+  const here = `/dashboard/handoff${buildQuery({ view: view === "all" ? null : view, q, page: paged.page > 1 ? paged.page : null })}`;
 
   return (
     <>
@@ -88,13 +88,13 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
       </div>
       <div className="filters">
         <div className="conv-filters" role="group" aria-label="Filter requests">
-          {VIEWS.map((v) => <Link key={v} className={`pill${v === view ? " on" : ""}`} aria-current={v === view ? "true" : undefined} href={`/dashboard/handoff${buildQuery({ view: v === "open" ? null : v, q })}`}>{VIEW_LABELS[v]} <span className="pill-count">{viewCount[v]}</span></Link>)}
+          {VIEWS.map((v) => <Link key={v} className={`pill${v === view ? " on" : ""}`} aria-current={v === view ? "true" : undefined} href={`/dashboard/handoff${buildQuery({ view: v === "all" ? null : v, q })}`}>{VIEW_LABELS[v]} <span className="pill-count">{viewCount[v]}</span></Link>)}
         </div>
-        <SearchBox live q={q} placeholder="Search by name, phone, message, summary or assignee" keep={{ view: view === "open" ? [] : [view] }} />
+        <SearchBox live q={q} placeholder="Search by name, phone, message, summary or assignee" keep={{ view: view === "all" ? [] : [view] }} />
       </div>
 
       {error ? <ErrorState>Your handoff requests could not be loaded.</ErrorState> : paged.items.length === 0 ? (
-        q || view !== "open"
+        q || view !== "all"
           ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/handoff", label: "Show open requests" }}>No handoff requests match this view.</EmptyState>
           : <EmptyState icon="shield" title="No open handoffs" action={counts.resolved > 0 ? { href: "/dashboard/handoff?view=resolved", label: `View ${counts.resolved} resolved` } : undefined}>When a customer asks for a person, or the assistant can&apos;t help, the chat appears here and you are notified.</EmptyState>
       ) : (
@@ -131,7 +131,7 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
           })}
         </ul>
       )}
-      {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ view: view === "open" ? null : view, q, page: n > 1 ? n : null })}`} />}
+      {!error && <Pagination p={paged} label="Handoff requests" hrefFor={(n) => `/dashboard/handoff${buildQuery({ view: view === "all" ? null : view, q, page: n > 1 ? n : null })}`} />}
     </>
   );
 }
