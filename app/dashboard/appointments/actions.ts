@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requirePaidAccess } from "../../../lib/billing/gate";
 import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
+import { noteSchema } from "../../../lib/notes";
 import { appointmentUpdateSchema, scheduleNotice, validateSchedule } from "../../../lib/appointments";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { parseWorkflowSettings } from "../../../lib/workflow-settings";
@@ -74,16 +75,19 @@ export async function bulkDeleteAppointments(formData: FormData) {
   redirect("/dashboard/appointments?notice=record_deleted");
 }
 
-// The private note on an appointment: one note, kept as the owner writes it. Never sent to the customer.
-export async function saveAppointmentNote(formData: FormData) {
-  const { clientId } = await requireClient();
-  const id = z.string().uuid().safeParse(formData.get("id"));
-  const note = z.string().max(2000).safeParse(String(formData.get("notes") ?? ""));
-  if (!id.success || !note.success) return redirect("/dashboard/appointments?notice=invalid");
-  const { data } = await supabaseAdmin().from("appointments")
-    .update({ internal_notes: note.data.replace(/\u0000/g, "").trim() || null, updated_at: new Date().toISOString() })
-    .eq("id", id.data).eq("client_id", clientId).select("id");
-  if (!data?.length) return redirect("/dashboard/appointments?notice=not_found");
-  revalidatePath(detail(id.data));
-  return go(id.data, "saved");
+// A private note on an appointment: any number of them, each kept with its author and time. Never sent to the customer.
+export async function addAppointmentNote(formData: FormData) {
+  const { clientId, user } = await requireClient();
+  const parsed = noteSchema.safeParse({ id: formData.get("id"), body: String(formData.get("body") ?? "") });
+  if (!parsed.success) {
+    const id = String(formData.get("id") ?? "");
+    return /^[0-9a-f-]{36}$/i.test(id) ? go(id, "note_empty") : redirect("/dashboard/appointments?notice=invalid");
+  }
+  const db = supabaseAdmin();
+  const { data: appt } = await db.from("appointments").select("id").eq("id", parsed.data.id).eq("client_id", clientId).maybeSingle();
+  if (!appt) return redirect("/dashboard/appointments?notice=not_found");
+  const { error } = await db.from("appointment_notes").insert({ client_id: clientId, appointment_id: parsed.data.id, author_user_id: user.id, author_label: user.email ?? null, body: parsed.data.body });
+  if (error) return go(parsed.data.id, error.code === "42P01" || error.code === "PGRST205" ? "notes_needs_update" : "invalid");
+  revalidatePath(detail(parsed.data.id));
+  return go(parsed.data.id, "note_added");
 }

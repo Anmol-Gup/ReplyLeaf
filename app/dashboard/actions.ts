@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { parseIds } from "../../lib/bulk";
+import { noteSchema } from "../../lib/notes";
 import { clearSessionCookies, requireClient } from "../../lib/auth/session";
 import { requirePaidAccess } from "../../lib/billing/gate";
 import { conversationActions, conversationStateOf, type OpenHandoff } from "../../lib/conversation-state";
@@ -179,6 +180,23 @@ export async function bulkDeleteContacts(formData: FormData) {
   for (const id of ids) await deleteContactData(clientId, { contactId: id });
   revalidatePath("/dashboard"); // the Overview changes too
   flash("/dashboard/contacts", "deleted");
+}
+
+// A private note on a contact: any number of them, each kept with its author and time.
+export async function addContactNote(formData: FormData) {
+  const { clientId, user } = await requireClient();
+  const parsed = noteSchema.safeParse({ id: formData.get("id"), body: String(formData.get("body") ?? "") });
+  if (!parsed.success) {
+    const id = String(formData.get("id") ?? "");
+    return flash(/^[0-9a-f-]{36}$/i.test(id) ? `/dashboard/contacts/${id}` : "/dashboard/contacts", /^[0-9a-f-]{36}$/i.test(id) ? "note_empty" : "invalid");
+  }
+  const db = supabaseAdmin();
+  const { data: contact } = await db.from("contacts").select("id").eq("id", parsed.data.id).eq("client_id", clientId).maybeSingle();
+  if (!contact) return flash("/dashboard/contacts", "not_found");
+  const { error } = await db.from("contact_notes").insert({ client_id: clientId, contact_id: parsed.data.id, author_user_id: user.id, author_label: user.email ?? null, body: parsed.data.body });
+  if (error) return flash(`/dashboard/contacts/${parsed.data.id}`, error.code === "42P01" || error.code === "PGRST205" ? "notes_needs_update" : "invalid");
+  revalidatePath(`/dashboard/contacts/${parsed.data.id}`);
+  flash(`/dashboard/contacts/${parsed.data.id}`, "note_added");
 }
 
 // ---------------------------------------------------------------- settings

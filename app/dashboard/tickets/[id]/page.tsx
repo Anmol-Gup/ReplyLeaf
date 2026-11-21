@@ -2,6 +2,7 @@ import CustomerCard from "../../../../components/CustomerCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ConfirmForm from "../../../../components/ConfirmForm";
+import NotesCard from "../../../../components/NotesCard";
 import ShowMore from "../../../../components/ShowMore";
 import SubmitButton from "../../../../components/SubmitButton";
 import Icon, { type IconName } from "../../../../components/Icon";
@@ -42,11 +43,6 @@ export default async function TicketDetail({ params, searchParams }: { params: P
     listTeam(clientId),
   ]);
   const notes = (notesRes.error ? [] : notesRes.data ?? []) as Note[];
-  // The newest notes first; the single note written before notes were dated goes last.
-  const allNotes: Note[] = [...notes, ...(t.internal_notes ? [{ id: "earlier", author_label: null, body: t.internal_notes as string, created_at: "" }] : [])];
-  const renderNote = (n: Note) => (
-    <li key={n.id}><div><span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span><br /><span className="muted">{n.id === "earlier" ? "Earlier note (written before notes were dated)" : `${shortName(n.author_label) || "A team member"} · ${fmt(n.created_at)}`}</span></div></li>
-  );
   const events = (eventsRes.error ? [] : eventsRes.data ?? []) as Event[];
 
   // WhatsApp's own report for the messages we told customers about, so "sent" is never shown as "delivered".
@@ -135,19 +131,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
               {t.reference_info && <div className="rec-prop" style={{ marginTop: 12 }}><small>Reference given</small><span>{t.reference_info}</span></div>}
             </div>
           </section>
-          <section className="card">
-            <h2 className="rec-title">Notes</h2>
-            <div className="rec-body">
-              <p className="muted" style={{ marginTop: 0 }}>Private. Only your team sees these; they are never sent to the customer or used by the assistant.</p>
-              <form action={addTicketNote} className="stack-sm">
-                <input type="hidden" name="id" value={t.id} />
-                <label className="sr-only" htmlFor="note-body">Add a note</label>
-                <textarea id="note-body" name="body" required rows={2} maxLength={4000} placeholder="Add a note" />
-                <div><SubmitButton small variant="secondary" pendingText="Adding...">Add note</SubmitButton></div>
-              </form>
-              {allNotes.length === 0 ? <p className="muted" style={{ marginBottom: 0 }}>No notes yet.</p> : <div style={{ marginTop: 10 }}><ShowMore initial={SHOWN_NOTES} noun="note">{allNotes.map(renderNote)}</ShowMore></div>}
-            </div>
-          </section>
+          <NotesCard action={addTicketNote} id={t.id} notes={notes} earlier={t.internal_notes as string | null} />
           <section className="card">
             <h2 className="rec-title">Activity</h2>
             <div className="rec-body">

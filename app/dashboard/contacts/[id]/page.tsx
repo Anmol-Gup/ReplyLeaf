@@ -13,7 +13,8 @@ import { TICKET_LABELS, TICKET_TONES, ticketRef, type TicketStatus } from "../..
 import { fmt, windowStatus } from "../../../../lib/dashboard";
 import { buildTimeline } from "../../../../lib/timeline";
 import Notice from "../../Notice";
-import { deleteContact, resolveSuggestion, updateContact } from "../../actions";
+import NotesCard, { type NoteRow } from "../../../../components/NotesCard";
+import { addContactNote, deleteContact, resolveSuggestion, updateContact } from "../../actions";
 
 // One customer: who they are (left), everything they have raised (centre) and the linked records (right).
 // Only what already exists: editing the details, opening the conversation, and the permanent delete (header button, with a confirmation).
@@ -23,7 +24,7 @@ export default async function ContactPage({
   const { id } = await params;
   const { notice } = await searchParams;
   const { db } = await requireClient();
-  const { data: c } = await db.from("contacts").select("id, name, phone, email, status, tags, suggested, created_at").eq("id", id).maybeSingle();
+  const { data: c } = await db.from("contacts").select("id, name, phone, email, status, tags, notes, suggested, created_at").eq("id", id).maybeSingle();
   if (!c) notFound();
   const suggested = (c.suggested ?? {}) as Record<string, string>;
   const { data: conv } = await db.from("conversations").select("id, handling, last_customer_message_at").eq("contact_id", id).maybeSingle();
@@ -34,6 +35,8 @@ export default async function ContactPage({
     db.from("tickets").select("id, subject, priority, status, created_at").eq("contact_id", id),
     conv ? db.from("handoff_requests").select("id, conversation_id, reason, status, created_at").eq("conversation_id", conv.id) : Promise.resolve({ data: [] }),
   ]);
+  const notesRes = await db.from("contact_notes").select("id, author_label, body, created_at").eq("contact_id", id).order("created_at", { ascending: false }).limit(200);
+  const notes = (notesRes.error ? [] : notesRes.data ?? []) as NoteRow[]; // a database without migration 0027 simply shows none
   const timeline = buildTimeline({
     leads: (leads.data ?? []) as never[], appointments: (appts.data ?? []) as never[],
     tickets: (tickets.data ?? []) as never[], handoffs: (handoffs.data ?? []) as never[],
@@ -110,6 +113,7 @@ export default async function ContactPage({
         </aside>
 
         <main className="rec-col">
+          <NotesCard action={addContactNote} id={id} notes={notes} earlier={c.notes as string | null} />
           <section className="card">
             <h2 className="rec-title">Activity</h2>
             <div className="rec-body"><ActivityList items={items} /></div>

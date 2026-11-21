@@ -11,8 +11,8 @@ import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import Notice from "../../Notice";
-import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
-import { deleteAppointment, saveAppointmentNote, updateAppointment } from "../actions";
+import NotesCard, { type NoteRow } from "../../../../components/NotesCard";
+import { addAppointmentNote, deleteAppointment, updateAppointment } from "../actions";
 
 // One appointment: the editable details on the left, what the customer asked for in the middle, the customer on the right. The owner
 // talks to the customer directly; nothing here is sent to them.
@@ -23,6 +23,8 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   const { data: a } = await db.from("appointments").select("*").eq("id", id).maybeSingle();
   if (!a) notFound(); // also what another business's id looks like: RLS returns nothing
 
+  const notesRes = await db.from("appointment_notes").select("id, author_label, body, created_at").eq("appointment_id", id).order("created_at", { ascending: false }).limit(200);
+  const notes = (notesRes.error ? [] : notesRes.data ?? []) as NoteRow[]; // a database without migration 0027 simply shows none
   const { data: contact } = await db.from("contacts").select("id, name, phone, email, status").eq("id", a.contact_id).maybeSingle();
   const chatEmail = (await emailsByContact(db, [a.contact_id])).get(a.contact_id) ?? null; // an email the customer gave in chat
   const status = a.status as AppointmentStatus;
@@ -98,18 +100,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
               {a.notes && <div className="rec-prop"><small>Customer notes</small><span style={{ whiteSpace: "pre-wrap" }}>{a.notes}</span></div>}
             </div>
           </section>
-          <section className="card">
-            <h2 className="rec-title">Notes</h2>
-            <div className="rec-body">
-              <form action={saveAppointmentNote} className="stack-sm">
-                <input type="hidden" name="id" value={a.id} />
-                <label className="field">Private note <span className="hint">Only your team sees this. It is never sent to the customer.</span>
-                  <textarea name="notes" rows={4} maxLength={2000} defaultValue={a.internal_notes ?? ""} />
-                </label>
-                <div><ChangeAwareSubmit pendingText="Saving...">Save note</ChangeAwareSubmit></div>
-              </form>
-            </div>
-          </section>
+          <NotesCard action={addAppointmentNote} id={a.id} notes={notes} earlier={a.internal_notes as string | null} />
           <section className="card">
             <h2 className="rec-title">Activity</h2>
             <div className="rec-body">
