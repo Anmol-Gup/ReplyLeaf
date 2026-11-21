@@ -1,24 +1,31 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import ActivityList from "../../../../components/ActivityList";
 import Icon from "../../../../components/Icon";
 import SubmitButton from "../../../../components/SubmitButton";
-import { Alert, Badge, Card, PageHeader } from "../../../../components/ui";
+import { Alert, Badge } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
-import { fmtDay } from "../../../../lib/dashboard";
+import { LEAD_LABELS, LEAD_TONES, type LeadStatus } from "../../../../lib/leads";
+import { STATUS_LABELS as APPT_LABELS, STATUS_TONES as APPT_TONES, whenText, type AppointmentStatus } from "../../../../lib/appointments";
+import { TICKET_LABELS, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
+import { fmt, windowStatus } from "../../../../lib/dashboard";
 import { buildTimeline } from "../../../../lib/timeline";
 import Notice from "../../Notice";
 import { deleteContact, resolveSuggestion, updateContact } from "../../actions";
 
+// One customer: who they are (left), everything they have raised (centre) and the linked records (right).
+// Only what already exists: editing the details, opening the conversation, and the permanent delete.
 export default async function ContactPage({
   params, searchParams,
-}: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
+}: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; edit?: string }> }) {
   const { id } = await params;
-  const { notice } = await searchParams;
+  const { notice, edit } = await searchParams;
+  const editing = edit === "1";
   const { db } = await requireClient();
-  const { data: c } = await db.from("contacts").select("id, name, phone, email, status, tags, notes, suggested").eq("id", id).maybeSingle();
+  const { data: c } = await db.from("contacts").select("id, name, phone, email, status, tags, suggested, created_at").eq("id", id).maybeSingle();
   if (!c) notFound();
   const suggested = (c.suggested ?? {}) as Record<string, string>;
-  const { data: conv } = await db.from("conversations").select("id").eq("contact_id", id).maybeSingle();
+  const { data: conv } = await db.from("conversations").select("id, handling, last_customer_message_at").eq("contact_id", id).maybeSingle();
   // Everything this customer has raised, across leads, appointments, tickets and handoffs (RLS limits all of it to this business).
   const [leads, appts, tickets, handoffs] = await Promise.all([
     db.from("leads").select("id, project_type, budget, status, created_at").eq("contact_id", id),
@@ -30,14 +37,32 @@ export default async function ContactPage({
     leads: (leads.data ?? []) as never[], appointments: (appts.data ?? []) as never[],
     tickets: (tickets.data ?? []) as never[], handoffs: (handoffs.data ?? []) as never[],
   });
+  const items = timeline.map((t) => ({ key: `${t.kind}-${t.id}`, kind: t.kind, title: t.title, detail: t.detail, href: t.href, at: t.at, label: t.statusLabel, tone: t.tone }));
+  const w = windowStatus(conv?.last_customer_message_at);
+  const tags = (c.tags as string[]) ?? [];
+  const leadRows = (leads.data ?? []) as { id: string; project_type: string; budget: string | null; status: LeadStatus; created_at: string }[];
+  const apptRows = (appts.data ?? []) as { id: string; purpose: string; preferred_date: string | null; preferred_time: string | null; scheduled_date: string | null; scheduled_time: string | null; status: AppointmentStatus }[];
+  const ticketRows = (tickets.data ?? []) as { id: string; subject: string; status: TicketStatus }[];
 
   return (
     <>
       <Link href="/dashboard/contacts" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }}><Icon name="back" size={16} /> All contacts</Link>
-      <PageHeader
-        title={c.name || "Contact"} description={`+${c.phone}`}
-        actions={conv ? <Link className="btn btn-secondary" href={`/dashboard/conversations/${conv.id}`}><Icon name="chat" size={16} /> Open conversation</Link> : undefined}
-      />
+      <header className="card rec-head">
+        <span className="avatar rec-avatar" aria-hidden="true">{(c.name || "?").trim()[0].toUpperCase()}</span>
+        <div className="rec-who">
+          <h1>{c.name || "Unnamed contact"}</h1>
+          <p className="muted">+{c.phone}{c.email ? ` · ${c.email}` : ""}</p>
+          <div className="row" style={{ marginTop: 8 }}>
+            <Badge tone="success">{c.status}</Badge>
+            {conv && <Badge tone={conv.handling === "human_active" ? "warn" : "brand"}>{conv.handling === "human_active" ? "Human handling" : "AI handling"}</Badge>}
+            {conv && <span className="window"><span className={`dot${w.open ? " on" : ""}`} aria-hidden="true" /> {w.open ? "24-hour window open" : "24-hour window closed"}</span>}
+          </div>
+        </div>
+        <div className="row">
+          {conv && <Link className="btn btn-primary" href={`/dashboard/conversations/${conv.id}`}><Icon name="chat" size={16} /> Open conversation</Link>}
+          {!editing && <Link className="btn btn-secondary" href={`/dashboard/contacts/${id}?edit=1`}>Edit</Link>}
+        </div>
+      </header>
       <Notice code={notice} />
 
       {Object.entries(suggested).map(([field, value]) => (
@@ -56,44 +81,83 @@ export default async function ContactPage({
         </Alert>
       ))}
 
-      <Card title="Activity" description="Everything this customer has asked for or reported, newest first.">
-        {timeline.length === 0 ? <p className="muted">Nothing yet: no enquiries, appointments, tickets or handoffs.</p> : (
-          <ul className="timeline">
-            {timeline.map((t) => (
-              <li key={`${t.kind}-${t.id}`}>
-                <span className="muted">{fmtDay(t.at)}</span>
-                <span><Link href={t.href}>{t.title}</Link>{t.detail && <span className="muted"> · {t.detail}</span>}</span>
-                <Badge tone={t.tone}>{t.statusLabel}</Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      <div className="rec-cols">
+        <aside className="rec-col" aria-label="About this contact">
+          <details className="card rec-card" open>
+            <summary>About this contact</summary>
+            <div className="rec-body">
+              {editing ? (
+                <form action={updateContact} className="stack-sm">
+                  <input type="hidden" name="id" value={id} />
+                  <label className="field">Name<input name="name" defaultValue={c.name ?? ""} maxLength={100} /></label>
+                  <label className="field">Email<input name="email" type="email" defaultValue={c.email ?? ""} maxLength={200} /></label>
+                  <label className="field">Status
+                    <select name="status" defaultValue={c.status}>{["new", "lead", "customer", "lost"].map((s) => <option key={s}>{s}</option>)}</select>
+                  </label>
+                  <label className="field">Tags <span className="hint">Comma separated</span><input name="tags" defaultValue={tags.join(", ")} /></label>
+                  <div className="row"><SubmitButton small pendingText="Saving...">Save changes</SubmitButton><Link className="btn btn-ghost btn-sm" href={`/dashboard/contacts/${id}`}>Cancel</Link></div>
+                </form>
+              ) : (
+                <>
+                  <div className="rec-prop"><small>Name</small><span>{c.name || <span className="muted">Not given</span>}</span></div>
+                  <div className="rec-prop"><small>Phone</small><span>+{c.phone}</span></div>
+                  <div className="rec-prop"><small>Email</small><span>{c.email || <span className="muted">Not given</span>}</span></div>
+                  <div className="rec-prop"><small>Status</small><span><Badge tone="success">{c.status}</Badge></span></div>
+                  <div className="rec-prop"><small>Tags</small>{tags.length ? <span className="row">{tags.map((t) => <Badge key={t}>{t}</Badge>)}</span> : <span className="muted">None</span>}</div>
+                  <div className="rec-prop"><small>First message</small><span>{fmt(c.created_at)}</span></div>
+                  {conv?.last_customer_message_at && <div className="rec-prop"><small>Last customer message</small><span>{fmt(conv.last_customer_message_at)}</span></div>}
+                  <p style={{ marginTop: 10 }}><Link href={`/dashboard/contacts/${id}?edit=1`} className="rec-link">Edit properties</Link></p>
+                </>
+              )}
+            </div>
+          </details>
+        </aside>
 
-      <div id="edit"><Card title="Edit contact" description="Correct the name or email, set the status, add tags and private notes.">
-        <form action={updateContact} className="stack">
-          <input type="hidden" name="id" value={id} />
-          <label className="field">Name<input name="name" defaultValue={c.name ?? ""} maxLength={100} /></label>
-          <label className="field">Email<input name="email" type="email" defaultValue={c.email ?? ""} maxLength={200} /></label>
-          <label className="field">Status
-            <select name="status" defaultValue={c.status}>
-              {["new", "lead", "customer", "lost"].map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </label>
-          <label className="field">Tags <span className="hint">Comma separated</span><input name="tags" defaultValue={(c.tags as string[]).join(", ")} /></label>
-          <label className="field">Notes<textarea name="notes" defaultValue={c.notes ?? ""} maxLength={2000} /></label>
-          <div><SubmitButton pendingText="Saving...">Save changes</SubmitButton></div>
-        </form>
-      </Card></div>
+        <main className="rec-col">
+          <section className="card">
+            <h2 className="rec-title">Activity</h2>
+            <div className="rec-body"><ActivityList items={items} /></div>
+          </section>
+        </main>
 
-      <Card title="Delete this person's data" description="Permanently deletes this contact, their conversation and messages. Use it when someone asks for their data to be erased. It cannot be undone.">
-        <form action={deleteContact} className="row">
-          <input type="hidden" name="id" value={id} />
-          <label className="check"><input type="checkbox" name="confirm" value="yes" required /> I understand this is permanent</label>
-          <SubmitButton variant="danger" pendingText="Deleting...">Delete contact and messages</SubmitButton>
-        </form>
-        <p style={{ marginTop: 10 }}><Badge tone="danger">Permanent</Badge></p>
-      </Card>
+        <aside className="rec-col" aria-label="Linked records">
+          <details className="card rec-card" open>
+            <summary>Leads ({leadRows.length})</summary>
+            <div className="rec-body">
+              {leadRows.length === 0 ? <p className="muted">None.</p> : leadRows.map((l) => (
+                <div key={l.id} className="rec-assoc"><div><Link href={`/dashboard/leads/${l.id}`}>{l.project_type}</Link>{l.budget && <small className="muted">Budget {l.budget}</small>}</div><Badge tone={LEAD_TONES[l.status]}>{LEAD_LABELS[l.status]}</Badge></div>
+              ))}
+            </div>
+          </details>
+          <details className="card rec-card" open>
+            <summary>Tickets ({ticketRows.length})</summary>
+            <div className="rec-body">
+              {ticketRows.length === 0 ? <p className="muted">None.</p> : ticketRows.map((t) => (
+                <div key={t.id} className="rec-assoc"><div><Link href={`/dashboard/tickets/${t.id}`}>{ticketRef(t.id)}</Link><small className="muted">{t.subject}</small></div><Badge tone={TICKET_TONES[t.status]}>{TICKET_LABELS[t.status]}</Badge></div>
+              ))}
+            </div>
+          </details>
+          <details className="card rec-card" open>
+            <summary>Appointments ({apptRows.length})</summary>
+            <div className="rec-body">
+              {apptRows.length === 0 ? <p className="muted">None.</p> : apptRows.map((a) => (
+                <div key={a.id} className="rec-assoc"><div><Link href={`/dashboard/appointments/${a.id}`}>{a.purpose}</Link><small className="muted">{whenText(a.scheduled_date ?? a.preferred_date, a.scheduled_time ?? a.preferred_time) || "No time yet"}</small></div><Badge tone={APPT_TONES[a.status]}>{APPT_LABELS[a.status]}</Badge></div>
+              ))}
+            </div>
+          </details>
+          <details className="card rec-card">
+            <summary>Delete contact</summary>
+            <div className="rec-body">
+              <p className="muted" style={{ marginTop: 0 }}>Permanently deletes this contact, their conversation and messages. Use it when someone asks for their data to be erased. It cannot be undone.</p>
+              <form action={deleteContact} className="stack-sm">
+                <input type="hidden" name="id" value={id} />
+                <label className="check"><input type="checkbox" name="confirm" value="yes" required /> I understand this is permanent</label>
+                <div><SubmitButton variant="danger" small pendingText="Deleting...">Delete contact and messages</SubmitButton></div>
+              </form>
+            </div>
+          </details>
+        </aside>
+      </div>
     </>
   );
 }

@@ -123,7 +123,7 @@ const contactSchema = z.object({
   email: z.union([z.literal(""), z.string().trim().email().max(200)]),
   status: z.enum(["new", "lead", "customer", "lost"]),
   tags: z.string().max(400),
-  notes: z.string().max(2000),
+  notes: z.string().max(2000).optional(), // the page no longer shows a notes box: when it is not sent, the stored note is left alone
 });
 
 export async function updateContact(formData: FormData) {
@@ -135,7 +135,7 @@ export async function updateContact(formData: FormData) {
   const v = parsed.data;
   const tags = [...new Set(v.tags.split(",").map((t) => t.trim()).filter(Boolean))].slice(0, 20).map((t) => t.slice(0, 30));
   await supabaseAdmin().from("contacts")
-    .update({ name: v.name || null, email: v.email || null, status: v.status, tags, notes: v.notes || null })
+    .update({ name: v.name || null, email: v.email || null, status: v.status, tags, ...(v.notes !== undefined ? { notes: v.notes || null } : {}) })
     .eq("id", id).eq("client_id", clientId);
   flash(back, "saved");
 }
