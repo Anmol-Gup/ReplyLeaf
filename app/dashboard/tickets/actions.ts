@@ -31,7 +31,7 @@ export async function updateTicket(formData: FormData) {
   const text = (n: string) => (formData.has(n) ? String(formData.get(n) ?? "").replace(/\u0000/g, "") : undefined);
   const parsed = ticketFormSchema.safeParse({
     id: formData.get("id"), status: formData.get("status"), priority: formData.get("priority") ?? undefined,
-    category: text("category"), assigned_user_id: text("assigned_user_id"), message: String(formData.get("message") ?? "").replace(/\u0000/g, "").trim(),
+    category: text("category"), assigned_user_id: text("assigned_user_id"), description: text("description"), message: String(formData.get("message") ?? "").replace(/\u0000/g, "").trim(),
   });
   if (!parsed.success) return redirect("/dashboard/tickets?notice=invalid");
   const v = parsed.data;
@@ -70,6 +70,7 @@ export async function updateTicket(formData: FormData) {
   const { error } = await db.from("tickets").update({
     status: v.status, ...(v.priority ? { priority: v.priority } : {}),
     ...(category !== undefined ? { category } : {}),
+    ...(v.description ? { description: v.description } : {}),
     ...(wantsAssignee ? { assigned_user_id: newAssignee, ...(newAssignee ? { assigned_to: null } : {}) } : {}), // the old free-text name is replaced by the real person
     resolved_at: resolvedAtFor(v.status, prev, before.resolved_at, new Date()), updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);

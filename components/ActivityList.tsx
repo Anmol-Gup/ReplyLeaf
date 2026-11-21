@@ -6,7 +6,7 @@ import Icon, { type IconName } from "./Icon";
 import SubmitButton from "./SubmitButton";
 import { Badge } from "./ui";
 
-// A record's activity feed, like HubSpot's Activities tab: tabs for All activities and each kind (Notes included), a search box, month groups,
+// A record's activity feed, like HubSpot's Activities tab: tabs for All activities and each kind (Notes included), month groups,
 // "Expand all", the latest five then five more, and a note composer. Notes live in the feed, so they are filtered and searched with the rest.
 // Items arrive ready to show (no data access here); adding a note goes through the server action given.
 export type ActivityItem = {
@@ -23,13 +23,11 @@ export default function ActivityList({ items, kinds, noteAction, recordId, empty
   items: ActivityItem[]; kinds: ActivityKind[]; noteAction?: (formData: FormData) => void | Promise<void>; recordId?: string; empty?: string;
 }) {
   const [kind, setKind] = useState("all");
-  const [q, setQ] = useState("");
   const [shown, setShown] = useState(STEP);
   const [expanded, setExpanded] = useState(false);
   const [composing, setComposing] = useState(false);
   const count = (k: string) => (k === "all" ? items.length : items.filter((i) => i.kind === k).length);
-  const needle = q.trim().toLowerCase();
-  const list = items.filter((i) => (kind === "all" || i.kind === kind) && (!needle || `${i.title} ${i.detail} ${i.meta ?? ""} ${i.label ?? ""}`.toLowerCase().includes(needle)));
+  const list = items.filter((i) => kind === "all" || i.kind === kind);
   const visible = list.slice(0, shown);
   const hidden = Math.max(0, list.length - shown);
   let lastMonth = "";
@@ -44,11 +42,6 @@ export default function ActivityList({ items, kinds, noteAction, recordId, empty
         ))}
       </div>
       <div className="act-tools">
-        <div className="search act-search">
-          <Icon name="search" size={16} />
-          <label className="sr-only" htmlFor="act-q">Search activities</label>
-          <input id="act-q" type="search" value={q} onChange={(e) => { setQ(e.target.value); setShown(STEP); }} placeholder="Search activities" />
-        </div>
         <div className="row">
           {noteAction && <button type="button" className="btn btn-secondary btn-sm" aria-expanded={composing} onClick={() => setComposing((c) => !c)}>+ Note</button>}
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpanded((e) => !e)}>{expanded ? "Collapse all" : "Expand all"}</button>
@@ -62,7 +55,7 @@ export default function ActivityList({ items, kinds, noteAction, recordId, empty
           <div className="row"><SubmitButton small pendingText="Saving...">Save note</SubmitButton><button type="button" className="btn btn-ghost btn-sm" onClick={() => setComposing(false)}>Cancel</button></div>
         </form>
       )}
-      {visible.length === 0 ? <p className="muted">{needle || kind !== "all" ? "Nothing matches." : empty ?? "Nothing yet."}</p> : (
+      {visible.length === 0 ? <p className="muted">{kind !== "all" ? "Nothing here yet." : empty ?? "Nothing yet."}</p> : (
         <div className="rec-activity">
           {visible.map((t) => {
             const m = monthOf(t.at);

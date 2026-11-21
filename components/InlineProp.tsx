@@ -9,7 +9,7 @@ import Icon from "./Icon";
 // change to one property never touches the others. Some properties need a second step (a reveal): choosing "Confirmed" asks for a
 // date and time first, and the status can carry a "Notify customer" box; those use Save and Cancel instead of saving on their own.
 export type InlineControl = {
-  name: string; kind: "text" | "select" | "date" | "email" | "checkbox"; value: string;
+  name: string; kind: "text" | "select" | "date" | "email" | "checkbox" | "textarea"; value: string;
   options?: { value: string; label: string }[]; label?: string; placeholder?: string; required?: boolean; maxLength?: number;
   reveal?: boolean; // shown only when the revealWhen value is picked
 };
@@ -29,7 +29,7 @@ export default function InlineProp({ label, display, action, hidden, controls, r
   const submit = () => { if (sending) return; if (form.current && !form.current.checkValidity()) { form.current.reportValidity(); return; } setSending(true); form.current?.requestSubmit(); };
   const set = (name: string, v: string) => setValues((x) => ({ ...x, [name]: v }));
   const revealed = !!revealWhen && values[revealWhen.control] === revealWhen.value;
-  const needsSave = alwaysConfirm || revealed || controls.some((c) => c.kind === "checkbox");
+  const needsSave = alwaysConfirm || revealed || controls.some((c) => c.kind === "checkbox" || c.kind === "textarea");
   const visible = controls.filter((c) => !c.reveal || revealed);
   const cancel = () => { setValues(Object.fromEntries(controls.map((c) => [c.name, c.value]))); setEditing(false); };
 
@@ -56,6 +56,8 @@ export default function InlineProp({ label, display, action, hidden, controls, r
             onBlur={() => { if (!needsSave && !sending) setTimeout(() => { if (!sending && form.current && !form.current.contains(document.activeElement)) cancel(); }, 150); }}>
             {c.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+        ) : c.kind === "textarea" ? (
+          <textarea key={c.name} name={c.name} rows={5} value={values[c.name]} autoFocus required={c.required} maxLength={c.maxLength} placeholder={c.placeholder} aria-label={c.label ?? label} onChange={(e) => set(c.name, e.target.value)} />
         ) : c.kind === "checkbox" ? (
           <label key={c.name} className="check"><input type="checkbox" name={c.name} checked={values[c.name] === "on"} onChange={(e) => set(c.name, e.target.checked ? "on" : "")} /> {c.label}</label>
         ) : (

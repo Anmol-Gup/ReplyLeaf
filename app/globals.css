@@ -627,7 +627,7 @@ th.check-col, td.check-col { width: 36px; padding-right: 0; }
 .act-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
 .act-tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 10px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; }
 .act-tab[aria-selected="true"] { color: var(--brand-text); border-bottom-color: var(--brand); }
-.act-tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.act-tools { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .search.act-search { flex: 1 1 220px; max-width: 320px; margin: 0; }
 .act-compose { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); margin-bottom: 12px; }
 .rec-detail { white-space: pre-wrap; }

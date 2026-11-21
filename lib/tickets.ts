@@ -27,6 +27,7 @@ export const ticketFormSchema = z.object({
   priority: z.enum(["low", "normal", "high"]).optional(), // left out = unchanged
   category: z.string().max(60).optional(),                 // left out = unchanged; "" clears it
   assigned_user_id: z.union([z.literal(""), z.string().uuid()]).optional(), // left out = unchanged; "" = unassigned
+  description: z.string().max(2000).transform((v) => v.trim()).pipe(z.string().min(1)).optional(), // left out = unchanged
   message: z.string().max(1000), // optional line for the customer, sent only when "Notify customer" is ticked
 });
 

@@ -122,8 +122,9 @@ export default async function TicketDetail({ params, searchParams }: { params: P
           <section className="card">
             <h2 className="rec-title">Description</h2>
             <div className="rec-body">
-              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{t.description}</p>
-              {t.reference_info && <div className="rec-prop" style={{ marginTop: 12 }}><small>Reference given</small><span>{t.reference_info}</span></div>}
+              <InlineProp label="What happened" action={updateTicket} hidden={hidden} alwaysConfirm display={<span style={{ whiteSpace: "pre-wrap" }}>{t.description}</span>}
+                controls={[{ name: "description", kind: "textarea", value: t.description as string, required: true, maxLength: 2000 }]} />
+              {t.reference_info && <div className="rec-prop"><small>Reference given</small><span>{t.reference_info}</span></div>}
             </div>
           </section>
           <section className="card">
