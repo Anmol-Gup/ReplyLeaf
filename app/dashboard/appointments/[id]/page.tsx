@@ -1,3 +1,4 @@
+import CustomerCard from "../../../../components/CustomerCard";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import SubmitButton from "../../../../components/SubmitButton";
 import Link from "next/link";
@@ -20,6 +21,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   const { data: a } = await db.from("appointments").select("*").eq("id", id).maybeSingle();
   if (!a) notFound(); // also what another business's id looks like: RLS returns nothing
 
+  const { data: contact } = await db.from("contacts").select("id, name, phone, email, status").eq("id", a.contact_id).maybeSingle();
   const chatEmail = (await emailsByContact(db, [a.contact_id])).get(a.contact_id) ?? null; // an email the customer gave in chat
   const status = a.status as AppointmentStatus;
   const prefer = whenText(a.preferred_date, a.preferred_time);
@@ -43,6 +45,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
 
       <div className="dcols">
         <div className="rec-col">
+      <CustomerCard contact={contact} conversationId={a.conversation_id} fallback={{ name: a.customer_name, phone: a.customer_phone }} />
       <Card title="Request" actions={<Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>}>
         <dl className="handoff-facts">
           <div><dt>For</dt><dd>{a.purpose}</dd></div>

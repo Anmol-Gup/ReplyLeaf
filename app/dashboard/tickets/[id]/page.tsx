@@ -1,3 +1,4 @@
+import CustomerCard from "../../../../components/CustomerCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ConfirmForm from "../../../../components/ConfirmForm";
@@ -34,7 +35,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
   if (!t) notFound(); // also what another business's id looks like: RLS returns nothing
 
   const [{ data: contact }, notesRes, eventsRes, { data: biz }, team] = await Promise.all([
-    db.from("contacts").select("id, email").eq("id", t.contact_id).maybeSingle(),
+    db.from("contacts").select("id, name, phone, email, status").eq("id", t.contact_id).maybeSingle(),
     db.from("ticket_notes").select("id, author_label, body, created_at").eq("ticket_id", id).order("created_at", { ascending: false }).limit(200),
     db.from("ticket_events").select("id, kind, detail, actor_label, created_at").eq("ticket_id", id).order("created_at", { ascending: false }).limit(200),
     db.from("clients").select("workflow_settings").eq("id", clientId).maybeSingle(),
@@ -87,6 +88,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
 
       <div className="dcols">
         <div className="rec-col">
+      <CustomerCard contact={contact} conversationId={t.conversation_id} fallback={{ name: t.customer_name, phone: t.customer_phone }} />
       <Card title="The problem" actions={<span className="row">{priority === "high" && <Badge tone="danger">High priority</Badge>}<Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge></span>}>
         <dl className="handoff-facts">
           <div><dt>What happened</dt><dd>{t.description}</dd></div>

@@ -1,3 +1,4 @@
+import CustomerCard from "../../../../components/CustomerCard";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import SubmitButton from "../../../../components/SubmitButton";
 import Link from "next/link";
@@ -21,7 +22,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
 
   const [{ data: reqs }, { data: contact }] = await Promise.all([
     db.from("lead_requirements").select("requirement_key, requirement_value").eq("lead_id", id).order("created_at"),
-    db.from("contacts").select("id, name, email").eq("id", l.contact_id).maybeSingle(),
+    db.from("contacts").select("id, name, phone, email, status").eq("id", l.contact_id).maybeSingle(),
   ]);
   const emailOf = (await emailsByContact(db, [l.contact_id])).get(l.contact_id) ?? contact?.email ?? null;
   const status = l.status as LeadStatus;
@@ -38,6 +39,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
 
       <div className="dcols">
         <div className="rec-col">
+      <CustomerCard contact={contact} conversationId={l.conversation_id} fallback={{ name: l.customer_name, phone: l.customer_phone }} />
       <Card title={l.project_type} actions={<Badge tone={LEAD_TONES[status]}>{LEAD_LABELS[status]}</Badge>}>
         <dl className="handoff-facts">
           <div><dt>AI summary</dt><dd>{l.ai_summary || "-"}</dd></div>
