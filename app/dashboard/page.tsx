@@ -82,11 +82,11 @@ export default async function Overview() {
       </Card>
 
       <div className="metric-grid">
-        <Stat href={overviewLinks.handoffs} value={showCount(handoffs)} label="Human handoffs" />
-        <Stat href={overviewLinks.appointments} value={showCount(appointments)} label="Appointments to confirm" />
+        <Stat href={overviewLinks.handoffs} value={showCount(handoffs)} label="Human handoffs" alert={(handoffs ?? 0) > 0 ? "danger" : undefined} />
+        <Stat href={overviewLinks.appointments} value={showCount(appointments)} label="Appointments to confirm" alert={(appointments ?? 0) > 0 ? "warn" : undefined} />
         <Stat href={overviewLinks.tickets} value={showCount(tickets)} label="Open tickets" />
         <Stat href={overviewLinks.newLeads} value={showCount(newLeads)} label="New leads" />
-        <Stat href={overviewLinks.followUps} value={showCount(followUps)} label="Follow-ups due" />
+        <Stat href={overviewLinks.followUps} value={showCount(followUps)} label="Follow-ups due" alert={(followUps ?? 0) > 0 ? "warn" : undefined} />
         <Stat href={overviewLinks.contacts} value={showCount(contacts)} label="Total contacts" />
       </div>
 

@@ -62,9 +62,10 @@ export const Skeleton = ({ w = "100%", h = 16, r }: { w?: number | string; h?: n
   <span className="skeleton" style={{ width: w, height: h, borderRadius: r }} aria-hidden="true" />
 );
 
-export const Stat = ({ value, label, href }: { value: React.ReactNode; label: string; href?: string }) => {
+export const Stat = ({ value, label, href, alert }: { value: React.ReactNode; label: string; href?: string; alert?: "danger" | "warn" }) => {
   const body = (<><b>{value}</b><span>{label}</span></>);
-  return href ? <Link className="stat" href={href}>{body}</Link> : <div className="stat">{body}</div>;
+  const cls = `stat${alert ? ` stat-alert-${alert}` : ""}`; // a tile that needs action gets a coloured edge
+  return href ? <Link className={cls} href={href}>{body}</Link> : <div className={cls}>{body}</div>;
 };
 
 // Client component (it updates the list without reloading the page): see SearchBox.tsx.

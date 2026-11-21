@@ -550,3 +550,14 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 @media (max-width: 640px) { .drawer { width: 100vw; } .drawer-filters .pill, .drawer-head .btn { min-height: 40px; } }
 @media (prefers-reduced-motion: reduce) { .drawer, .drawer-overlay { transition: none; } }
 .drawer-filters { flex-wrap: wrap; overflow-x: visible; } /* all five filters visible, wrapping onto a second line instead of a side scrollbar */
+
+/* ---- overview polish */
+.content:has(.metric-grid) { max-width: none; }
+.overview-grid .card-head { flex-wrap: nowrap; align-items: center; }
+.overview-grid .card-head h2 { min-width: 0; }
+.overview-grid .card-head .btn { flex: none; white-space: nowrap; }
+.overview-grid { align-items: stretch; }
+ul.latest a { text-decoration: none; }
+ul.latest a:hover { text-decoration: underline; }
+.metric-grid .stat-alert-danger { border-left: 4px solid var(--danger); }
+.metric-grid .stat-alert-warn { border-left: 4px solid #d99a1d; }
