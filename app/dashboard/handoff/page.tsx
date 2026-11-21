@@ -121,9 +121,9 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
                   </span>
                   <div className="row" style={{ flexWrap: "nowrap", marginLeft: "auto" }}>
                     {waiting && (
-                      <form action={queueTakeOver}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} /><SubmitButton small pendingText="Taking over...">Take over</SubmitButton></form>
+                      <form action={queueTakeOver}><input type="hidden" name="id" value={h.id} /><input type="hidden" name="back" value={here} /><SubmitButton small variant="secondary" pendingText="Taking over...">Take over</SubmitButton></form>
                     )}
-                    <Link className={`btn btn-sm ${!open || waiting ? "btn-secondary" : "btn-primary"}`} href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
+                    <Link className="btn btn-sm btn-primary" href={`/dashboard/conversations/${h.conversation_id}`}>Open conversation</Link>
                   </div>
                 </div>
               </li>
