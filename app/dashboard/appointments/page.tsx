@@ -1,5 +1,6 @@
 import Link from "next/link";
 import MultiSelectFilter from "../../../components/MultiSelectFilter";
+import BulkDelete from "../../../components/BulkDelete";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -8,6 +9,7 @@ import { effectiveSelection } from "../../../lib/filters";
 import { APPOINTMENT_STATUSES, isUpcoming, OWNER_STATUSES, overview, STATUS_LABELS, STATUS_TONES, whenText, type AppointmentStatus } from "../../../lib/appointments";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
+import { bulkDeleteAppointments } from "./actions";
 
 type Row = {
   id: string; contact_id: string; customer_name: string | null; customer_phone: string; purpose: string; customer_email: string | null; preferred_date: string | null; preferred_time: string | null;
@@ -53,12 +55,14 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
         <SearchBox q={q} placeholder="Search by name, phone, purpose or date" keep={{ status: keepStatus, upcoming: onlyUpcoming ? "1" : undefined }} />
       </div>
       {error ? <ErrorState>Your appointments could not be loaded.</ErrorState> : (
+        <BulkDelete action={bulkDeleteAppointments} noun="appointment">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Customer</th><th>For</th><th>Preferred</th><th>Status</th><th>Requested</th><th></th></tr></thead>
+            <thead><tr><th className="check-col"><input type="checkbox" data-all aria-label="Select all" /></th><th>Customer</th><th>For</th><th>Preferred</th><th>Status</th><th>Requested</th><th></th></tr></thead>
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
+                    <td className="check-col"><input type="checkbox" name="ids" value={r.id} aria-label="Select row" /></td>
                   <td><Link href={`/dashboard/appointments/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span></td>
                   <td>{r.purpose}</td>
                   <td>{whenText(r.scheduled_date ?? r.preferred_date, r.scheduled_time ?? r.preferred_time) || "-"}</td>
@@ -68,7 +72,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
                 </tr>
               ))}
               {paged.items.length === 0 && (
-                <tr><td colSpan={6}>
+                <tr><td colSpan={7}>
                   {q || explicit || onlyUpcoming
                     ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/appointments", label: "Show requests that need action" }}>No appointments match this view.</EmptyState>
                     : <EmptyState icon="calendar" title="No requests waiting">When a customer asks to book and no booking link is set, the assistant collects the details and the request appears here.</EmptyState>}
@@ -77,6 +81,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
             </tbody>
           </table>
         </div>
+        </BulkDelete>
       )}
       {!error && <Pagination p={paged} label="Appointments" hrefFor={href} />}
     </>

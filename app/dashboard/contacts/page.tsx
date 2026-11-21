@@ -1,5 +1,6 @@
 import Link from "next/link";
 import MultiSelectFilter from "../../../components/MultiSelectFilter";
+import BulkDelete from "../../../components/BulkDelete";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -7,6 +8,7 @@ import { fmtDay, matches } from "../../../lib/dashboard";
 import { effectiveSelection } from "../../../lib/filters";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import Notice from "../Notice";
+import { bulkDeleteContacts } from "../actions";
 
 const STATUS_TONE: Record<string, Tone> = { new: "muted", lead: "brand", customer: "success", lost: "danger" };
 const CONTACT_STATUSES = ["new", "lead", "customer", "lost"] as const;
@@ -35,14 +37,16 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
         <SearchBox q={q} placeholder="Search by name, phone, email, status or tag" keep={{ status: explicit ? statuses : [] }} />
       </div>
       {error ? <ErrorState>Your contacts could not be loaded.</ErrorState> : (
+        <BulkDelete action={bulkDeleteContacts} noun="contact">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Tags</th><th>Added</th><th></th></tr></thead>
+            <thead><tr><th className="check-col"><input type="checkbox" data-all aria-label="Select all" /></th><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Tags</th><th>Added</th><th></th></tr></thead>
             <tbody>
               {rows.map((c) => {
                 const pending = Object.keys((c.suggested as object) ?? {}).length;
                 return (
                   <tr key={c.id}>
+                    <td className="check-col"><input type="checkbox" name="ids" value={c.id} aria-label="Select row" /></td>
                     <td>
                       <Link href={`/dashboard/contacts/${c.id}`}>{c.name || "(no name)"}</Link>
                       {pending > 0 && <> <Badge tone="warn">{pending} suggestion{pending > 1 ? "s" : ""}</Badge></>}
@@ -57,7 +61,7 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={7}>
+                <tr><td colSpan={8}>
                   {q || explicit
                     ? <EmptyState icon="search" title="No matching contacts" action={{ href: "/dashboard/contacts", label: "Clear search" }}>Nothing matches &quot;{q}&quot;.</EmptyState>
                     : <EmptyState icon="users" title="No contacts yet">People are added automatically when they message you.</EmptyState>}
@@ -66,6 +70,7 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
             </tbody>
           </table>
         </div>
+        </BulkDelete>
       )}
       {!error && <Pagination p={paged} label="Contacts" hrefFor={(n) => `/dashboard/contacts${buildQuery({ status: explicit ? statuses : [], q, page: n > 1 ? n : null })}`} />}
     </>

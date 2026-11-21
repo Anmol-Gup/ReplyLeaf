@@ -1,5 +1,6 @@
 import Link from "next/link";
 import MultiSelectFilter from "../../../components/MultiSelectFilter";
+import BulkDelete from "../../../components/BulkDelete";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -11,6 +12,7 @@ import { buildQuery, paginate } from "../../../lib/paginate";
 import { todayInZone } from "../../../lib/workflow";
 import { parseWorkflowSettings } from "../../../lib/workflow-settings";
 import Notice from "../Notice";
+import { bulkDeleteLeads } from "./actions";
 
 type Row = {
   id: string; contact_id: string; customer_name: string | null; customer_phone: string; project_type: string; description: string | null; budget: string | null; timeline: string | null;
@@ -59,12 +61,14 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
         {onlyDue && <Link className="tab active" href={`/dashboard/leads${buildQuery({ status: explicit ? statuses : [], q })}`}>Follow-ups due ×</Link>}
       </div>
       {error ? <ErrorState>Your leads could not be loaded.</ErrorState> : (
+        <BulkDelete action={bulkDeleteLeads} noun="lead">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Customer</th><th>Service</th><th>Requirements</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th><th></th></tr></thead>
+            <thead><tr><th className="check-col"><input type="checkbox" data-all aria-label="Select all" /></th><th>Customer</th><th>Service</th><th>Requirements</th><th>Budget</th><th>Timeline</th><th>Status</th><th>Follow up</th><th>Received</th><th></th></tr></thead>
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
+                    <td className="check-col"><input type="checkbox" name="ids" value={r.id} aria-label="Select row" /></td>
                   <td><Link href={`/dashboard/leads/${r.id}`}>{r.customer_name || "(no name)"}</Link><br /><span className="muted">+{r.customer_phone}</span></td>
                   <td className="col-service">
                     <b>{clip(r.project_type, 60)}</b>
@@ -84,7 +88,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
                 </tr>
               ))}
               {paged.items.length === 0 && (
-                <tr><td colSpan={9}>
+                <tr><td colSpan={10}>
                   {q || explicit || onlyDue
                     ? <EmptyState icon="search" title="No matching leads" action={{ href: "/dashboard/leads", label: "Show all leads" }}>Nothing matches this view.</EmptyState>
                     : <EmptyState icon="users" title="No leads yet">When a customer describes a project or service they need, the assistant collects the details and the lead appears here.</EmptyState>}
@@ -93,6 +97,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
             </tbody>
           </table>
         </div>
+        </BulkDelete>
       )}
       {!error && <Pagination p={paged} label="Leads" hrefFor={(n) => `/dashboard/leads${buildQuery({ status: explicit ? statuses : [], due: onlyDue ? "1" : undefined, q, page: n > 1 ? n : null })}`} />}
     </>

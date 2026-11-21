@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePaidAccess } from "../../../lib/billing/gate";
+import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
 import { appointmentUpdateSchema, scheduleNotice, validateSchedule } from "../../../lib/appointments";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
@@ -57,6 +58,17 @@ export async function deleteAppointment(formData: FormData) {
   const id = z.string().uuid().safeParse(formData.get("id"));
   if (!id.success) return redirect("/dashboard/appointments?notice=invalid");
   await supabaseAdmin().from("appointments").delete().eq("id", id.data).eq("client_id", clientId);
+  revalidatePath("/dashboard/appointments");
+  revalidatePath("/dashboard"); // the Overview counts change too
+  redirect("/dashboard/appointments?notice=record_deleted");
+}
+
+// Delete several appointments at once (the ones ticked in the list). Only this business's rows can match.
+export async function bulkDeleteAppointments(formData: FormData) {
+  const { clientId } = await requireClient();
+  const ids = parseIds(formData.getAll("ids"));
+  if (ids.length === 0) return redirect("/dashboard/appointments?notice=invalid");
+  await supabaseAdmin().from("appointments").delete().in("id", ids).eq("client_id", clientId);
   revalidatePath("/dashboard/appointments");
   revalidatePath("/dashboard"); // the Overview counts change too
   redirect("/dashboard/appointments?notice=record_deleted");

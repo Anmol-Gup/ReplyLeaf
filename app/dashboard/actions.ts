@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { parseIds } from "../../lib/bulk";
 import { clearSessionCookies, requireClient } from "../../lib/auth/session";
 import { requirePaidAccess } from "../../lib/billing/gate";
 import { conversationActions, conversationStateOf, type OpenHandoff } from "../../lib/conversation-state";
@@ -166,6 +167,16 @@ export async function deleteContact(formData: FormData) {
   const id = uuid.parse(formData.get("id"));
   if (formData.get("confirm") !== "yes") return flash(`/dashboard/contacts/${id}`, "invalid");
   await deleteContactData(clientId, { contactId: id });
+  revalidatePath("/dashboard"); // the Overview changes too
+  flash("/dashboard/contacts", "deleted");
+}
+
+// Delete several contacts and their messages at once (the ones ticked in the list), each through the same erasure as the single delete.
+export async function bulkDeleteContacts(formData: FormData) {
+  const { clientId } = await requireClient();
+  const ids = parseIds(formData.getAll("ids"));
+  if (ids.length === 0) return flash("/dashboard/contacts", "invalid");
+  for (const id of ids) await deleteContactData(clientId, { contactId: id });
   revalidatePath("/dashboard"); // the Overview changes too
   flash("/dashboard/contacts", "deleted");
 }

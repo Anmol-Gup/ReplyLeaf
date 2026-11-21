@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePaidAccess } from "../../../lib/billing/gate";
+import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
 import { notifyCustomerDetailed } from "../../../lib/appointment-notify";
 import { deliveryNotice } from "../../../lib/appointments";
@@ -117,6 +118,17 @@ export async function deleteTicket(formData: FormData) {
   const id = formData.get("id");
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return redirect("/dashboard/tickets?notice=invalid");
   await supabaseAdmin().from("tickets").delete().eq("id", id).eq("client_id", clientId);
+  revalidatePath("/dashboard/tickets");
+  revalidatePath("/dashboard"); // the Overview counts change too
+  redirect("/dashboard/tickets?notice=record_deleted");
+}
+
+// Delete several tickets at once (the ones ticked in the list). Only this business's rows can match.
+export async function bulkDeleteTickets(formData: FormData) {
+  const { clientId } = await requireClient();
+  const ids = parseIds(formData.getAll("ids"));
+  if (ids.length === 0) return redirect("/dashboard/tickets?notice=invalid");
+  await supabaseAdmin().from("tickets").delete().in("id", ids).eq("client_id", clientId);
   revalidatePath("/dashboard/tickets");
   revalidatePath("/dashboard"); // the Overview counts change too
   redirect("/dashboard/tickets?notice=record_deleted");

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
 import { leadDetailsSchema, leadFormSchema, parseRequirementLines } from "../../../lib/leads";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
@@ -66,6 +67,17 @@ export async function deleteLead(formData: FormData) {
   const id = z.string().uuid().safeParse(formData.get("id"));
   if (!id.success) return redirect("/dashboard/leads?notice=invalid");
   await supabaseAdmin().from("leads").delete().eq("id", id.data).eq("client_id", clientId);
+  revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard"); // the Overview counts change too
+  redirect("/dashboard/leads?notice=record_deleted");
+}
+
+// Delete several leads at once (the ones ticked in the list). Only this business's rows can match.
+export async function bulkDeleteLeads(formData: FormData) {
+  const { clientId } = await requireClient();
+  const ids = parseIds(formData.getAll("ids"));
+  if (ids.length === 0) return redirect("/dashboard/leads?notice=invalid");
+  await supabaseAdmin().from("leads").delete().in("id", ids).eq("client_id", clientId);
   revalidatePath("/dashboard/leads");
   revalidatePath("/dashboard"); // the Overview counts change too
   redirect("/dashboard/leads?notice=record_deleted");

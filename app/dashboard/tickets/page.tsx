@@ -1,5 +1,6 @@
 import Link from "next/link";
 import MultiSelectFilter from "../../../components/MultiSelectFilter";
+import BulkDelete from "../../../components/BulkDelete";
 import Pagination from "../../../components/Pagination";
 import { Badge, EmptyState, ErrorState, PageHeader, SearchBox, Stat } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -9,6 +10,7 @@ import { effectiveSelection } from "../../../lib/filters";
 import { buildQuery, paginate } from "../../../lib/paginate";
 import { PRIORITIES, PRIORITY_LABELS, priorityOf, TICKET_LABELS, TICKET_STATUSES, TICKET_TONES, ticketOverview, ticketRef, type TicketStatus } from "../../../lib/tickets";
 import Notice from "../Notice";
+import { bulkDeleteTickets } from "./actions";
 
 type Row = {
   id: string; customer_name: string | null; customer_phone: string; subject: string; category: string | null; priority: string;
@@ -59,12 +61,14 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
         <SearchBox q={q} placeholder="Search by name, phone, issue, category, reference or assignee" keep={{ status: explicit ? statuses : [], priority: priorityExplicit ? priorities : [] }} />
       </div>
       {error ? <ErrorState>Your tickets could not be loaded.</ErrorState> : (
+        <BulkDelete action={bulkDeleteTickets} noun="ticket">
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Ref</th><th>Customer</th><th>Issue</th><th>Priority</th><th>Status</th><th>Assigned to</th><th>Raised</th><th></th></tr></thead>
+            <thead><tr><th className="check-col"><input type="checkbox" data-all aria-label="Select all" /></th><th>Ref</th><th>Customer</th><th>Issue</th><th>Priority</th><th>Status</th><th>Assigned to</th><th>Raised</th><th></th></tr></thead>
             <tbody>
               {paged.items.map((r) => (
                 <tr key={r.id}>
+                    <td className="check-col"><input type="checkbox" name="ids" value={r.id} aria-label="Select row" /></td>
                   <td><Link href={`/dashboard/tickets/${r.id}`}>{ticketRef(r.id)}</Link></td>
                   <td>{r.customer_name || "(no name)"}<br /><span className="muted">+{r.customer_phone}</span></td>
                   <td>{clip(r.subject, 70)}{r.category && <><br /><span className="muted">{r.category}</span></>}</td>
@@ -76,7 +80,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
                 </tr>
               ))}
               {paged.items.length === 0 && (
-                <tr><td colSpan={8}>
+                <tr><td colSpan={9}>
                   {q || explicit || priorityExplicit
                     ? <EmptyState icon="search" title="No matching tickets" action={{ href: "/dashboard/tickets", label: "Show all tickets" }}>Nothing matches this view.</EmptyState>
                     : <EmptyState icon="shield" title="No tickets yet">When a customer reports a problem, the assistant collects the details and the ticket appears here.</EmptyState>}
@@ -85,6 +89,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
             </tbody>
           </table>
         </div>
+        </BulkDelete>
       )}
       {!error && <Pagination p={paged} label="Tickets" hrefFor={(n) => `/dashboard/tickets${buildQuery({ status: explicit ? statuses : [], priority: priorityExplicit ? priorities : [], q, page: n > 1 ? n : null })}`} />}
     </>

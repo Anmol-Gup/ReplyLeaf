@@ -562,3 +562,8 @@ ul.latest a:hover { text-decoration: underline; }
 .metric-grid .stat-alert-danger { border-left: 4px solid var(--danger); }
 .metric-grid .stat-alert-warn { border-left: 4px solid #d99a1d; }
 .conv-items.pending { opacity: .6; transition: opacity .1s; }
+
+/* ---- bulk select in lists */
+th.check-col, td.check-col { width: 36px; padding-right: 0; }
+.check-col input { width: 18px; height: 18px; accent-color: var(--brand); cursor: pointer; }
+.bulk-bar { display: flex; align-items: center; gap: 14px; padding: 8px 14px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--brand-soft); }
