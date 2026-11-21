@@ -457,10 +457,10 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .handoff-table tr.row-waiting td { background: var(--danger-soft); }
 .who-cell { display: flex; align-items: center; gap: 10px; }
 .who-cell > div { display: flex; flex-direction: column; }
-.col-summary { min-width: 240px; max-width: 340px; }
+.col-summary { min-width: 200px; max-width: 300px; }
 .col-summary > span { display: block; }
 .reason-chip { display: inline-block !important; margin-bottom: 4px; padding: 2px 9px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: 0.78rem; font-weight: 600; }
-.col-last { min-width: 160px; max-width: 220px; }
+.col-last { min-width: 130px; max-width: 180px; }
 .col-last > span { display: block; }
 .since { white-space: nowrap; }
 .since-hot { color: var(--danger); font-weight: 600; }
@@ -471,3 +471,4 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .menu-panel { position: absolute; right: 0; top: 100%; z-index: 30; width: 240px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 10px 30px rgba(0,0,0,.15); }
 .handoff-table .table-wrap, .table-wrap.handoff-table { overflow-x: auto; overflow-y: visible; }
 .table-wrap.handoff-table:has(.menu[open]) { padding-bottom: 190px; } /* room for the open menu inside the scrolling wrapper */
+.handoff-table td:last-child { white-space: nowrap; } .handoff-table td:nth-child(5) { overflow-wrap: anywhere; max-width: 170px; }
