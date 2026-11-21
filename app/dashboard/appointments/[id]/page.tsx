@@ -1,3 +1,5 @@
+import ConfirmForm from "../../../../components/ConfirmForm";
+import SubmitButton from "../../../../components/SubmitButton";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AppointmentEditForm from "../../../../components/AppointmentEditForm";
@@ -7,7 +9,7 @@ import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import Notice from "../../Notice";
-import { updateAppointment } from "../actions";
+import { deleteAppointment, updateAppointment } from "../actions";
 
 // One appointment: what the customer asked for, a way to contact them, and a small form to record the outcome. The owner talks to the
 // customer directly; nothing here is sent to them.
@@ -55,6 +57,13 @@ export default async function AppointmentDetail({ params, searchParams }: { para
             a={{ id: a.id, status, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time, preferred_date: a.preferred_date, preferred_time: a.preferred_time, customer_email: a.customer_email, internal_notes: a.internal_notes }} />
         </Card>
       </div>
+
+      <Card title="Delete this appointment" description="Permanently deletes this appointment. The customer's contact and conversation are kept. It cannot be undone.">
+        <ConfirmForm action={deleteAppointment} message="Delete this appointment permanently? This cannot be undone.">
+          <input type="hidden" name="id" value={a.id} />
+          <SubmitButton variant="danger" pendingText="Deleting...">Delete appointment</SubmitButton>
+        </ConfirmForm>
+      </Card>
     </>
   );
 }

@@ -50,3 +50,14 @@ export async function updateAppointment(formData: FormData) {
   revalidatePath(detail(v.id));
   return go(v.id, "appt_done");
 }
+
+// Permanent delete of one appointment request. The contact and the conversation are not touched.
+export async function deleteAppointment(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = z.string().uuid().safeParse(formData.get("id"));
+  if (!id.success) return redirect("/dashboard/appointments?notice=invalid");
+  await supabaseAdmin().from("appointments").delete().eq("id", id.data).eq("client_id", clientId);
+  revalidatePath("/dashboard/appointments");
+  revalidatePath("/dashboard"); // the Overview counts change too
+  redirect("/dashboard/appointments?notice=record_deleted");
+}

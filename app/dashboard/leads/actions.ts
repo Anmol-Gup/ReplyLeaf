@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { requireClient } from "../../../lib/auth/session";
 import { leadDetailsSchema, leadFormSchema, parseRequirementLines } from "../../../lib/leads";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
@@ -57,4 +58,15 @@ export async function updateLeadDetails(formData: FormData) {
   revalidatePath("/dashboard/leads");
   revalidatePath(`/dashboard/leads/${v.id}`);
   return redirect(`/dashboard/leads/${v.id}?notice=lead_saved`);
+}
+
+// Permanent delete of one lead (its requirements and notes go with it). The contact and the conversation are not touched.
+export async function deleteLead(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = z.string().uuid().safeParse(formData.get("id"));
+  if (!id.success) return redirect("/dashboard/leads?notice=invalid");
+  await supabaseAdmin().from("leads").delete().eq("id", id.data).eq("client_id", clientId);
+  revalidatePath("/dashboard/leads");
+  revalidatePath("/dashboard"); // the Overview counts change too
+  redirect("/dashboard/leads?notice=record_deleted");
 }

@@ -8,6 +8,7 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   take_over_first: { kind: "warn", text: "Take over the conversation before replying, so the assistant stays silent." },
   send_failed: { kind: "error", text: "WhatsApp rejected the message. Nothing was sent. The admin has the details." },
   invalid: { kind: "error", text: "Some values were invalid. Please check and try again." },
+  record_deleted: { kind: "ok", text: "Deleted." },
   deleted: { kind: "ok", text: "The contact and all their messages were deleted." },
   published: { kind: "ok", text: "Published. The assistant can use this document now." },
   published_no_vectors: { kind: "warn", text: "Published, but the semantic-search index could not be built right now. Keyword search works; use Re-index later to add it." },

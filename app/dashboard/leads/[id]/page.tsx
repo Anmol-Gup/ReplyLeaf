@@ -1,3 +1,5 @@
+import ConfirmForm from "../../../../components/ConfirmForm";
+import SubmitButton from "../../../../components/SubmitButton";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ChangeAwareSubmit from "../../../../components/ChangeAwareSubmit";
@@ -8,7 +10,7 @@ import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, projectBrief, requirementLines, type LeadStatus } from "../../../../lib/leads";
 import Notice from "../../Notice";
-import { updateLeadDetails } from "../actions";
+import { deleteLead, updateLeadDetails } from "../actions";
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
@@ -71,6 +73,13 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       <Card title="Project brief" description="A plain-text summary you can paste into a proposal or send to a teammate. It does not include your internal notes."
         actions={<span className="row"><CopyButton text={brief} label="Copy brief" /><a className="btn btn-secondary btn-sm" href={`/dashboard/leads/${l.id}/brief`}>Download .txt</a></span>}>
         <pre className="brief">{brief}</pre>
+      </Card>
+
+      <Card title="Delete this lead" description="Permanently deletes this lead. The customer's contact and conversation are kept. It cannot be undone.">
+        <ConfirmForm action={deleteLead} message="Delete this lead permanently? This cannot be undone.">
+          <input type="hidden" name="id" value={l.id} />
+          <SubmitButton variant="danger" pendingText="Deleting...">Delete lead</SubmitButton>
+        </ConfirmForm>
       </Card>
     </>
   );

@@ -110,3 +110,14 @@ export async function addTicketNote(formData: FormData) {
   revalidatePath(detail(id));
   return go(id, "tkt_note_added");
 }
+
+// Permanent delete of one ticket, with its notes and activity. The conversation and contact are not touched.
+export async function deleteTicket(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = formData.get("id");
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return redirect("/dashboard/tickets?notice=invalid");
+  await supabaseAdmin().from("tickets").delete().eq("id", id).eq("client_id", clientId);
+  revalidatePath("/dashboard/tickets");
+  revalidatePath("/dashboard"); // the Overview counts change too
+  redirect("/dashboard/tickets?notice=record_deleted");
+}

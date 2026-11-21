@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import ConfirmForm from "../../../../components/ConfirmForm";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { whatsappLink } from "../../../../lib/appointments";
@@ -12,7 +13,7 @@ import {
 } from "../../../../lib/tickets";
 import { parseWorkflowSettings } from "../../../../lib/workflow-settings";
 import Notice from "../../Notice";
-import { addTicketNote, updateTicket } from "../actions";
+import { addTicketNote, deleteTicket, updateTicket } from "../actions";
 
 type Note = { id: string; author_label: string | null; body: string; created_at: string };
 type Event = { id: string; kind: string; detail: Record<string, unknown> | null; actor_label: string | null; created_at: string };
@@ -162,6 +163,13 @@ export default async function TicketDetail({ params, searchParams }: { params: P
             )}
           </>
         )}
+      </Card>
+
+      <Card title="Delete this ticket" description="Permanently deletes this ticket. The customer's contact and conversation are kept. It cannot be undone.">
+        <ConfirmForm action={deleteTicket} message="Delete this ticket permanently? This cannot be undone.">
+          <input type="hidden" name="id" value={t.id} />
+          <SubmitButton variant="danger" pendingText="Deleting...">Delete ticket</SubmitButton>
+        </ConfirmForm>
       </Card>
     </>
   );
