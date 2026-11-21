@@ -11,7 +11,8 @@ import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import Notice from "../../Notice";
-import NotesCard, { type NoteRow } from "../../../../components/NotesCard";
+import ActivityList, { type ActivityItem } from "../../../../components/ActivityList";
+import { shortName } from "../../../../lib/notifications";
 import { addAppointmentNote, deleteAppointment, updateAppointment } from "../actions";
 
 // One appointment: the editable details on the left, what the customer asked for in the middle, the customer on the right. The owner
@@ -24,7 +25,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   if (!a) notFound(); // also what another business's id looks like: RLS returns nothing
 
   const notesRes = await db.from("appointment_notes").select("id, author_label, body, created_at").eq("appointment_id", id).order("created_at", { ascending: false }).limit(200);
-  const notes = (notesRes.error ? [] : notesRes.data ?? []) as NoteRow[]; // a database without migration 0027 simply shows none
+  const noteRows = (notesRes.error ? [] : notesRes.data ?? []) as { id: string; author_label: string | null; body: string; created_at: string }[]; // a database without migration 0027 simply shows none
   const { data: contact } = await db.from("contacts").select("id, name, phone, email, status").eq("id", a.contact_id).maybeSingle();
   const chatEmail = (await emailsByContact(db, [a.contact_id])).get(a.contact_id) ?? null; // an email the customer gave in chat
   const status = a.status as AppointmentStatus;
@@ -35,10 +36,12 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   // Every current value, so changing one property never touches the others.
   const hidden = { id: a.id, status, scheduled_date: (a.scheduled_date as string | null) ?? "", scheduled_time: (a.scheduled_time as string | null) ?? "", customer_email: (a.customer_email as string | null) ?? "" };
   // What the record itself tells us (there is no separate history for appointments).
-  const history: { key: string; icon: IconName; title: string; detail: string; at: string }[] = [
-    ...(a.updated_at && new Date(a.updated_at).getTime() - new Date(a.created_at).getTime() > 2000 ? [{ key: "updated", icon: "check" as IconName, title: `Status: ${STATUS_LABELS[status]}`, detail: agreed ? `Agreed for ${agreed}` : "Last changed", at: a.updated_at as string }] : []),
-    { key: "created", icon: "calendar", title: "Appointment requested", detail: a.purpose as string, at: a.created_at as string },
-  ];
+  const feed: ActivityItem[] = [
+    ...(a.updated_at && new Date(a.updated_at).getTime() - new Date(a.created_at).getTime() > 2000 ? [{ key: "updated", kind: "update", icon: "check" as IconName, title: `Status: ${STATUS_LABELS[status]}`, detail: agreed ? `Agreed for ${agreed}` : "Last changed", at: a.updated_at as string }] : []),
+    { key: "created", kind: "update", icon: "calendar" as IconName, title: "Appointment requested", detail: a.purpose as string, at: a.created_at as string },
+    ...noteRows.map((n): ActivityItem => ({ key: `n-${n.id}`, kind: "note", icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
+    ...(a.internal_notes ? [{ key: "n-earlier", kind: "note", icon: "chat" as IconName, title: "Note", detail: a.internal_notes as string, at: "", meta: "Earlier note (written before notes were dated)" }] : []),
+  ].sort((x, y) => (y.at || "").localeCompare(x.at || ""));
   // The owner's four statuses, plus the record's own if it is an older one (so it is never hidden).
   const options = [...new Set<AppointmentStatus>([...OWNER_STATUSES, status])].map((s) => ({ value: s, label: STATUS_LABELS[s] }));
 
@@ -100,16 +103,10 @@ export default async function AppointmentDetail({ params, searchParams }: { para
               {a.notes && <div className="rec-prop"><small>Customer notes</small><span style={{ whiteSpace: "pre-wrap" }}>{a.notes}</span></div>}
             </div>
           </section>
-          <NotesCard action={addAppointmentNote} id={a.id} notes={notes} earlier={a.internal_notes as string | null} />
           <section className="card">
-            <h2 className="rec-title">Activity</h2>
+            <h2 className="rec-title">Activities</h2>
             <div className="rec-body">
-              {history.map((h) => (
-                <article key={h.key} className="rec-item">
-                  <span className="rec-ico rec-appointment"><Icon name={h.icon} size={16} /></span>
-                  <div className="rec-main"><div className="rec-top"><b>{h.title}</b><span className="muted">{fmt(h.at)}</span></div><p>{h.detail}</p></div>
-                </article>
-              ))}
+              <ActivityList items={feed} noteAction={addAppointmentNote} recordId={a.id} kinds={[{ id: "note", label: "Notes" }, { id: "update", label: "Updates" }]} />
             </div>
           </section>
         </main>

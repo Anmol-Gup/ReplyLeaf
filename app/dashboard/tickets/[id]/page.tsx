@@ -2,8 +2,7 @@ import CustomerCard from "../../../../components/CustomerCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ConfirmForm from "../../../../components/ConfirmForm";
-import NotesCard from "../../../../components/NotesCard";
-import ShowMore from "../../../../components/ShowMore";
+import ActivityList, { type ActivityItem } from "../../../../components/ActivityList";
 import SubmitButton from "../../../../components/SubmitButton";
 import Icon, { type IconName } from "../../../../components/Icon";
 import InlineProp from "../../../../components/InlineProp";
@@ -50,21 +49,17 @@ export default async function TicketDetail({ params, searchParams }: { params: P
   const { data: msgs } = waIds.length ? await db.from("messages").select("wa_message_id, status").in("wa_message_id", waIds) : { data: [] };
   const deliveryOf = new Map((msgs ?? []).map((m) => [m.wa_message_id as string, m.status as string]));
 
-  const EVENT_ICON: Record<string, IconName> = { created: "alert", status: "check", priority: "alert", category: "settings", assigned: "users", note: "chat", notification: "send", resolved: "check", closed: "check" };
-  const renderEvent = (e: Event) => {
-    const d = e.detail ?? {};
-    const outcome = e.kind === "notification" ? notificationOutcome(d, deliveryOf.get(String(d.wa_message_id ?? "")) ?? null) : null;
-    return (
-      <article key={e.id} className="rec-item">
-        <span className="rec-ico rec-lead"><Icon name={EVENT_ICON[e.kind] ?? "info"} size={16} /></span>
-        <div className="rec-main">
-          <div className="rec-top"><b>{describeTicketEvent(e.kind, d)}</b><span className="muted">{fmt(e.created_at)}</span></div>
-          {outcome && <p><Badge tone={outcome.tone}>{outcome.label}</Badge></p>}
-          <p>{shortName(e.actor_label) || "Assistant"}</p>
-        </div>
-      </article>
-    );
-  };
+  const EVENT_ICON: Record<string, IconName> = { created: "alert", status: "check", priority: "alert", category: "settings", assigned: "users", notification: "send", resolved: "check", closed: "check" };
+  // One feed: what happened to the ticket (the "note added" lines are left out because the notes themselves are in the feed) and the notes.
+  const feed: ActivityItem[] = [
+    ...events.filter((e) => e.kind !== "note").map((e): ActivityItem => {
+      const d = e.detail ?? {};
+      const outcome = e.kind === "notification" ? notificationOutcome(d, deliveryOf.get(String(d.wa_message_id ?? "")) ?? null) : null;
+      return { key: `e-${e.id}`, kind: "update", icon: EVENT_ICON[e.kind] ?? "info", title: describeTicketEvent(e.kind, d), detail: "", at: e.created_at, meta: shortName(e.actor_label) || "Assistant", label: outcome?.label, tone: outcome?.tone };
+    }),
+    ...notes.map((n): ActivityItem => ({ key: `n-${n.id}`, kind: "note", icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
+    ...(t.internal_notes ? [{ key: "n-earlier", kind: "note", icon: "chat" as IconName, title: "Note", detail: t.internal_notes as string, at: "", meta: "Earlier note (written before notes were dated)" }] : []),
+  ].sort((a, b) => (b.at || "").localeCompare(a.at || ""));
 
   const status = t.status as TicketStatus;
   const priority = priorityOf(t.priority);
@@ -131,13 +126,10 @@ export default async function TicketDetail({ params, searchParams }: { params: P
               {t.reference_info && <div className="rec-prop" style={{ marginTop: 12 }}><small>Reference given</small><span>{t.reference_info}</span></div>}
             </div>
           </section>
-          <NotesCard action={addTicketNote} id={t.id} notes={notes} earlier={t.internal_notes as string | null} />
           <section className="card">
-            <h2 className="rec-title">Activity</h2>
+            <h2 className="rec-title">Activities</h2>
             <div className="rec-body">
-              {events.length === 0 ? <p className="muted" style={{ margin: 0 }}>Nothing has happened to this ticket since activity tracking began.</p> : (
-                <ShowMore plain initial={SHOWN_EVENTS} noun="event">{events.map(renderEvent)}</ShowMore>
-              )}
+              <ActivityList items={feed} noteAction={addTicketNote} recordId={t.id} kinds={[{ id: "note", label: "Notes" }, { id: "update", label: "Updates" }]} empty="Nothing has happened to this ticket yet." />
             </div>
           </section>
         </main>

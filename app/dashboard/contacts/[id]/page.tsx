@@ -10,10 +10,11 @@ import { requireClient } from "../../../../lib/auth/session";
 import { LEAD_LABELS, LEAD_TONES, type LeadStatus } from "../../../../lib/leads";
 import { STATUS_LABELS as APPT_LABELS, STATUS_TONES as APPT_TONES, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import { TICKET_LABELS, TICKET_TONES, ticketRef, type TicketStatus } from "../../../../lib/tickets";
+import { shortName } from "../../../../lib/notifications";
 import { fmt, windowStatus } from "../../../../lib/dashboard";
 import { buildTimeline } from "../../../../lib/timeline";
 import Notice from "../../Notice";
-import NotesCard, { type NoteRow } from "../../../../components/NotesCard";
+import type { ActivityItem } from "../../../../components/ActivityList";
 import { addContactNote, deleteContact, resolveSuggestion, updateContact } from "../../actions";
 
 // One customer: who they are (left), everything they have raised (centre) and the linked records (right).
@@ -36,12 +37,17 @@ export default async function ContactPage({
     conv ? db.from("handoff_requests").select("id, conversation_id, reason, status, created_at").eq("conversation_id", conv.id) : Promise.resolve({ data: [] }),
   ]);
   const notesRes = await db.from("contact_notes").select("id, author_label, body, created_at").eq("contact_id", id).order("created_at", { ascending: false }).limit(200);
-  const notes = (notesRes.error ? [] : notesRes.data ?? []) as NoteRow[]; // a database without migration 0027 simply shows none
   const timeline = buildTimeline({
     leads: (leads.data ?? []) as never[], appointments: (appts.data ?? []) as never[],
     tickets: (tickets.data ?? []) as never[], handoffs: (handoffs.data ?? []) as never[],
   });
-  const items = timeline.map((t) => ({ key: `${t.kind}-${t.id}`, kind: t.kind, title: t.title, detail: t.detail, href: t.href, at: t.at, label: t.statusLabel, tone: t.tone }));
+  const ICON = { handoff: "shield", lead: "zap", appointment: "calendar", ticket: "alert" } as const;
+  const noteRows = (notesRes.error ? [] : notesRes.data ?? []) as { id: string; author_label: string | null; body: string; created_at: string }[];
+  const items: ActivityItem[] = [
+    ...timeline.map((t): ActivityItem => ({ key: `${t.kind}-${t.id}`, kind: t.kind, icon: ICON[t.kind], title: t.title, detail: t.detail, href: t.href, at: t.at, label: t.statusLabel, tone: t.tone })),
+    ...noteRows.map((n): ActivityItem => ({ key: `note-${n.id}`, kind: "note", icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
+    ...(c.notes ? [{ key: "note-earlier", kind: "note", icon: "chat" as const, title: "Note", detail: c.notes as string, at: "", meta: "Earlier note (written before notes were dated)" }] : []),
+  ].sort((a, b) => (b.at || "").localeCompare(a.at || ""));
   const w = windowStatus(conv?.last_customer_message_at);
   const tags = (c.tags as string[]) ?? [];
   // Every current value, so changing one property never touches the others.
@@ -113,10 +119,9 @@ export default async function ContactPage({
         </aside>
 
         <main className="rec-col">
-          <NotesCard action={addContactNote} id={id} notes={notes} earlier={c.notes as string | null} />
           <section className="card">
-            <h2 className="rec-title">Activity</h2>
-            <div className="rec-body"><ActivityList items={items} /></div>
+            <h2 className="rec-title">Activities</h2>
+            <div className="rec-body"><ActivityList items={items} noteAction={addContactNote} recordId={id} kinds={[{ id: "note", label: "Notes" }, { id: "handoff", label: "Handoffs" }, { id: "lead", label: "Leads" }, { id: "appointment", label: "Appointments" }, { id: "ticket", label: "Tickets" }]} empty="Nothing yet: no enquiries, appointments, tickets, handoffs or notes." /></div>
           </section>
         </main>
 
