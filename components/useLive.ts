@@ -43,10 +43,19 @@ export function useLive(onNew: (fresh: LiveNotification[]) => void) {
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", wake); window.removeEventListener("online", wake); window.removeEventListener("focus", wake); };
   }, [poll]);
 
-  const markRead = useCallback(async (body: { id: string } | { all: true }) => {
-    setData((d) => ({ ...d, notifications: d.notifications.map((n) => ("all" in body || n.id === body.id ? { ...n, read: true } : n)), unread: "all" in body ? 0 : Math.max(0, d.unread - 1) }));
-    try { await fetch("/api/live/read", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); } catch { /* the next poll restores the truth */ }
-    poll();
+  // Optimistic: the badge and list change at once; if the server refuses, they go back and false is returned.
+  const markRead = useCallback(async (body: { id: string } | { all: true }, wasUnread = true): Promise<boolean> => {
+    let before: LivePayload | null = null;
+    setData((d) => { before = d; return { ...d, notifications: d.notifications.map((n) => ("all" in body || n.id === body.id ? { ...n, read: true } : n)), unread: "all" in body ? 0 : Math.max(0, d.unread - (wasUnread ? 1 : 0)) }; });
+    try {
+      const r = await fetch("/api/live/read", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(String(r.status));
+      poll();
+      return true;
+    } catch {
+      if (before) setData(before);
+      return false;
+    }
   }, [poll]);
 
   return { data, offline, markRead, refresh: poll };
