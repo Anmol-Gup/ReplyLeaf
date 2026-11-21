@@ -23,6 +23,8 @@ export default function ConversationsWorkspace({ children }: { children: React.R
   const [items, setItems] = useState<ConversationItem[] | null>(null);
   const [counts, setCounts] = useState(ZERO);
   const [failed, setFailed] = useState(false);
+  const [answeredFor, setAnsweredFor] = useState<{ q: string; filter: ConversationFilter }>({ q: "", filter: "all" }); // what `items` is the answer to
+  const [base, setBase] = useState<{ filter: ConversationFilter; items: ConversationItem[] } | null>(null); // the list with no search, for instant typing
   const seq = useRef(0);
 
   const load = useCallback(async () => {
@@ -32,15 +34,24 @@ export default function ConversationsWorkspace({ children }: { children: React.R
       const d = await r.json();
       if (mine !== seq.current) return; // a newer request is in flight: ignore this stale answer
       if (!r.ok || d.error) throw new Error("load");
-      setItems(d.items); setCounts(d.counts); setFailed(false);
+      setItems(d.items); setCounts(d.counts); setFailed(false); setAnsweredFor({ q, filter });
+      if (!q.trim()) setBase({ filter, items: d.items });
     } catch { if (mine === seq.current) setFailed(true); }
   }, [filter, q]);
 
-  useEffect(() => { const t = setTimeout(load, q ? 250 : 0); return () => clearTimeout(t); }, [load, q]);
+  useEffect(() => { const t = setTimeout(load, q ? 120 : 0); return () => clearTimeout(t); }, [load, q]);
   useEffect(() => {
     const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 8000);
     return () => clearInterval(t);
   }, [load]);
+
+  // While the server is still answering, show the loaded list narrowed by name, number and preview straight away; the server's answer
+  // (which also searches message text) replaces it a moment later.
+  const needle = q.trim().toLowerCase();
+  const settled = answeredFor.q === q && answeredFor.filter === filter;
+  const shownItems = settled || !items ? items : base && base.filter === filter
+    ? base.items.filter((c) => c.name.toLowerCase().includes(needle) || c.phone.includes(needle.replace(/^\+/, "")) || c.preview.toLowerCase().includes(needle))
+    : items;
 
   return (
     <>
@@ -61,11 +72,11 @@ export default function ConversationsWorkspace({ children }: { children: React.R
           <input id="conv-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search conversations..." maxLength={80} />
         </div>
           {failed && <p className="hint conv-note" role="status">Could not refresh. Retrying…</p>}
-          {items === null ? <p className="muted conv-note">Loading…</p>
-            : items.length === 0 ? <p className="muted conv-note">{q || filter !== "all" ? "No conversations match." : "No conversations yet. They appear here when customers message your WhatsApp number."}</p>
+          {shownItems === null ? <p className="muted conv-note">Loading…</p>
+            : shownItems.length === 0 ? <p className="muted conv-note">{!settled ? "Searching…" : q || filter !== "all" ? "No conversations match." : "No conversations yet. They appear here when customers message your WhatsApp number."}</p>
             : (
-              <div className="conv-items">
-                {items.map((c) => (
+              <div className={`conv-items${settled ? "" : " pending"}`} aria-busy={!settled}>
+                {shownItems.map((c) => (
                   <ConversationLink key={c.id} id={c.id}>
                     <Avatar name={c.name} phone={c.name.startsWith("+")} />
                     <div className="conv-body">
