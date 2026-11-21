@@ -21,9 +21,9 @@ type Handoff = {
 };
 
 // A focused queue: who needs a person, who has it, and a way into the conversation. The chat itself lives in Conversations.
-const VIEWS = ["open", "waiting", "assigned", "resolved"] as const;
+const VIEWS = ["all", "open", "waiting", "assigned", "resolved"] as const;
 type View = (typeof VIEWS)[number];
-const VIEW_LABELS: Record<View, string> = { open: "Open", waiting: "Waiting", assigned: "Assigned", resolved: "Resolved" };
+const VIEW_LABELS: Record<View, string> = { all: "All", open: "Open", waiting: "Waiting", assigned: "Assigned", resolved: "Resolved" };
 
 export default async function HumanHandoff({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; view?: string; page?: string }> }) {
   const { notice, q, view: viewRaw, page: pageRaw } = await searchParams;
@@ -67,8 +67,8 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
     mine: rows.filter((r) => isOpen(r.h) && r.h.assigned_user_id === user.id).length,
     resolved: rows.filter((r) => r.h.status === "resolved").length,
   };
-  const viewCount: Record<View, number> = { open: rows.filter((r) => isOpen(r.h)).length, waiting: counts.waiting, assigned: rows.filter((r) => isOpen(r.h) && !!r.h.assigned_user_id).length, resolved: counts.resolved };
-  const inView = (h: Handoff) => view === "open" ? isOpen(h) : view === "waiting" ? (h.status === "requested" || h.status === "assigned") : view === "assigned" ? (isOpen(h) && !!h.assigned_user_id) : h.status === "resolved";
+  const viewCount: Record<View, number> = { all: rows.length, open: rows.filter((r) => isOpen(r.h)).length, waiting: counts.waiting, assigned: rows.filter((r) => isOpen(r.h) && !!r.h.assigned_user_id).length, resolved: counts.resolved };
+  const inView = (h: Handoff) => view === "all" ? true : view === "open" ? isOpen(h) : view === "waiting" ? (h.status === "requested" || h.status === "assigned") : view === "assigned" ? (isOpen(h) && !!h.assigned_user_id) : h.status === "resolved";
   // Open requests first (oldest waiting first), then resolved ones, newest first.
   const matching = rows
     .filter((r) => inView(r.h) && matches(q, r.name, r.phone, r.last, r.h.ai_summary, r.h.reason, nameOf(r.h.assigned_user_id)))
