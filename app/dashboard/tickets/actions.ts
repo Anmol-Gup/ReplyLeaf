@@ -1,5 +1,6 @@
 "use server";
 
+import { emailAssignee, resolveAssignee } from "../../../lib/assign";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePaidAccess } from "../../../lib/billing/gate";
@@ -38,7 +39,7 @@ export async function updateTicket(formData: FormData) {
 
   const db = supabaseAdmin();
   const { data: before, error: readError } = await db.from("tickets")
-    .select("id, status, priority, category, assigned_user_id, resolved_at, conversation_id, subject")
+    .select("id, status, priority, category, assigned_user_id, assigned_to, customer_name, customer_phone, description, resolved_at, conversation_id, subject")
     .eq("id", v.id).eq("client_id", clientId).maybeSingle();
   // A failed read (for example a database that has not had the latest migration) is not the same as "no such ticket".
   if (readError) return go(v.id, needsUpdate(readError) ? "tkt_needs_update" : "invalid");
@@ -48,12 +49,17 @@ export async function updateTicket(formData: FormData) {
   if (!canMoveTicket(prev, v.status)) return go(v.id, "tkt_bad_transition");
 
   // Assignment: only a member of this business (never a free-typed name or an id from another business).
-  const wantsAssignee = v.assigned_user_id !== undefined;
-  const newAssignee = v.assigned_user_id || null;
-  if (newAssignee && !(await isTeamMember(clientId, newAssignee))) return go(v.id, "tkt_bad_assignee");
+  // A typed email wins over the hidden current id: yourself or a member is assigned for real, any other email is recorded and emailed.
+  const typed = formData.has("assignee_email") ? await resolveAssignee(clientId, user, formData.get("assignee_email")) : undefined;
+  if (typed === null) return go(v.id, "tkt_bad_assignee");
+  const wantsAssignee = typed ? true : v.assigned_user_id !== undefined;
+  const newAssignee = typed ? typed.memberId : (v.assigned_user_id || null);
+  if (!typed && newAssignee && !(await isTeamMember(clientId, newAssignee))) return go(v.id, "tkt_bad_assignee");
+  const externalEmail = typed && !typed.memberId ? typed.email : null;
 
   const actor = { client_id: clientId, ticket_id: v.id, actor_user_id: user.id, actor_label: user.email ?? null };
-  const team = wantsAssignee && newAssignee !== (before.assigned_user_id ?? null) ? await listTeam(clientId) : [];
+  const assigneeChanged = wantsAssignee && (typed ? (newAssignee !== (before.assigned_user_id ?? null) || (externalEmail ?? null) !== ((before.assigned_to as string | null) ?? null)) : newAssignee !== (before.assigned_user_id ?? null));
+  const team = assigneeChanged ? await listTeam(clientId) : [];
   const labelOf = (id: string | null) => (id ? team.find((m) => m.id === id)?.label ?? null : null);
 
   const category = v.category === undefined ? undefined : cleanCategory(v.category);
@@ -61,8 +67,8 @@ export async function updateTicket(formData: FormData) {
   if (v.status !== prev) events.push({ ...actor, kind: "status", detail: { from: prev, to: v.status } });
   if (v.priority && v.priority !== before.priority) events.push({ ...actor, kind: "priority", detail: { from: before.priority, to: v.priority } });
   if (category !== undefined && category !== (before.category ?? null)) events.push({ ...actor, kind: "category", detail: { from: before.category ?? null, to: category } });
-  if (wantsAssignee && newAssignee !== (before.assigned_user_id ?? null)) {
-    events.push({ ...actor, kind: "assigned", detail: { from: before.assigned_user_id ?? null, to: newAssignee, from_label: labelOf(before.assigned_user_id ?? null), to_label: labelOf(newAssignee) } });
+  if (assigneeChanged) {
+    events.push({ ...actor, kind: "assigned", detail: { from: before.assigned_user_id ?? null, to: newAssignee, from_label: labelOf(before.assigned_user_id ?? null) ?? ((before.assigned_to as string | null) ?? null), to_label: labelOf(newAssignee) ?? externalEmail } });
   }
   if (v.status !== prev && v.status === "resolved") events.push({ ...actor, kind: "resolved", detail: {} });
   if (v.status !== prev && v.status === "closed") events.push({ ...actor, kind: "closed", detail: {} });
@@ -71,7 +77,7 @@ export async function updateTicket(formData: FormData) {
     status: v.status, ...(v.priority ? { priority: v.priority } : {}),
     ...(category !== undefined ? { category } : {}),
     ...(v.description ? { description: v.description } : {}),
-    ...(wantsAssignee ? { assigned_user_id: newAssignee, ...(newAssignee ? { assigned_to: null } : {}) } : {}), // the old free-text name is replaced by the real person
+    ...(wantsAssignee && typed ? { assigned_user_id: newAssignee, assigned_to: externalEmail } : wantsAssignee ? { assigned_user_id: newAssignee, ...(newAssignee ? { assigned_to: null } : {}) } : {}), // a real person replaces any older text; an outside email is kept as text
     resolved_at: resolvedAtFor(v.status, prev, before.resolved_at, new Date()), updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);
   if (error) return go(v.id, needsUpdate(error) ? "tkt_needs_update" : "invalid");
@@ -80,6 +86,12 @@ export async function updateTicket(formData: FormData) {
   revalidatePath("/dashboard/tickets");
   revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(detail(v.id));
+
+  // Tell the new assignee (not when it is you). A failed email never undoes the assignment.
+  let assigneeEmailFailed = false;
+  if (typed && assigneeChanged) {
+    assigneeEmailFailed = !(await emailAssignee(typed, { kind: "ticket", title: before.subject as string, ref: ticketRef(v.id), customerName: (before.customer_name as string | null) ?? null, phone: (before.customer_phone as string | null) ?? "", detailLabel: "Issue", detail: (before.description as string | null) ?? "", path: detail(v.id), assignedBy: user.email ?? "A teammate", businessName: clientName }));
+  }
 
   // Telling the customer is opt-in, and only when the status really changed (so a double click or a repeat save never sends twice).
   if (notify) {
@@ -91,7 +103,7 @@ export async function updateTicket(formData: FormData) {
     revalidatePath(detail(v.id));
     return go(v.id, deliveryNotice("tkt", sent.channel));
   }
-  return go(v.id, "tkt_saved");
+  return go(v.id, assigneeEmailFailed ? "assign_email_failed" : "tkt_saved");
 }
 
 /** Add a private note. Earlier notes are never touched. The note text is stored on the note only, never in the activity. */

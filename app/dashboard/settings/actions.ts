@@ -9,7 +9,6 @@ import { requireClient } from "../../../lib/auth/session";
 import { encryptSecret } from "../../../lib/crypto";
 import { env } from "../../../lib/env";
 import { parseEmails, parseOneEmail } from "../../../lib/notify-settings";
-import { isEligibility } from "../../../lib/wa-usage";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { formToWorkflowInput, workflowSettingsSchema } from "../../../lib/workflow-settings";
 
@@ -108,11 +107,3 @@ export async function setPlatformProvider(formData: FormData) {
   return back("saved", "ai");
 }
 
-/** Does this WhatsApp number receive Meta's free monthly service-message allowance? Only the owner can know, so it is their setting. */
-export async function setFreeAllowance(formData: FormData) {
-  const { clientId } = await requireClient();
-  const v = field(formData, "wa_free_allowance");
-  if (!isEligibility(v)) return back("invalid", "whatsapp");
-  await supabaseAdmin().from("clients").update({ wa_free_allowance: v }).eq("id", clientId);
-  return back("saved", "whatsapp");
-}

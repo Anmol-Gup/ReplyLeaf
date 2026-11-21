@@ -23,11 +23,13 @@ const FEATURES: { icon: IconName; label: string; title: string; text: string }[]
   { icon: "users", label: "Lead capture", title: "Never miss a potential customer", text: "When someone asks about a project or service, Replyleaf collects what they need, shows them a summary to confirm, and saves it as a lead with a project brief you can copy." },
   { icon: "calendar", label: "Appointment requests", title: "Make appointment requests effortless", text: "Replyleaf collects the preferred date and time, notifies your team, and you confirm, reject or reschedule from your dashboard. Have a booking link? It shares that instead." },
   { icon: "shield", label: "Human handoff", title: "Stay in control of every conversation", text: "When a customer needs a person, the assistant steps aside and your team is emailed with a short summary. Assign, take over and reply, then hand the chat back when you're done." },
+  { icon: "alert", label: "Tickets", title: "Track every customer problem", text: "When something goes wrong, like a missing order, the assistant logs it as a ticket with the details. Move it from open to resolved and assign it to a teammate by email." },
+  { icon: "chat", label: "Contacts and notes", title: "One page per customer", text: "See a customer's chats, leads, appointments and tickets together, with a timeline and dated private notes you can edit. Your customers never see them." },
 ];
 
 const STEPS = [
   { title: "Connect your WhatsApp Business account", text: "Sign in and connect your number through Meta's secure sign-up. It takes a few minutes." },
-  { title: "Add your business information", text: "Upload documents or type in what customers ask about, then choose how the assistant should help." },
+  { title: "Add your business information", text: "Upload up to 5 documents (PDF, Word, text or Markdown) or type in what customers ask about, then choose how the assistant should help." },
   { title: "Let Replyleaf handle the conversations", text: "It replies to customers, collects enquiries and appointment requests, and hands over to your team when a person is needed." },
 ];
 
@@ -48,6 +50,8 @@ const CONTROL_POINTS = [
   "Take over any chat in one click. The assistant goes quiet while you reply.",
   "Hand the chat back to the assistant when you're finished.",
   "Get an email for new leads and for chats that need a person, with a summary of what the customer wants.",
+  "Assign a chat, ticket or appointment to a teammate by typing their email. They get an email with the details.",
+  "See WhatsApp usage in your dashboard. Meta bills WhatsApp messaging separately to your own account, and Replyleaf shows what you have used against the free allowance.",
 ];
 
 export default function Home() {

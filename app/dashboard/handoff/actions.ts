@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireClient } from "../../../lib/auth/session";
 import { z } from "zod";
-import { cleanNote, handoffFormSchema } from "../../../lib/handoff";
+import { emailAssignee } from "../../../lib/assign";
+import { cleanNote, handoffFormSchema, SOURCE_LABELS, type HandoffSource } from "../../../lib/handoff";
+import { findMemberByEmail } from "../../../lib/team";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 
 // SECURITY MODEL (same as the other dashboard actions): requireClient() derives clientId from the
@@ -50,20 +52,47 @@ export async function queueTakeOver(formData: FormData) {
   redirect(`/dashboard/conversations/${conv}`);
 }
 
-// Assign to a real member of this business (or unassign with an empty choice). The database checks membership; the form is never trusted.
+// Assign by typing an email: yourself or anyone else. A member of this business is assigned for real (database-checked); any other
+// email is recorded as the assignee and gets an email with the details. An empty box unassigns. The form is never trusted.
 export async function assignHandoff(formData: FormData) {
   const { clientId, user } = await requireClient();
   const to = back(formData);
   const id = uuid.safeParse(formData.get("id"));
-  const who = z.union([z.literal(""), uuid]).safeParse(formData.get("assignee") ?? "");
-  if (!id.success || !who.success) return go(to, "invalid");
-  const conv = await conversationOf(clientId, id.data);
-  if (!conv) return go(to, "not_found");
-  const { error } = await supabaseAdmin().rpc("assign_handoff", {
-    p_client_id: clientId, p_handoff_id: id.data, p_assignee: who.data || null, p_actor: user.id, p_label: user.email ?? null,
-  });
-  if (error) return go(to, /member|resolved/.test(error.message) ? "invalid" : "handoff_needs_update");
-  refreshAll(conv);
+  const email = z.union([z.literal(""), z.string().trim().toLowerCase().email().max(200)]).safeParse(String(formData.get("assignee_email") ?? "").trim());
+  if (!id.success || !email.success) return go(to, "invalid");
+  const db = supabaseAdmin();
+  const { data: h } = await db.from("handoff_requests").select("id, conversation_id, status, reason, ai_summary, source").eq("id", id.data).eq("client_id", clientId).maybeSingle();
+  if (!h) return go(to, "not_found");
+  if (h.status === "resolved") return go(to, "invalid");
+
+  const memberId = email.data ? (email.data === user.email?.toLowerCase() ? user.id : await findMemberByEmail(clientId, email.data)) : null;
+  if (!email.data || memberId) {
+    const { error } = await db.rpc("assign_handoff", { p_client_id: clientId, p_handoff_id: id.data, p_assignee: memberId, p_actor: user.id, p_label: user.email ?? null });
+    if (error) return go(to, "handoff_needs_update");
+  } else {
+    const { error } = await db.from("handoff_requests").update({ assigned_user_id: null, assigned_to: email.data, assigned_at: new Date().toISOString(), status: "assigned", updated_at: new Date().toISOString() }).eq("id", h.id).eq("client_id", clientId);
+    if (error) return go(to, "handoff_needs_update");
+    await db.from("handoff_events").insert({ client_id: clientId, handoff_id: h.id, kind: "assigned", actor_user_id: user.id, actor_label: user.email ?? null, detail: { email: email.data } });
+  }
+  refreshAll(h.conversation_id as string);
+
+  // Tell the person it was assigned to (not when you assign it to yourself). A failed email never undoes the assignment.
+  if (email.data && email.data !== user.email?.toLowerCase()) {
+    try {
+      const [{ data: client }, { data: conv }, { data: last }] = await Promise.all([
+        db.from("clients").select("name").eq("id", clientId).maybeSingle(),
+        db.from("conversations").select("contact_id").eq("id", h.conversation_id).maybeSingle(),
+        db.from("messages").select("body").eq("conversation_id", h.conversation_id).eq("direction", "inbound").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      const { data: c } = conv ? await db.from("contacts").select("name, phone").eq("id", conv.contact_id).maybeSingle() : { data: null };
+      const sent = await emailAssignee({ email: email.data, memberId, self: false }, {
+        kind: "handoff", title: (h.reason as string | null) ?? SOURCE_LABELS[h.source as HandoffSource], customerName: (c?.name as string | null) ?? null, phone: (c?.phone as string) ?? "",
+        detailLabel: "Customer said", detail: (last?.body as string | null) ?? (h.ai_summary as string | null) ?? "", path: `/dashboard/handoff/${h.id}`,
+        assignedBy: user.email ?? "A teammate", businessName: (client?.name as string) ?? "your team",
+      });
+      if (!sent) return go(to, "handoff_updated_no_email");
+    } catch { return go(to, "handoff_updated_no_email"); }
+  }
   return go(to, "handoff_updated");
 }
 

@@ -37,7 +37,7 @@ Meta's current rate card for the destination country. Never hard-code a per-mess
 ## Usage tracking design (migration 0020)
 No new table: the existing `messages` table gained `wa_category` (service / marketing / utility / authentication / unknown), `via` (`api` =
 sent through Replyleaf, `business_app` = typed in the WhatsApp Business app), `phone_number_id` (filled by a trigger), `delivered_at` and
-`error_code`. `clients` gained `wa_free_allowance` (eligible / not_eligible / unknown, default unknown), `wa_billing_ack_at` (the onboarding
+`error_code`. `clients` gained `wa_free_allowance` (eligible / not_eligible / unknown, default unknown; now only a fallback: eligibility is detected from the `pricing` field on delivery status webhooks and stored in `wa_free_tier_seen_at` / `wa_paid_service_seen_at`, migration 0030), `wa_billing_ack_at` (the onboarding
 acknowledgement) and `last_webhook_at`.
 
 - **Idempotency:** `messages.wa_message_id` is unique, and `apply_message_status()` only moves forward (sent -> delivered -> read). Duplicate or

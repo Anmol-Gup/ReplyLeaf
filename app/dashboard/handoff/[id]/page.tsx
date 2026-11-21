@@ -17,7 +17,7 @@ export default async function HandoffDetail({ params, searchParams }: { params: 
   const { notice } = await searchParams;
   const { db, user, clientId } = await requireClient();
   const { data: h } = await db.from("handoff_requests")
-    .select("id, conversation_id, source, reason, ai_summary, status, assigned_user_id, created_at, resolved_at").eq("id", id).maybeSingle();
+    .select("id, conversation_id, source, reason, ai_summary, status, assigned_user_id, assigned_to, created_at, resolved_at").eq("id", id).maybeSingle();
   if (!h) notFound(); // also what another business's id looks like: RLS returns nothing
 
   const [{ data: conv }, { data: recent }, team] = await Promise.all([
@@ -28,7 +28,7 @@ export default async function HandoffDetail({ params, searchParams }: { params: 
   const { data: contact } = conv ? await db.from("contacts").select("id, name, phone").eq("id", conv.contact_id).maybeSingle() : { data: null };
   const messages = [...(recent ?? [])].reverse();
   const open = h.status !== "resolved";
-  const owner = team.find((m) => m.id === h.assigned_user_id)?.label ?? (h.assigned_user_id ? "Former team member" : null);
+  const owner = team.find((m) => m.id === h.assigned_user_id)?.label ?? (h.assigned_user_id ? "Former team member" : (h.assigned_to as string | null));
   const ownerName = owner ? shortName(owner) : null;
   const mine = h.assigned_user_id === user.id;
   const canAct = open && (!h.assigned_user_id || mine);
@@ -87,11 +87,9 @@ export default async function HandoffDetail({ params, searchParams }: { params: 
                 {canAct && <form action={queueTakeOver}>{hidden}<SubmitButton pendingText="Taking over...">Take over</SubmitButton></form>}
                 <form action={assignHandoff} className="stack-sm">
                   {hidden}
-                  <label className="field">Assign to team member
-                    <select name="assignee" defaultValue={h.assigned_user_id ?? ""}>
-                      <option value="">Unassigned</option>
-                      {team.map((m) => <option key={m.id} value={m.id}>{m.label}{m.id === user.id ? " (you)" : ""}</option>)}
-                    </select>
+                  <label className="field">Assign to (email)
+                    <input name="assignee_email" type="email" maxLength={200} placeholder="you@company.com, or leave empty to unassign" defaultValue={mine ? (user.email ?? "") : (h.assigned_to ?? "")} />
+                    <span className="hint">They get an email with the details. Your own email assigns it to you.</span>
                   </label>
                   <div><SubmitButton small variant="secondary" pendingText="Saving...">Save assignment</SubmitButton></div>
                 </form>

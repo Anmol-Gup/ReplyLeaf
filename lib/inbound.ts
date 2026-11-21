@@ -26,6 +26,8 @@ export interface InboundDeps {
   recordOwnerEcho(clientId: string, echo: OwnerEcho): Promise<{ duplicate: boolean }>;
   /** Applies a delivery status. Idempotent and forward-only (see apply_message_status): duplicate or out-of-order webhooks change nothing. */
   updateMessageStatus(waMessageId: string, status: string, error: string | null, extra?: { errorCode?: number | null; at?: Date | null }): Promise<void>;
+  /** Meta's billing signal on a delivered service message: it used the free tier (true) or was charged (false). Optional so older callers keep working. */
+  recordFreeTier?(phoneNumberId: string, free: boolean): Promise<void>;
   /** Remembers when each business number last sent us anything (for support: "is the webhook arriving?"). */
   touchWebhook(phoneNumberIds: string[]): Promise<void>;
   /** A message we sent failed to deliver for a reason retrying cannot fix (billing, account, permission, policy): alert the admin and tell the owner (once a day). */
@@ -57,6 +59,9 @@ export async function recordEvents(
       await deps.updateMessageStatus(s.waMessageId, s.status, s.error, { errorCode: s.errorCode ?? null, at: s.at ?? null });
     } catch (e) {
       console.error("status update failed", errorText(e));
+    }
+    if (s.freeTier != null && s.phoneNumberId && deps.recordFreeTier) {
+      try { await deps.recordFreeTier(s.phoneNumberId, s.freeTier); } catch (e) { console.error("free tier signal failed", errorText(e)); }
     }
     if (s.status === "failed") {
       const problem = classifyWhatsAppError(s.errorCode, s.error);

@@ -15,6 +15,8 @@ const statusSchema = z.object({
   status: z.string(),
   timestamp: z.string().optional(),
   errors: z.array(z.object({ code: z.number().optional(), title: z.string().optional(), message: z.string().optional() })).optional(),
+  // How Meta billed this message (on sent/delivered statuses). Tolerant: only the fields we read.
+  pricing: z.object({ billable: z.boolean().optional(), category: z.string().optional(), type: z.string().optional(), subtype: z.string().optional() }).optional(),
 });
 
 const valueSchema = z.object({
@@ -73,6 +75,8 @@ export type StatusUpdate = {
   errorCode?: number | null; // Meta's error code on a failed delivery
   phoneNumberId?: string;    // which business number the status is for
   at?: Date | null;          // when WhatsApp says it happened
+  /** Whether Meta says this service message used the free tier (true), was charged (false), or says nothing useful (null). */
+  freeTier?: boolean | null;
 };
 
 /** A reply the owner typed in the WhatsApp Business app. */
@@ -139,9 +143,18 @@ export function parseWebhookPayload(json: unknown): ParsedEvents {
           errorCode: s.errors?.[0]?.code ?? null,
           phoneNumberId: v.metadata.phone_number_id,
           at: s.timestamp && /^\d+$/.test(s.timestamp) ? new Date(Number(s.timestamp) * 1000) : null,
+          freeTier: freeTierSignal(s.pricing),
         });
       }
     }
   }
   return out;
+}
+
+/** Meta marks a message covered by the monthly free allowance with subtype free_tier; a billable service message was charged. Anything else says nothing about eligibility. */
+export function freeTierSignal(p: { billable?: boolean; category?: string; type?: string; subtype?: string } | undefined): boolean | null {
+  if (!p) return null;
+  if (p.subtype?.toLowerCase() === "free_tier") return true;
+  if (p.billable === true && p.category?.toLowerCase() === "service") return false;
+  return null;
 }

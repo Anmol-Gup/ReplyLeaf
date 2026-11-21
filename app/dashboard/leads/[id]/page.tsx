@@ -1,3 +1,6 @@
+import { editNote } from "../../note-actions";
+import ActivityList, { type ActivityItem } from "../../../../components/ActivityList";
+import Icon, { type IconName } from "../../../../components/Icon";
 import CustomerCard from "../../../../components/CustomerCard";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import SubmitButton from "../../../../components/SubmitButton";
@@ -8,10 +11,11 @@ import CopyButton from "../../../../components/CopyButton";
 import { Badge, Card, PageHeader } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { emailsByContact } from "../../../../lib/contact-emails";
+import { shortName } from "../../../../lib/notifications";
 import { fmt } from "../../../../lib/dashboard";
 import { LEAD_LABELS, LEAD_STATUSES, LEAD_TONES, projectBrief, requirementLines, type LeadStatus } from "../../../../lib/leads";
 import Notice from "../../Notice";
-import { deleteLead, updateLeadDetails } from "../actions";
+import { addLeadNote, deleteLead, updateLeadDetails } from "../actions";
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
@@ -26,14 +30,24 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   ]);
   const emailOf = (await emailsByContact(db, [l.contact_id])).get(l.contact_id) ?? contact?.email ?? null;
   const status = l.status as LeadStatus;
+  const notesRes = await db.from("lead_notes").select("id, author_label, body, created_at").eq("lead_id", id).order("created_at", { ascending: false }).limit(200);
+  const noteRows = (notesRes.error ? [] : notesRes.data ?? []) as { id: string; author_label: string | null; body: string; created_at: string }[]; // a database without migration 0029 simply shows none
+  // What the record itself tells us (there is no separate history for leads).
+  const feed: ActivityItem[] = [
+    ...(l.updated_at && new Date(l.updated_at).getTime() - new Date(l.created_at).getTime() > 2000 ? [{ key: "updated", kind: "update", icon: "check" as IconName, title: `Status: ${LEAD_LABELS[status]}`, detail: l.follow_up_at ? `Follow up on ${l.follow_up_at}` : "Last changed", at: l.updated_at as string }] : []),
+    { key: "created", kind: "update", icon: "zap" as IconName, title: "Enquiry received", detail: l.project_type as string, at: l.created_at as string },
+    ...noteRows.map((n): ActivityItem => ({ key: `n-${n.id}`, kind: "note", noteId: n.id, icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
+    ...(l.internal_notes ? [{ key: "n-earlier", kind: "note", icon: "chat" as IconName, title: "Note", detail: l.internal_notes as string, at: "", meta: "Earlier note (written before notes were dated)" }] : []),
+  ].sort((x, y) => (y.at || "").localeCompare(x.at || ""));
   const brief = projectBrief(l, reqs ?? [], clientName);
 
   return (
     <>
+      <Link href="/dashboard/leads" className="rec-back"><Icon name="back" size={14} /> All leads</Link>
       <PageHeader
         title={l.customer_name || "Project enquiry"}
         description={`+${l.customer_phone}${emailOf ? ` · ${emailOf}` : ""} · received ${fmt(l.created_at)}`}
-        actions={<span className="row"><Link className="btn btn-secondary btn-sm" href="/dashboard/leads">All leads</Link><ConfirmForm action={deleteLead} message="Delete this lead permanently? This cannot be undone."><input type="hidden" name="id" value={l.id} /><SubmitButton variant="danger" small pendingText="Deleting...">Delete</SubmitButton></ConfirmForm></span>}
+        actions={<span className="row"><ConfirmForm action={deleteLead} message="Delete this lead permanently? This cannot be undone."><input type="hidden" name="id" value={l.id} /><SubmitButton variant="danger" small pendingText="Deleting...">Delete</SubmitButton></ConfirmForm></span>}
       />
       <Notice code={notice} />
 
@@ -48,7 +62,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       </Card>
 
       <div id="edit">
-        <Card title="Edit lead" description="Everything about this lead in one place. The notes and follow-up date stay private and are never sent to the customer. Put one requirement per line as  name: value  (for example  platform: Shopify).">
+        <Card title="Edit lead" description="Everything about this lead in one place. The follow-up date stays private and is never sent to the customer. Add notes in Activities. Put one requirement per line as  name: value  (for example  platform: Shopify).">
           <form action={updateLeadDetails} className="stack">
             <input type="hidden" name="id" value={l.id} />
             <div className="row">
@@ -69,7 +83,6 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
               <label className="field">Timeline <input name="timeline" maxLength={100} defaultValue={l.timeline ?? ""} /></label>
             </div>
             <label className="field">Requirements <textarea name="requirements" rows={5} maxLength={6000} defaultValue={requirementLines(reqs ?? [])} placeholder={"platform: Shopify\npayments: card"} /></label>
-            <label className="field">Internal notes <textarea name="notes" rows={4} maxLength={4000} defaultValue={l.internal_notes ?? ""} /></label>
             <div><ChangeAwareSubmit pendingText="Saving...">Save lead</ChangeAwareSubmit></div>
           </form>
         </Card>
@@ -77,6 +90,10 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
 
         </div>
         <div className="rec-col">
+      <section className="card">
+        <h2 className="rec-title">Activities</h2>
+        <div className="rec-body"><ActivityList items={feed} noteAction={addLeadNote} editAction={editNote} noteKind="lead" recordId={l.id} kinds={[{ id: "note", label: "Notes" }, { id: "update", label: "Updates" }]} /></div>
+      </section>
       <Card title="Project brief" description="A plain-text summary you can paste into a proposal or send to a teammate. It does not include your internal notes."
         actions={<span className="row"><CopyButton text={brief} label="Copy brief" /><a className="btn btn-secondary btn-sm" href={`/dashboard/leads/${l.id}/brief`}>Download .txt</a></span>}>
         <pre className="brief">{brief}</pre>

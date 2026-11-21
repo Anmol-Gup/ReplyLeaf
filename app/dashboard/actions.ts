@@ -221,12 +221,17 @@ export async function updateKnowledge(formData: FormData) {
   const text = z.string().max(8000).safeParse(formData.get("kb_text"));
   if (!text.success) return flash("/dashboard/knowledge", "invalid");
   await supabaseAdmin().from("clients").update({ kb_text: text.data || null }).eq("id", clientId);
+  await touchKnowledge(clientId);
   revalidatePath("/dashboard"); // the Overview changes too
   flash("/dashboard/knowledge", "saved");
 }
 
 // --------------------------------------------------- knowledge: documents
 const KB = "/dashboard/knowledge";
+/** Marks that the knowledge changed (core text saved, document deleted) so older assistant replies are not shown to the model. Never blocks the action: it is skipped until migration 0031 is applied. */
+async function touchKnowledge(clientId: string) {
+  try { await supabaseAdmin().from("clients").update({ kb_changed_at: new Date().toISOString() }).eq("id", clientId); } catch { /* optional */ }
+}
 const titleSchema = z.string().trim().min(1).max(200);
 const contentSchema = z.string().trim().min(1).max(200_000);
 
@@ -305,6 +310,18 @@ export async function discardDraft(formData: FormData) {
   flash(KB, "discarded");
 }
 
+// Permanent delete of a document in any state (draft, active or archived). Its versions and search chunks go with it (database cascade),
+// so the assistant stops using it at once. The id must belong to the signed-in business.
+export async function deleteDocument(formData: FormData) {
+  const { clientId } = await requireClient();
+  const id = uuid.parse(formData.get("id"));
+  await supabaseAdmin().from("kb_documents").delete().eq("id", id).eq("client_id", clientId);
+  await touchKnowledge(clientId);
+  revalidatePath(KB);
+  revalidatePath("/dashboard"); // the Overview changes too
+  flash(KB, "doc_deleted");
+}
+
 export async function setDocumentStatus(formData: FormData) {
   const { clientId } = await requireClient();
   await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
@@ -315,6 +332,7 @@ export async function setDocumentStatus(formData: FormData) {
   await supabaseAdmin().from("kb_documents").update({ status, updated_at: new Date().toISOString() })
     .eq("id", id).eq("client_id", clientId).gt("version", 0);
   revalidatePath(`${KB}/documents/${id}`);
+  revalidatePath(KB); // the list this can be done from
   revalidatePath("/dashboard"); // the Overview changes too
 }
 

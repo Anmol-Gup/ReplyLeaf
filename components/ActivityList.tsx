@@ -11,7 +11,7 @@ import { Badge } from "./ui";
 // Items arrive ready to show (no data access here); adding a note goes through the server action given.
 export type ActivityItem = {
   key: string; kind: string; icon: IconName; title: string; detail: string; at: string; // at "" = older than dated notes
-  href?: string; label?: string; tone?: "brand" | "success" | "warn" | "danger" | "muted"; meta?: string;
+  noteId?: string; href?: string; label?: string; tone?: "brand" | "success" | "warn" | "danger" | "muted"; meta?: string;
 };
 export type ActivityKind = { id: string; label: string };
 
@@ -19,9 +19,11 @@ const STEP = 5;
 const dayOf = (iso: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "Earlier"); // the viewer's own time zone
 const monthOf = (iso: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "Earlier");
 
-export default function ActivityList({ items, kinds, noteAction, recordId, empty }: {
+export default function ActivityList({ items, kinds, noteAction, editAction, noteKind, recordId, empty }: {
   items: ActivityItem[]; kinds: ActivityKind[]; noteAction?: (formData: FormData) => void | Promise<void>; recordId?: string; empty?: string;
+  editAction?: (formData: FormData) => void | Promise<void>; noteKind?: "contact" | "lead" | "ticket" | "appointment"; // together they allow editing a saved note
 }) {
+  const [editing, setEditing] = useState<string | null>(null);
   const [kind, setKind] = useState("all");
   const [shown, setShown] = useState(STEP);
   const [expanded, setExpanded] = useState(false);
@@ -67,8 +69,18 @@ export default function ActivityList({ items, kinds, noteAction, recordId, empty
                 <article className="rec-item">
                   <span className={`rec-ico rec-${t.kind}`}><Icon name={t.icon} size={16} /></span>
                   <div className="rec-main">
-                    <div className="rec-top"><b>{t.href ? <Link href={t.href}>{t.title}</Link> : t.title}</b><span className="muted">{dayOf(t.at)}</span></div>
-                    {t.detail && <p className={`rec-detail${expanded ? "" : " clamp"}`}>{t.detail}</p>}
+                    <div className="rec-top"><b>{t.href ? <Link href={t.href}>{t.title}</Link> : t.title}</b>
+                      <span className="muted">
+                        {t.noteId && editAction && noteKind && editing !== t.key && <button type="button" className="act-edit" onClick={() => setEditing(t.key)} aria-label="Edit note" title="Edit note"><Icon name="edit" size={14} /></button>}
+                        {dayOf(t.at)}
+                      </span></div>
+                    {t.noteId && editAction && noteKind && recordId && editing === t.key ? (
+                      <form action={editAction} className="act-compose stack-sm">
+                        <input type="hidden" name="kind" value={noteKind} /><input type="hidden" name="id" value={recordId} /><input type="hidden" name="note_id" value={t.noteId} />
+                        <textarea name="body" required rows={3} maxLength={4000} defaultValue={t.detail} aria-label="Edit note" autoFocus />
+                        <div className="row"><SubmitButton small pendingText="Saving...">Save</SubmitButton><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button></div>
+                      </form>
+                    ) : t.detail && <p className={`rec-detail${expanded ? "" : " clamp"}`}>{t.detail}</p>}
                     {t.meta && <p className="rec-meta">{t.meta}</p>}
                     {t.label && <Badge tone={t.tone ?? "muted"}>{t.label}</Badge>}
                   </div>

@@ -1,7 +1,7 @@
 import { Badge, Card, EmptyState, ErrorState, PageHeader } from "../../../../components/ui";
 import { fmt } from "../../../../lib/dashboard";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
-import { ELIGIBILITY_LABELS, isEligibility, monthBounds, summariseUsage, type UsageRow } from "../../../../lib/wa-usage";
+import { ELIGIBILITY_LABELS, detectEligibility, monthBounds, summariseUsage, type UsageRow } from "../../../../lib/wa-usage";
 import { classifyWhatsAppError } from "../../../../lib/whatsapp/errors";
 import { parseWorkflowSettings } from "../../../../lib/workflow-settings";
 
@@ -11,7 +11,7 @@ export default async function AdminWhatsApp() {
   const db = supabaseAdmin();
   const now = new Date();
   const { data: clients, error } = await db.from("clients")
-    .select("id, name, status, wa_phone_number_id, wa_free_allowance, onboarding_status, last_webhook_at, wa_billing_ack_at, workflow_settings")
+    .select("id, name, status, wa_phone_number_id, wa_free_allowance, wa_free_tier_seen_at, wa_paid_service_seen_at, onboarding_status, last_webhook_at, wa_billing_ack_at, workflow_settings")
     .not("wa_phone_number_id", "is", null).order("name").limit(500);
 
   const rows = await Promise.all((clients ?? []).map(async (c) => {
@@ -21,7 +21,7 @@ export default async function AdminWhatsApp() {
       db.from("messages").select("error, error_code").eq("client_id", c.id).eq("direction", "outbound").eq("via", "api").eq("status", "failed").gte("created_at", start.toISOString()).limit(300),
       db.from("messages").select("created_at").eq("client_id", c.id).eq("direction", "outbound").eq("via", "api").not("wa_message_id", "is", null).neq("status", "failed").order("created_at", { ascending: false }).limit(1),
     ]);
-    const eligibility = isEligibility(c.wa_free_allowance) ? c.wa_free_allowance : "unknown";
+    const eligibility = detectEligibility(c);
     const phones = summariseUsage((usage.data ?? []) as UsageRow[], eligibility);
     const billingErrors = (failed.data ?? []).filter((r) => classifyWhatsAppError(r.error_code as number | null, r.error as string | null) === "billing").length;
     return { c, eligibility, phones, billingErrors, calcOk: !usage.error, lastAccepted: (lastOk.data?.[0]?.created_at as string | undefined) ?? null };

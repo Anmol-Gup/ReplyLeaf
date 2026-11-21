@@ -178,14 +178,14 @@ export default function NotificationCenter({ data, offline, markRead, prefs, sav
                 <button type="button" data-close className="btn btn-ghost btn-sm" aria-label="Close notifications" onClick={closeDrawer}><Icon name="x" size={18} /></button>
               </div>
             </header>
-            <div className="drawer-filters" role="group" aria-label="Filter notifications">
+            <div className={`drawer-filters${loading ? " is-loading" : ""}`} role="group" aria-label="Filter notifications" aria-busy={loading}>
               {DRAWER_FILTERS.map((f) => (
                 <button key={f} type="button" className={`pill${f === filter ? " on" : ""}`} aria-pressed={f === filter} onClick={() => setFilter(f)}>
                   {DRAWER_FILTER_LABELS[f]} <span className="pill-count">{counts[f]}</span>
                 </button>
               ))}
             </div>
-            <div className="drawer-body">
+            <div className={`drawer-body${loading ? " is-loading" : ""}`} aria-busy={loading}>
               {(offline || failed) && <p className="hint drawer-note" role="status">{failed ? "Could not load notifications." : "Reconnecting… showing the last update."} <button type="button" className="link-button" onClick={() => loadFirst(filter)}>Try again</button></p>}
               {note && <p className="hint drawer-note" role="alert">{note}</p>}
               {items.length === 0 && !loading && !failed ? (
@@ -212,7 +212,7 @@ export default function NotificationCenter({ data, offline, markRead, prefs, sav
                       </ul>
                     </section>
                   ))}
-                  {loading && <p className="muted drawer-note" role="status"><span className="spinner" aria-hidden="true" /> Loading…</p>}
+                  {loading && <div className="drawer-loading" role="status" aria-label="Loading notifications"><span className="spinner" aria-hidden="true" /></div>}
                   {!loading && cursor && <div className="drawer-more"><button type="button" className="btn btn-secondary btn-sm" onClick={loadMore}>Load more</button></div>}
                   {!loading && !cursor && items.length > 0 && <p className="muted drawer-note">You&apos;ve reached the end.</p>}
                 </>

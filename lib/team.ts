@@ -27,3 +27,16 @@ export async function isTeamMember(clientId: string, userId: string): Promise<bo
   const { data } = await supabaseAdmin().from("client_users").select("user_id").eq("client_id", clientId).eq("user_id", userId).maybeSingle();
   return Boolean(data);
 }
+
+/** The member of this business with this email, if there is one (a typed email is only ever matched, never trusted). */
+export async function findMemberByEmail(clientId: string, email: string): Promise<string | null> {
+  const db = supabaseAdmin();
+  const { data: rows } = await db.from("client_users").select("user_id").eq("client_id", clientId);
+  for (const r of rows ?? []) {
+    try {
+      const { data } = await db.auth.admin.getUserById(r.user_id as string);
+      if (data.user?.email?.toLowerCase() === email.toLowerCase()) return r.user_id as string;
+    } catch { /* skip an unreadable account */ }
+  }
+  return null;
+}

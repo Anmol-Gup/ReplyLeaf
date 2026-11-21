@@ -8,7 +8,7 @@ export type Chunk = { heading: string | null; content: string };
 export const MAX_CHUNK_CHARS = 1200;
 export const MAX_DOC_CHARS = 200_000;
 /** Most documents a business can keep at once (drafts and active ones; archived ones do not count). */
-export const MAX_DOCUMENTS = 10;
+export const MAX_DOCUMENTS = 5;
 export const MAX_CHUNKS = 300;
 
 const HEADING = /^(#{1,4})\s+(.+?)\s*#*\s*$/;

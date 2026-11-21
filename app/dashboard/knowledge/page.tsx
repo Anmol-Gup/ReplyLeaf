@@ -2,6 +2,7 @@ import Link from "next/link";
 import ChangeAwareSubmit from "../../../components/ChangeAwareSubmit";
 import DocumentSourceFields from "../../../components/DocumentSourceFields";
 import CountedTextarea from "../../../components/CountedTextarea";
+import DocumentActions from "../../../components/DocumentActions";
 import SubmitButton from "../../../components/SubmitButton";
 import { Badge, Card, EmptyState, ErrorState, PageHeader, Stat, type Tone } from "../../../components/ui";
 import { requireClient } from "../../../lib/auth/session";
@@ -9,7 +10,7 @@ import { MAX_DOCUMENTS } from "../../../lib/kb/chunk";
 import { MAX_UPLOAD_BYTES } from "../../../lib/kb/extract";
 import { fmtDay } from "../../../lib/dashboard";
 import Notice from "../Notice";
-import { createDocument, discardDraft, resolveQuestion, updateKnowledge } from "../actions";
+import { createDocument, deleteDocument, resolveQuestion, setDocumentStatus, updateKnowledge } from "../actions";
 
 export const maxDuration = 60; // uploads are chunked and embedded inside the server action
 
@@ -44,7 +45,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
         {docsError ? <ErrorState>Your documents could not be loaded.</ErrorState> : (docs ?? []).length === 0 ? (
           <EmptyState icon="book" title="No documents yet">Upload a file or paste text below.</EmptyState>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap table-menu">
             <table>
               <thead><tr><th>Title</th><th>Status</th><th>Source</th><th>Version</th><th>Updated</th><th></th></tr></thead>
               <tbody>
@@ -53,14 +54,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
                     <td><Link href={`/dashboard/knowledge/documents/${d.id}`}>{d.title}</Link></td>
                     <td><Badge tone={TONE[d.status] ?? "muted"}>{d.status === "draft" ? "Draft: needs your confirmation" : d.status}</Badge></td>
                     <td>{d.source}</td><td>{d.version || "-"}</td><td>{fmtDay(d.updated_at)}</td>
-                    <td>
-                      {d.status === "draft" && (
-                        <form action={discardDraft}>
-                          <input type="hidden" name="id" value={d.id} />
-                          <SubmitButton variant="danger" small pendingText="Deleting...">Delete draft</SubmitButton>
-                        </form>
-                      )}
-                    </td>
+                    <td><DocumentActions id={d.id} status={d.status} setStatus={setDocumentStatus} remove={deleteDocument} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -71,16 +65,19 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
 
       <Card title="Add a document" description="You will see the extracted text first and must confirm it before the assistant can use it.">
         <div className="stat-grid" style={{ marginBottom: 14 }}>
-          <Stat value={`${open.length} / ${MAX_DOCUMENTS}`} label="Documents per business" />
+          <div className="stat">
+            <b>{open.length} / {MAX_DOCUMENTS}</b><span>Documents per business</span>
+            <div className="bar" role="progressbar" aria-valuenow={open.length} aria-valuemin={0} aria-valuemax={MAX_DOCUMENTS} aria-label="Documents used" style={{ marginTop: 8 }}><div style={{ width: `${Math.min(100, (open.length / MAX_DOCUMENTS) * 100)}%` }} /></div>
+          </div>
           <Stat value={`${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`} label="Maximum size per file" />
         </div>
         <p className="muted" style={{ marginBottom: 14 }}>
           <b>Supported file formats:</b> PDF (text-based, not scanned images), Word (.docx), plain text (.txt) and Markdown (.md).
-          Archived documents don&apos;t count towards the document limit.
+          Uploaded files and pasted text both count as documents. Archived documents don&apos;t count towards the limit.
         </p>
         <form action={createDocument} className="stack" id="add-document">
+          <DocumentSourceFields maxTextChars={200000} maxMb={MAX_UPLOAD_BYTES / (1024 * 1024)} />
           <label className="field">Title <span className="hint">Optional. Defaults to the file name, or the first line of the text.</span><input name="title" maxLength={200} /></label>
-          <DocumentSourceFields maxTextChars={200000} />
           <div><SubmitButton pendingText="Reading...">Continue to preview</SubmitButton></div>
         </form>
       </Card>

@@ -110,3 +110,14 @@ export function messageCategory(m: { type: string; templateCategory?: string | n
   }
   return "service"; // free-form messages (text, media, interactive) sent inside the customer service window
 }
+
+/**
+ * Eligibility, worked out from what Meta itself reported on delivered messages instead of asking the owner:
+ * a message marked free_tier means the number gets the allowance; a charged service message with no free_tier ever seen means it does not.
+ * With no signal yet it falls back to the stored value (unknown for new accounts).
+ */
+export function detectEligibility(c: { wa_free_tier_seen_at?: string | null; wa_paid_service_seen_at?: string | null; wa_free_allowance?: unknown }): Eligibility {
+  if (c.wa_free_tier_seen_at) return "eligible";
+  if (c.wa_paid_service_seen_at) return "not_eligible";
+  return isEligibility(c.wa_free_allowance) ? c.wa_free_allowance : "unknown";
+}

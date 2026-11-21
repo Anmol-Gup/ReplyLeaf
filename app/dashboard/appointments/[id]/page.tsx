@@ -11,6 +11,7 @@ import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
 import { OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import Notice from "../../Notice";
+import { editNote } from "../../note-actions";
 import ActivityList, { type ActivityItem } from "../../../../components/ActivityList";
 import { shortName } from "../../../../lib/notifications";
 import { addAppointmentNote, deleteAppointment, updateAppointment } from "../actions";
@@ -39,7 +40,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   const feed: ActivityItem[] = [
     ...(a.updated_at && new Date(a.updated_at).getTime() - new Date(a.created_at).getTime() > 2000 ? [{ key: "updated", kind: "update", icon: "check" as IconName, title: `Status: ${STATUS_LABELS[status]}`, detail: agreed ? `Agreed for ${agreed}` : "Last changed", at: a.updated_at as string }] : []),
     { key: "created", kind: "update", icon: "calendar" as IconName, title: "Appointment requested", detail: a.purpose as string, at: a.created_at as string },
-    ...noteRows.map((n): ActivityItem => ({ key: `n-${n.id}`, kind: "note", icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
+    ...noteRows.map((n): ActivityItem => ({ key: `n-${n.id}`, kind: "note", noteId: n.id, icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
     ...(a.internal_notes ? [{ key: "n-earlier", kind: "note", icon: "chat" as IconName, title: "Note", detail: a.internal_notes as string, at: "", meta: "Earlier note (written before notes were dated)" }] : []),
   ].sort((x, y) => (y.at || "").localeCompare(x.at || ""));
   // The owner's four statuses, plus the record's own if it is an older one (so it is never hidden).
@@ -47,7 +48,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
 
   return (
     <>
-      <Link href="/dashboard/appointments" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }}><Icon name="back" size={16} /> All appointments</Link>
+      <Link href="/dashboard/appointments" className="rec-back"><Icon name="back" size={14} /> All appointments</Link>
       <header className="card rec-head">
         <span className="rec-ico rec-appointment rec-big" aria-hidden="true"><Icon name="calendar" size={24} /></span>
         <div className="rec-who">
@@ -88,8 +89,10 @@ export default async function AppointmentDetail({ params, searchParams }: { para
               )}
               <InlineProp label="Email" action={updateAppointment} hidden={hidden} emptyText="Click to add" display={email || undefined}
                 controls={[{ name: "customer_email", kind: "email", value: email ?? "", placeholder: "customer@example.com", maxLength: 200 }]} />
+              <InlineProp label="Assigned to" action={updateAppointment} hidden={hidden} emptyText="Click to assign" display={(a.assigned_to as string | null) || undefined}
+                controls={[{ name: "assignee_email", kind: "email", value: (a.assigned_to as string | null) ?? "", placeholder: "Email (yours or a teammate's), empty = unassigned", maxLength: 200 }]} />
               <div className="rec-prop"><small>Requested</small><span>{fmt(a.created_at)}</span></div>
-              <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it. Nothing is sent to the customer.</p>
+              <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it. Nothing is sent to the customer. Assigning emails the person you choose.</p>
             </div>
           </details>
         </aside>
@@ -106,7 +109,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
           <section className="card">
             <h2 className="rec-title">Activities</h2>
             <div className="rec-body">
-              <ActivityList items={feed} noteAction={addAppointmentNote} recordId={a.id} kinds={[{ id: "note", label: "Notes" }, { id: "update", label: "Updates" }]} />
+              <ActivityList items={feed} noteAction={addAppointmentNote} editAction={editNote} noteKind="appointment" recordId={a.id} kinds={[{ id: "note", label: "Notes" }, { id: "update", label: "Updates" }]} />
             </div>
           </section>
         </main>

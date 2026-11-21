@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { noteSchema } from "../../../lib/notes";
 import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
 import { leadDetailsSchema, leadFormSchema, parseRequirementLines } from "../../../lib/leads";
@@ -46,7 +47,7 @@ export async function updateLeadDetails(formData: FormData) {
   const db = supabaseAdmin();
   const { data } = await db.from("leads")
     .update({
-      status: v.status, follow_up_at: v.follow_up_at || null, internal_notes: v.notes || null,
+      status: v.status, follow_up_at: v.follow_up_at || null, ...(formData.has("notes") ? { internal_notes: v.notes || null } : {}), // notes now live in Activities
       customer_name: v.customer_name || null, project_type: v.project_type, description: v.description, budget: v.budget || null, timeline: v.timeline || null, updated_at: new Date().toISOString(),
     })
     .eq("id", v.id).eq("client_id", clientId).select("id");
@@ -81,4 +82,21 @@ export async function bulkDeleteLeads(formData: FormData) {
   revalidatePath("/dashboard/leads");
   revalidatePath("/dashboard"); // the Overview counts change too
   redirect("/dashboard/leads?notice=record_deleted");
+}
+
+// A private note on a lead: any number of them, each kept with its author and time. Never sent to the customer.
+export async function addLeadNote(formData: FormData) {
+  const { clientId, user } = await requireClient();
+  const parsed = noteSchema.safeParse({ id: formData.get("id"), body: String(formData.get("body") ?? "") });
+  if (!parsed.success) {
+    const id = String(formData.get("id") ?? "");
+    return redirect(/^[0-9a-f-]{36}$/i.test(id) ? `/dashboard/leads/${id}?notice=note_empty` : "/dashboard/leads?notice=invalid");
+  }
+  const db = supabaseAdmin();
+  const { data: lead } = await db.from("leads").select("id").eq("id", parsed.data.id).eq("client_id", clientId).maybeSingle();
+  if (!lead) return redirect("/dashboard/leads?notice=not_found");
+  const { error } = await db.from("lead_notes").insert({ client_id: clientId, lead_id: parsed.data.id, author_user_id: user.id, author_label: user.email ?? null, body: parsed.data.body });
+  if (error) return redirect(`/dashboard/leads/${parsed.data.id}?notice=${error.code === "42P01" || error.code === "PGRST205" ? "notes_needs_update" : "invalid"}`);
+  revalidatePath(`/dashboard/leads/${parsed.data.id}`);
+  return redirect(`/dashboard/leads/${parsed.data.id}?notice=note_added`);
 }

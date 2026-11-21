@@ -143,6 +143,7 @@ test("a database that is missing an update is reported as that, never as 'not fo
   const actions = readFileSync("app/dashboard/tickets/actions.ts", "utf8");
   assert.match(actions, /readError\) return go\(v\.id, needsUpdate\(readError\)/);          // a failed read of the ticket is not "no such ticket"
   for (const code of ["42703", "42P01", "PGRST204", "PGRST205"]) assert.ok(actions.includes(code), code);
-  assert.match(NOTICES.tkt_needs_update.text, /migration 0025/);
+  assert.match(NOTICES.tkt_needs_update.text, /try again in a little while/);
+  assert.doesNotMatch(NOTICES.tkt_needs_update.text, /migration|admin/i); // customers never see technical wording
   assert.equal(NOTICES.tkt_needs_update.kind, "error");
 });

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import CountedTextarea from "../../../../../components/CountedTextarea";
 import Icon from "../../../../../components/Icon";
 import ChangeAwareSubmit from "../../../../../components/ChangeAwareSubmit";
+import ConfirmForm from "../../../../../components/ConfirmForm";
 import SubmitButton from "../../../../../components/SubmitButton";
 import { Alert, Badge, Card, PageHeader, type Tone } from "../../../../../components/ui";
 import { requireClient } from "../../../../../lib/auth/session";
@@ -10,7 +11,7 @@ import { fmt } from "../../../../../lib/dashboard";
 import { chunkText } from "../../../../../lib/kb/chunk";
 import Notice from "../../../Notice";
 import {
-  discardDraft, publishDocumentAction, reindexDocumentAction, restoreVersion, setDocumentStatus,
+  deleteDocument, discardDraft, publishDocumentAction, reindexDocumentAction, restoreVersion, setDocumentStatus,
 } from "../../../actions";
 
 export const maxDuration = 60; // publishing embeds every chunk
@@ -76,6 +77,9 @@ export default async function DocumentPage({
               <input type="hidden" name="status" value={doc.status === "active" ? "archived" : "active"} />
               <SubmitButton variant="secondary" pendingText="Saving...">{doc.status === "active" ? "Archive (stop using)" : "Re-activate"}</SubmitButton>
             </form>
+            <ConfirmForm action={deleteDocument} message="Delete this document permanently? The assistant will stop using it. This cannot be undone.">
+              <input type="hidden" name="id" value={id} /><SubmitButton variant="danger" pendingText="Deleting...">Delete</SubmitButton>
+            </ConfirmForm>
             {doc.status === "active" && (
               <form action={reindexDocumentAction}>
                 <input type="hidden" name="id" value={id} />

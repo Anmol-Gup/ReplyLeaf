@@ -2,7 +2,7 @@ import { Badge, Card, EmptyState, ErrorState, PageHeader, Stat } from "../../../
 import { requireClient } from "../../../lib/auth/session";
 import { fmt, fmtDay } from "../../../lib/dashboard";
 import Link from "next/link";
-import { BILLING_STATUS_UNAVAILABLE, ELIGIBILITY_LABELS, FREE_SERVICE_MESSAGES, isEligibility, monthBounds, summariseUsage, WHATSAPP_MANAGER_URL, type UsageRow } from "../../../lib/wa-usage";
+import { BILLING_STATUS_UNAVAILABLE, ELIGIBILITY_LABELS, FREE_SERVICE_MESSAGES, detectEligibility, monthBounds, summariseUsage, WHATSAPP_MANAGER_URL, type UsageRow } from "../../../lib/wa-usage";
 import { classifyWhatsAppError } from "../../../lib/whatsapp/errors";
 import { parseWorkflowSettings } from "../../../lib/workflow-settings";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
@@ -26,9 +26,9 @@ export default async function Usage() {
   const [usageRes, { data: failedRows, count: failedCount }, { data: waClient }] = await Promise.all([
     db.rpc("wa_usage_summary", { p_client_id: clientId, p_since: waStart.toISOString(), p_until: waReset.toISOString() }),
     db.from("messages").select("created_at, error, error_code", { count: "exact" }).eq("direction", "outbound").eq("via", "api").eq("status", "failed").gte("created_at", waStart.toISOString()).order("created_at", { ascending: false }).limit(5),
-    db.from("clients").select("wa_phone_number_id, wa_free_allowance").eq("id", clientId).single(),
+    db.from("clients").select("wa_phone_number_id, wa_free_allowance, wa_free_tier_seen_at, wa_paid_service_seen_at").eq("id", clientId).single(),
   ]);
-  const eligibility = isEligibility(waClient?.wa_free_allowance) ? waClient.wa_free_allowance : "unknown";
+  const eligibility = detectEligibility(waClient ?? {});
   const phones = summariseUsage((usageRes.data ?? []) as UsageRow[], eligibility);
   if (phones.length === 0 && waClient?.wa_phone_number_id) phones.push(...summariseUsage([{ out_phone_number_id: waClient.wa_phone_number_id, out_category: "service", out_total: 0, out_delivered: 0, out_failed: 0, out_awaiting: 0 }], eligibility));
   const billingErrors = (failedRows ?? []).filter((r) => classifyWhatsAppError(r.error_code as number | null, r.error as string | null) === "billing");
@@ -65,8 +65,7 @@ export default async function Usage() {
           {usageRes.error && <ErrorState>WhatsApp usage could not be loaded.</ErrorState>}
           <p className="muted">
             {ELIGIBILITY_LABELS[eligibility]}.{" "}
-            {eligibility === "unknown" && "Not every account qualifies, so the free-allowance figures below assume it does until you confirm. "}
-            <Link href="/dashboard/settings?tab=whatsapp">Change this in Settings</Link>.
+            {eligibility === "unknown" ? "Not confirmed yet: it is detected automatically from WhatsApp's delivery reports once messages have been delivered, and the figures below assume the allowance applies until then." : "Detected from WhatsApp's own delivery reports."}
           </p>
           {phones.length === 0 && <p className="muted">No WhatsApp number is connected yet.</p>}
           {phones.map((u) => (

@@ -39,7 +39,7 @@ export default function InlineProp({ label, display, action, hidden, controls, r
         <small>{label}</small>
         {disabled ? <span>{display}</span> : (
           <button type="button" className="inline-view" onClick={() => setEditing(true)} aria-label={`Edit ${label}`}>
-            <span>{display ?? <span className="muted">{emptyText}</span>}</span><Icon name="settings" size={14} />
+            <span>{display ?? <span className="muted">{emptyText}</span>}</span><Icon name="edit" size={14} />
           </button>
         )}
       </div>

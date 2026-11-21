@@ -2,6 +2,7 @@ import CustomerCard from "../../../../components/CustomerCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ConfirmForm from "../../../../components/ConfirmForm";
+import { editNote } from "../../note-actions";
 import ActivityList, { type ActivityItem } from "../../../../components/ActivityList";
 import SubmitButton from "../../../../components/SubmitButton";
 import Icon, { type IconName } from "../../../../components/Icon";
@@ -30,7 +31,7 @@ const SHOWN_EVENTS = 5; // the page shows the latest few and folds the rest away
 export default async function TicketDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
   const { notice } = await searchParams;
-  const { db, clientId } = await requireClient();
+  const { db, clientId, user } = await requireClient();
   const { data: t } = await db.from("tickets").select("*").eq("id", id).maybeSingle();
   if (!t) notFound(); // also what another business's id looks like: RLS returns nothing
 
@@ -57,7 +58,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
       const outcome = e.kind === "notification" ? notificationOutcome(d, deliveryOf.get(String(d.wa_message_id ?? "")) ?? null) : null;
       return { key: `e-${e.id}`, kind: "update", icon: EVENT_ICON[e.kind] ?? "info", title: describeTicketEvent(e.kind, d), detail: "", at: e.created_at, meta: shortName(e.actor_label) || "Assistant", label: outcome?.label, tone: outcome?.tone };
     }),
-    ...notes.map((n): ActivityItem => ({ key: `n-${n.id}`, kind: "note", icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
+    ...notes.map((n): ActivityItem => ({ key: `n-${n.id}`, kind: "note", noteId: n.id, icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
     ...(t.internal_notes ? [{ key: "n-earlier", kind: "note", icon: "chat" as IconName, title: "Note", detail: t.internal_notes as string, at: "", meta: "Earlier note (written before notes were dated)" }] : []),
   ].sort((a, b) => (b.at || "").localeCompare(a.at || ""));
 
@@ -73,7 +74,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
 
   return (
     <>
-      <Link href="/dashboard/tickets" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }}><Icon name="back" size={16} /> All tickets</Link>
+      <Link href="/dashboard/tickets" className="rec-back"><Icon name="back" size={14} /> All tickets</Link>
       <header className="card rec-head">
         <span className="rec-ico rec-ticket rec-big" aria-hidden="true"><Icon name="alert" size={24} /></span>
         <div className="rec-who">
@@ -108,9 +109,9 @@ export default async function TicketDetail({ params, searchParams }: { params: P
                 controls={[{ name: "priority", kind: "select", value: priority, options: PRIORITIES.map((x) => ({ value: x, label: PRIORITY_LABELS[x] })) }]} />
               <InlineProp label="Category" action={updateTicket} hidden={hidden} display={t.category ?? <span className="muted">Not set</span>}
                 controls={[{ name: "category", kind: "select", value: t.category ?? "", options: [{ value: "", label: "Not set" }, ...categories.map((c) => ({ value: c, label: c }))] }]} />
-              <InlineProp label="Assigned to" action={updateTicket} hidden={hidden}
-                display={assignedLabel ?? (t.assigned_user_id ? "Former team member" : t.assigned_to ?? <span className="muted">Unassigned</span>)}
-                controls={[{ name: "assigned_user_id", kind: "select", value: t.assigned_user_id ?? "", options: [{ value: "", label: "Unassigned" }, ...assigneeOptions.map((m) => ({ value: m.id, label: shortName(m.label) }))] }]} />
+              <InlineProp label="Assigned to" action={updateTicket} hidden={hidden} emptyText="Click to assign"
+                display={assignedLabel ?? (t.assigned_user_id ? "Former team member" : (t.assigned_to as string | null)) ?? undefined}
+                controls={[{ name: "assignee_email", kind: "email", value: t.assigned_user_id === user.id ? (user.email ?? "") : (t.assigned_to as string | null) ?? "", placeholder: "Email (yours or a teammate's), empty = unassigned", maxLength: 200 }]} />
               <div className="rec-prop"><small>Raised</small><span>{fmt(t.created_at)}</span></div>
               {t.resolved_at && <div className="rec-prop"><small>Resolved</small><span>{fmt(t.resolved_at)}</span></div>}
               <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it. Nothing is sent to the customer unless you tick &ldquo;Notify customer&rdquo; when changing the status.</p>
@@ -130,7 +131,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
           <section className="card">
             <h2 className="rec-title">Activities</h2>
             <div className="rec-body">
-              <ActivityList items={feed} noteAction={addTicketNote} recordId={t.id} kinds={[{ id: "note", label: "Notes" }, { id: "update", label: "Updates" }]} empty="Nothing has happened to this ticket yet." />
+              <ActivityList items={feed} noteAction={addTicketNote} editAction={editNote} noteKind="ticket" recordId={t.id} kinds={[{ id: "note", label: "Notes" }, { id: "update", label: "Updates" }]} empty="Nothing has happened to this ticket yet." />
             </div>
           </section>
         </main>

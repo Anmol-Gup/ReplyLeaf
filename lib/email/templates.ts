@@ -162,3 +162,38 @@ export function approvedEmail(a: { to: string; appUrl?: string }): MailMessage {
     }),
   };
 }
+
+const KIND = { ticket: ["ticket", "Ticket", "Open ticket in Replyleaf", "Please review the issue and follow up with the customer."], appointment: ["appointment", "Appointment", "Open appointment in Replyleaf", "Please review the request and get back to the customer."], handoff: ["conversation", "Conversation", "Open conversation in Replyleaf", "The customer is waiting for a person. Please review the details and reply."] } as const;
+
+/** Sent to whoever a ticket, appointment or handoff is assigned to by email. Branded HTML plus a plain-text twin; every value is escaped or clipped. */
+export function assignedEmail(a: {
+  to: string; kind: keyof typeof KIND; title: string; ref?: string; customerName: string | null; phone: string; detailLabel: string; detail: string;
+  path: string; assignedBy: string; businessName: string; appUrl?: string;
+}): MailMessage {
+  const [noun, Noun, buttonLabel, ask] = KIND[a.kind];
+  const url = a.appUrl ? `${a.appUrl.replace(/\/$/, "")}${a.path}` : undefined;
+  const phone = a.phone ? `+${a.phone.replace(/^\+/, "")}` : "";
+  const rows = [
+    { label: Noun, value: clip(a.title, 200) },
+    ...(a.ref ? [{ label: `${Noun} ID`, value: a.ref }] : []),
+    { label: "Customer", value: a.customerName || phone || "Not given" },
+    ...(a.customerName && phone ? [{ label: "Phone", value: phone }] : []),
+    ...(a.detail ? [{ label: a.detailLabel, value: clip(a.detail, 500) }] : []),
+  ];
+  const text = `Hi,\n\nA ${noun} has been assigned to you by ${a.businessName}.\n\n${rows.map((r) => `${r.label}: ${r.value}`).join("\n")}${url ? `\n\n${buttonLabel}: ${url}` : ""}\n\n${ask}\n\nThanks,\n${a.businessName}\nPowered by Replyleaf`;
+  return {
+    to: a.to,
+    subject: oneLine(`${Noun} assigned to you: ${a.title}`),
+    text,
+    html: emailLayout({
+      preheader: `${a.assignedBy} assigned you: ${a.title}`.slice(0, 120),
+      heading: `A ${noun} has been assigned to you`,
+      paragraphs: [`Hi, ${a.businessName} has assigned a ${noun} to you.`],
+      details: rows,
+      plainValues: true,
+      button: url ? { label: buttonLabel, url } : undefined,
+      footer: `${ask} Powered by Replyleaf.`,
+      brandName: a.businessName,
+    }),
+  };
+}

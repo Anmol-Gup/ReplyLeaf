@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { emailAssignee, resolveAssignee } from "../../../lib/assign";
 import { requirePaidAccess } from "../../../lib/billing/gate";
 import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
@@ -19,7 +20,7 @@ const detail = (id: string) => `/dashboard/appointments/${id}`;
 const go = (id: string, notice: string): never => redirect(`${detail(id)}?notice=${notice}`);
 
 export async function updateAppointment(formData: FormData) {
-  const { clientId } = await requireClient();
+  const { clientId, clientName, user } = await requireClient();
   await requirePaidAccess(clientId);
   const rawId = String(formData.get("id") ?? "");
   const text = (n: string) => String(formData.get(n) ?? "");
@@ -28,7 +29,7 @@ export async function updateAppointment(formData: FormData) {
   const v = parsed.data;
 
   const db = supabaseAdmin();
-  const { data: before } = await db.from("appointments").select("id, status, scheduled_date, scheduled_time, timezone").eq("id", v.id).eq("client_id", clientId).maybeSingle();
+  const { data: before } = await db.from("appointments").select("id, status, scheduled_date, scheduled_time, timezone, customer_name, customer_phone, purpose").eq("id", v.id).eq("client_id", clientId).maybeSingle();
   if (!before) return redirect("/dashboard/appointments?notice=not_found");
 
   // A confirmed appointment must have the agreed date and a clock time. The date is checked against today only when it is new or
@@ -41,7 +42,13 @@ export async function updateAppointment(formData: FormData) {
     if (!ok.ok) return go(v.id, scheduleNotice(ok.problem));
   }
 
+  // Assign by typed email (only when posted): empty = unassigned, otherwise recorded and the person is emailed.
+  const typed = formData.has("assignee_email") ? await resolveAssignee(clientId, user, formData.get("assignee_email")) : undefined;
+  if (typed === null) return go(v.id, "invalid");
+  // Read lazily so a database without migration 0028 still saves every other change.
+  const prevAssignee = typed ? ((await db.from("appointments").select("assigned_to").eq("id", v.id).eq("client_id", clientId).maybeSingle()).data?.assigned_to as string | null | undefined) ?? null : null;
   const { error } = await db.from("appointments").update({
+    ...(typed ? { assigned_to: typed.email } : {}),
     status: v.status, scheduled_date: v.scheduled_date || null, scheduled_time: v.scheduled_time || null, customer_email: v.customer_email || null,
     ...(v.notes !== undefined ? { internal_notes: v.notes || null } : {}), updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);
@@ -50,6 +57,10 @@ export async function updateAppointment(formData: FormData) {
   revalidatePath("/dashboard/appointments");
   revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(detail(v.id));
+  if (typed && typed.email && typed.email !== prevAssignee) {
+    const sent = await emailAssignee(typed, { kind: "appointment", title: before.purpose as string, customerName: (before.customer_name as string | null) ?? null, phone: (before.customer_phone as string | null) ?? "", detailLabel: "Details", detail: "", path: detail(v.id), assignedBy: user.email ?? "A teammate", businessName: clientName });
+    if (!sent) return go(v.id, "assign_email_failed");
+  }
   return go(v.id, "appt_done");
 }
 

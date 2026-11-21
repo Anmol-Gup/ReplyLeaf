@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { editNote } from "../../note-actions";
 import ActivityList from "../../../../components/ActivityList";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import Icon from "../../../../components/Icon";
@@ -44,8 +45,8 @@ export default async function ContactPage({
   const ICON = { handoff: "shield", lead: "zap", appointment: "calendar", ticket: "alert" } as const;
   const noteRows = (notesRes.error ? [] : notesRes.data ?? []) as { id: string; author_label: string | null; body: string; created_at: string }[];
   const items: ActivityItem[] = [
-    ...timeline.map((t): ActivityItem => ({ key: `${t.kind}-${t.id}`, kind: t.kind, icon: ICON[t.kind], title: t.title, detail: t.detail, href: t.href, at: t.at, label: t.statusLabel, tone: t.tone })),
-    ...noteRows.map((n): ActivityItem => ({ key: `note-${n.id}`, kind: "note", icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
+    ...timeline.filter((t) => t.kind === "handoff").map((t): ActivityItem => ({ key: `${t.kind}-${t.id}`, kind: t.kind, icon: ICON[t.kind], title: t.title, detail: t.detail, href: t.href, at: t.at, label: t.statusLabel, tone: t.tone })),
+    ...noteRows.map((n): ActivityItem => ({ key: `note-${n.id}`, kind: "note", noteId: n.id, icon: "chat", title: "Note", detail: n.body, at: n.created_at, meta: shortName(n.author_label) || "A team member" })),
     ...(c.notes ? [{ key: "note-earlier", kind: "note", icon: "chat" as const, title: "Note", detail: c.notes as string, at: "", meta: "Earlier note (written before notes were dated)" }] : []),
   ].sort((a, b) => (b.at || "").localeCompare(a.at || ""));
   const w = windowStatus(conv?.last_customer_message_at);
@@ -58,7 +59,7 @@ export default async function ContactPage({
 
   return (
     <>
-      <Link href="/dashboard/contacts" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }}><Icon name="back" size={16} /> All contacts</Link>
+      <Link href="/dashboard/contacts" className="rec-back"><Icon name="back" size={14} /> All contacts</Link>
       <header className="card rec-head">
         <span className="avatar rec-avatar" aria-hidden="true">{(c.name || "?").trim()[0].toUpperCase()}</span>
         <div className="rec-who">
@@ -121,7 +122,7 @@ export default async function ContactPage({
         <main className="rec-col">
           <section className="card">
             <h2 className="rec-title">Activities</h2>
-            <div className="rec-body"><ActivityList items={items} noteAction={addContactNote} recordId={id} kinds={[{ id: "note", label: "Notes" }, { id: "handoff", label: "Handoffs" }, { id: "lead", label: "Leads" }, { id: "appointment", label: "Appointments" }, { id: "ticket", label: "Tickets" }]} empty="Nothing yet: no enquiries, appointments, tickets, handoffs or notes." /></div>
+            <div className="rec-body"><ActivityList items={items} noteAction={addContactNote} editAction={editNote} noteKind="contact" recordId={id} kinds={[{ id: "note", label: "Notes" }, { id: "handoff", label: "Handoffs" }]} empty="Nothing yet: no handoffs or notes." /></div>
           </section>
         </main>
 

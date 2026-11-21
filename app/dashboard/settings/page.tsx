@@ -10,8 +10,8 @@ import { updateSettings } from "../actions";
 import { maskedKey, PROVIDER_LABELS, type AiMode, type KeyProvider, type KeyStatus } from "../../../lib/ai-keys";
 import { fmt } from "../../../lib/dashboard";
 import { assistantSetup, parseTab, SETTINGS_TABS } from "../../../lib/settings-tabs";
-import { removeAiKey, saveAiKey, setFreeAllowance, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
-import { BILLING_STATUS_UNAVAILABLE, ELIGIBILITY_LABELS, isEligibility, WHATSAPP_MANAGER_URL } from "../../../lib/wa-usage";
+import { removeAiKey, saveAiKey, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
+import { BILLING_STATUS_UNAVAILABLE, detectEligibility, ELIGIBILITY_LABELS, FREE_SERVICE_MESSAGES, monthBounds, summariseUsage, WHATSAPP_MANAGER_URL, type UsageRow } from "../../../lib/wa-usage";
 import ChangeAwareSubmit from "../../../components/ChangeAwareSubmit";
 import { parseWorkflowSettings, WEEKDAYS, WEEKDAY_LABELS } from "../../../lib/workflow-settings";
 
@@ -27,7 +27,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const tab = parseTab(rawTab);
   const { db, clientId } = await requireClient();
   const { data: c } = await db.from("clients")
-    .select("name, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, wa_free_allowance, onboarding_status, onboarding_step, status, workflow_settings").eq("id", clientId).single();
+    .select("name, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, wa_free_allowance, wa_free_tier_seen_at, wa_paid_service_seen_at, onboarding_status, onboarding_step, status, workflow_settings").eq("id", clientId).single();
   const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications, delivery").eq("client_id", clientId).maybeSingle();
   const w = parseWorkflowSettings(c?.workflow_settings);
   const mode = (c?.ai_mode ?? "platform") as AiMode;
@@ -37,6 +37,14 @@ export default async function Settings({ searchParams }: { searchParams: Promise
     mode, hasKey: status !== "none", keyStatus: status,
     hasPhone: Boolean(c?.wa_phone_number_id), onboardingStatus: c?.onboarding_status ?? null, clientStatus: c?.status ?? null,
   });
+  // WhatsApp tab only: this month's delivered service messages, for the free-allowance line (same figures as the Usage page).
+  const eligibility = detectEligibility(c ?? {});
+  let delivered: number | null = null;
+  if (tab === "whatsapp" && c?.wa_phone_number_id) {
+    const { start, next } = monthBounds(new Date(), w.appointments.timezone);
+    const { data: u, error: uErr } = await db.rpc("wa_usage_summary", { p_client_id: clientId, p_since: start.toISOString(), p_until: next.toISOString() });
+    if (!uErr) delivered = summariseUsage((u ?? []) as UsageRow[], eligibility).reduce((n, x) => n + x.deliveredService, 0);
+  }
   const needsAttention = new Set(setup.steps.filter((x) => !x.done).map((x) => x.tab));
   const current = SETTINGS_TABS.find((t) => t.id === tab)!;
 
@@ -80,7 +88,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <div className="stack">
                 <label className="field">Business name<input name="name" required maxLength={100} defaultValue={c?.name ?? ""} /></label>
                 <div className="row">
-                  <SubmitButton pendingText="Saving...">Save name</SubmitButton>
+                  <ChangeAwareSubmit pendingText="Saving...">Save name</ChangeAwareSubmit>
                   <Link href="/dashboard/knowledge">Open Knowledge base</Link>
                 </div>
               </div>
@@ -107,7 +115,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
                 <span className="hint">Create it in your provider&apos;s dashboard (Google AI Studio for Gemini, platform.openai.com for OpenAI). We check it before saving, and it is stored encrypted.</span>
                 <input name="ai_key" type="password" autoComplete="off" spellCheck={false} maxLength={300} placeholder="Paste your key" />
               </label>
-              <div><SubmitButton pendingText="Checking and saving...">{mode === "byok" && status !== "none" ? "Replace key" : "Save key"}</SubmitButton></div>
+              <div><ChangeAwareSubmit pendingText="Checking and saving...">{mode === "byok" && status !== "none" ? "Replace key" : "Save key"}</ChangeAwareSubmit></div>
             </form>
             {mode === "byok" && status !== "none" && (
               <form action={removeAiKey}>
@@ -123,7 +131,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
                     <option value="openai">{PROVIDER_LABELS.openai}</option>
                   </select>
                 </label>
-                <SubmitButton variant="secondary" pendingText="Saving...">Save provider</SubmitButton>
+                <ChangeAwareSubmit pendingText="Saving...">Save provider</ChangeAwareSubmit>
               </form>
             )}
           </div>
@@ -192,7 +200,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <textarea name="escalation_instructions" rows={3} maxLength={1000} defaultValue={w.handoff.escalationInstructions} />
             </label>
                     </WorkflowCard>
-          <div><SubmitButton pendingText="Saving...">Save workflows</SubmitButton></div>
+          <div><ChangeAwareSubmit pendingText="Saving...">Save workflows</ChangeAwareSubmit></div>
         </form>
       )}
 
@@ -215,7 +223,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <label className="check"><input type="checkbox" name="handoff_notifications" defaultChecked={n?.handoff_notifications ?? true} /> Chats that need a person</label>
           </div>
         </Card>
-          <div><SubmitButton pendingText="Saving...">Save notifications</SubmitButton></div>
+          <div><ChangeAwareSubmit pendingText="Saving...">Save notifications</ChangeAwareSubmit></div>
         </form>
       )}
 
@@ -227,16 +235,16 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             {c?.wa_phone_number_id
               ? <p className="muted">Phone number ID: <b>{c.wa_phone_number_id}</b>{mode === "platform" && <> · Monthly reply cap: {c?.monthly_message_cap} (set by the platform admin)</>}</p>
               : <Alert kind="warn">No WhatsApp number is connected yet. <Link href="/onboarding">Connect WhatsApp</Link></Alert>}
-            <p className="muted"><b>WhatsApp billing:</b> {BILLING_STATUS_UNAVAILABLE}. Replyleaf cannot see your Meta payment method or its status. Check it in <a href={WHATSAPP_MANAGER_URL} target="_blank" rel="noopener noreferrer">WhatsApp Manager</a> or with your messaging provider. Replyleaf never asks for or stores card details.</p>
-            <form action={setFreeAllowance} className="stack">
-              <label className="field">Free service-message allowance
-                <span className="hint">Meta gives eligible WhatsApp numbers 1,000 free delivered service messages a month. Not every account qualifies. Tell us what you know so Usage shows the right figures.</span>
-                <select name="wa_free_allowance" defaultValue={isEligibility(c?.wa_free_allowance) ? c.wa_free_allowance : "unknown"}>
-                  {(["unknown", "eligible", "not_eligible"] as const).map((e) => <option key={e} value={e}>{ELIGIBILITY_LABELS[e]}</option>)}
-                </select>
-              </label>
-              <div><ChangeAwareSubmit pendingText="Saving...">Save</ChangeAwareSubmit></div>
-            </form>
+            <div className="stack" style={{ gap: 6 }}>
+              <h3>How WhatsApp messaging works</h3>
+              <ul className="muted" style={{ margin: 0, paddingLeft: 18 }}>
+                <li><b>24-hour rule:</b> the assistant can reply freely for 24 hours after a customer&apos;s last message. After that WhatsApp only allows pre-approved templates, which Replyleaf does not send, so a late reply will not go out. Customers can message you again to reopen the window.</li>
+                <li><b>Who charges what:</b> your Replyleaf subscription is separate. Meta bills WhatsApp messaging to your own WhatsApp Business Account.</li>
+                <li><b>Free allowance:</b> Meta gives eligible numbers {FREE_SERVICE_MESSAGES.toLocaleString()} free service messages a month. {ELIGIBILITY_LABELS[eligibility]}{eligibility === "unknown" ? " yet (it is detected automatically from the delivery reports from WhatsApp)" : ""}.{delivered !== null && <> {delivered.toLocaleString()} delivered this month.</>} <Link href="/dashboard/usage">See Usage</Link>.</li>
+                <li><b>Prices</b> differ by country and message type and change over time, so they are not shown here. See <a href="https://developers.facebook.com/docs/whatsapp/pricing" target="_blank" rel="noopener noreferrer">Meta&apos;s pricing page</a>.</li>
+              </ul>
+            </div>
+            <p className="muted"><b>WhatsApp billing:</b> {BILLING_STATUS_UNAVAILABLE}. Replyleaf cannot see your Meta payment method or its status. Keep a payment method on your Meta account: delivery of service messages can stop once the free ones are used if there is none. Check it in <a href={WHATSAPP_MANAGER_URL} target="_blank" rel="noopener noreferrer">WhatsApp Manager</a> or with your messaging provider. Replyleaf never asks for or stores card details.</p>
           </div>
         </Card>
       )}

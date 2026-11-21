@@ -68,3 +68,11 @@ test("a status carries Meta's error code, the number it belongs to and when it h
   assert.equal(statuses[0].errorCode, 131042);
   assert.equal(statuses[0].at?.getTime(), 1700000000 * 1000);
 });
+
+test("status pricing: free_tier subtype means the free allowance, a billable service message means charged", () => {
+  const st = (pricing: unknown) => parseWebhookPayload(wrap({ metadata: meta, statuses: [{ id: "w1", status: "delivered", pricing }] })).statuses[0].freeTier;
+  assert.equal(st({ billable: false, category: "service", type: "free_customer_service", subtype: "free_tier" }), true);
+  assert.equal(st({ billable: true, category: "service", type: "regular" }), false);
+  assert.equal(st({ billable: true, category: "marketing" }), null);
+  assert.equal(st(undefined), null);
+});

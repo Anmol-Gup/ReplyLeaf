@@ -24,6 +24,8 @@ export type EmailContent = {
   paragraphs: string[];
   /** A name/value table, e.g. who signed up. */
   details?: { label: string; value: string }[];
+  /** Details values in normal weight instead of bold. */
+  plainValues?: boolean;
   button?: { label: string; url: string };
   footer?: string;
   /** Header name. Defaults to the product; customer emails use the business name. */
@@ -37,7 +39,7 @@ export function emailLayout(c: EmailContent): string {
 
   const details = c.details?.length
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 20px;border:1px solid ${LINE};border-radius:10px;border-collapse:separate;">${c.details
-        .map((d, i) => `<tr><td style="padding:10px 14px;width:34%;font-size:13px;color:${MUTED};${i ? `border-top:1px solid ${LINE};` : ""}">${escapeHtml(d.label)}</td><td style="padding:10px 14px;font-size:14px;font-weight:600;color:${INK};${i ? `border-top:1px solid ${LINE};` : ""}">${escapeHtml(d.value)}</td></tr>`)
+        .map((d, i) => `<tr><td style="padding:10px 14px;width:34%;font-size:13px;color:${MUTED};${i ? `border-top:1px solid ${LINE};` : ""}">${escapeHtml(d.label)}</td><td style="padding:10px 14px;font-size:14px;font-weight:${c.plainValues ? 400 : 600};color:${INK};${i ? `border-top:1px solid ${LINE};` : ""}">${escapeHtml(d.value)}</td></tr>`)
         .join("")}</table>`
     : "";
 

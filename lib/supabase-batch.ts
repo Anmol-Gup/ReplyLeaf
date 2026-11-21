@@ -13,6 +13,8 @@ import { parseWorkflowSettings } from "./workflow-settings";
 import { notifyOwner, raiseAlert, reportWhatsAppProblem, sendClientText } from "./supabase-deps";
 import { supabaseAdmin } from "./supabase-admin";
 
+/** Stands in for an earlier assistant reply written before the business knowledge last changed. */
+const STALE_REPLY = "(An earlier reply is hidden because the business information has changed since. Do not repeat it; answer from the current knowledge only.)";
 const HISTORY_TURNS = 12;
 
 // Production implementation of BatchDeps. The conversation row tells us which
@@ -55,7 +57,7 @@ export function supabaseBatchDeps(): BatchDeps {
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 
-      const [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads, subRow] = await Promise.all([
+      const [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads, subRow, lastDoc, changed] = await Promise.all([
         db.from("clients")
           .select("id, name, wa_phone_number_id, ai_provider, ai_mode, ai_key_status, billing_exempt, business_info, business_hours, booking_link, kb_text, monthly_message_cap, workflow_settings")
           .eq("id", clientId).single(),
@@ -78,8 +80,10 @@ export function supabaseBatchDeps(): BatchDeps {
         db.from("leads").select("id", { count: "exact", head: true })
           .eq("client_id", clientId).eq("contact_id", conv.contact_id).in("status", ["new", "qualified", "contacted", "proposal_sent", "negotiation"]),
         db.from("subscriptions").select("status, current_period_end, cancel_at_period_end, grace_ends_at").eq("client_id", clientId).maybeSingle(),
+        db.from("kb_documents").select("updated_at").eq("client_id", clientId).order("updated_at", { ascending: false }).limit(1),
+        db.from("clients").select("kb_changed_at").eq("id", clientId).maybeSingle(), // errors until migration 0031 is applied: ignored
       ]);
-      for (const r of [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads, subRow]) {
+      for (const r of [client, contact, pendingRows, recent, replies, recentInbound, openAppt, openTickets, openLeads, subRow, lastDoc]) {
         if (r.error) throw new Error(`batch load failed: ${r.error.message}`);
       }
 
@@ -98,6 +102,9 @@ export function supabaseBatchDeps(): BatchDeps {
         return { id: p.id as string, type: (m?.type as string) ?? "text", body: (m?.body as string | null) ?? null };
       });
 
+      // When the knowledge last changed (a document added, edited, archived, re-activated or deleted, or the core text saved). The assistant's own
+      // replies from before that moment may state facts that are no longer in the knowledge, so they are not shown to the model.
+      const kbChangedAt = Math.max(Date.parse((lastDoc.data?.[0]?.updated_at as string | undefined) ?? "") || 0, Date.parse((changed.data?.kb_changed_at as string | undefined) ?? "") || 0);
       // History = recent messages that are not part of this batch, oldest first.
       const history: ChatTurn[] = (recent.data ?? [])
         .filter((m) => !pendingMessageIds.has(m.id as string) && m.body && m.status !== "blocked" && m.status !== "failed")
@@ -105,7 +112,7 @@ export function supabaseBatchDeps(): BatchDeps {
         .reverse()
         .map((m) => m.direction === "inbound"
           ? { role: "user" as const, text: wrapCustomerMessages([m.body as string]) }
-          : { role: "assistant" as const, text: m.body as string });
+          : { role: "assistant" as const, text: Date.parse(m.created_at as string) < kbChangedAt ? STALE_REPLY : m.body as string });
 
       const c = client.data!;
       // BYOK: this business's own key, decrypted only here, only for the length of this batch. It is never logged.

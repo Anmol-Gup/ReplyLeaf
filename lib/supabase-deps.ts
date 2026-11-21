@@ -176,6 +176,12 @@ export function supabaseInboundDeps(): InboundDeps {
       if (dbErr) throw new Error(`status update failed: ${dbErr.message}`);
     },
 
+    async recordFreeTier(phoneNumberId, free) {
+      const col = free ? "wa_free_tier_seen_at" : "wa_paid_service_seen_at";
+      const { error } = await db.from("clients").update({ [col]: new Date().toISOString() }).eq("wa_phone_number_id", phoneNumberId);
+      if (error) throw new Error(`free tier signal failed: ${error.message}`);
+    },
+
     async touchWebhook(phoneNumberIds) {
       await db.from("clients").update({ last_webhook_at: new Date().toISOString() }).in("wa_phone_number_id", phoneNumberIds);
     },
