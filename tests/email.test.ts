@@ -46,3 +46,10 @@ test("admin alert email", () => {
   assert.match(m.subject, /batch_processing_failed \(Bright Smile\)/);
   assert.match(m.text, /boom/);
 });
+
+test("needs-human email links straight to the conversation, once per handoff", () => {
+  const e = { type: "needs_human" as const, conversationId: "11111111-1111-1111-1111-111111111111", contactName: "Surya", phone: "9", reason: "customer_request" as const, lastMessage: "hi", summary: "wants a quote" };
+  const t = ownerEmail(e, { to: "o@x.com", businessName: "B", appUrl: "https://app.example.com/" }).text;
+  assert.match(t, /https:\/\/app\.example\.com\/dashboard\/conversations\/11111111-1111-1111-1111-111111111111/);
+  assert.match(t, /wants a quote/);
+});

@@ -32,6 +32,8 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   ai_key_empty: { kind: "error", text: "Paste your AI key first." },
   ai_key_removed: { kind: "warn", text: "Your AI key was removed. The assistant is off until you add a new one." },
   notif_invalid: { kind: "error", text: "One of the email addresses is not valid (or there are more than 5 additional addresses). Nothing was changed." },
+  handoff_needs_update: { kind: "error", text: "This could not be done because the database is missing a recent Replyleaf update (migration 0026). Nothing was changed. Ask your admin to apply it, then try again." },
+  assigned_other: { kind: "warn", text: "Another team member is already handling this conversation, so nothing was changed." },
   tkt_needs_update: { kind: "error", text: "This could not be saved because the database is missing a recent Replyleaf update (migration 0025). Nothing was changed. Ask your admin to apply it, then try again." },
   tkt_bad_transition: { kind: "error", text: "That status change is not allowed from the ticket's current status. Pick one of the statuses offered." },
   tkt_bad_assignee: { kind: "error", text: "That person is not a member of your team, so the ticket was not assigned." },

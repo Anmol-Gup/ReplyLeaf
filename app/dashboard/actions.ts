@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { clearSessionCookies, requireClient } from "../../lib/auth/session";
 import { requirePaidAccess } from "../../lib/billing/gate";
-import { SOURCE_LABELS } from "../../lib/handoff";
+import { conversationActions, conversationStateOf, type OpenHandoff } from "../../lib/conversation-state";
 import { deleteContactData } from "../../lib/privacy";
 import { supabaseAdmin } from "../../lib/supabase-admin";
 import { sendClientText } from "../../lib/supabase-deps";
@@ -28,71 +28,76 @@ export async function logout() {
 }
 
 // ----------------------------------------------------------- conversations
+// Takeover, resume and sending go through atomic SQL functions (migration 0026): the person is the signed-in user, never a form value.
+const refresh = (id: string) => {
+  revalidatePath(`/dashboard/conversations/${id}`);
+  revalidatePath("/dashboard/conversations");
+  revalidatePath("/dashboard/handoff");
+  revalidatePath("/dashboard"); // the Overview counts change too
+};
+const rpcRow = <T,>(data: unknown): T | null => ((Array.isArray(data) ? data[0] : data) as T | null) ?? null;
+
 export async function takeOver(formData: FormData) {
   const { clientId, user } = await requireClient();
   const id = uuid.parse(formData.get("id"));
-  const db = supabaseAdmin();
-  // Records the handoff (so it shows on the Human Handoff page) and silences the assistant for THIS chat only.
-  const { data, error } = await db.rpc("create_handoff", {
-    p_client_id: clientId, p_conversation_id: id, p_source: "owner", p_reason: SOURCE_LABELS.owner, p_summary: null,
-    p_status: "human_active", p_assigned_to: user.email ?? null,
+  const { data, error } = await supabaseAdmin().rpc("take_over_conversation", {
+    p_client_id: clientId, p_conversation_id: id, p_user_id: user.id, p_label: user.email ?? null,
   });
-  if (!error) {
-    const row = Array.isArray(data) ? data[0] : data;
-    // A request that was already open (waiting or assigned) moves to "you are handling it".
-    if (row && row.out_created === false) {
-      await db.rpc("set_handoff_status", { p_client_id: clientId, p_handoff_id: row.out_id, p_action: "take_over", p_assignee: user.email ?? null });
-    }
-  }
-  revalidatePath(`/dashboard/conversations/${id}`);
-  revalidatePath("/dashboard/handoff");
-  revalidatePath("/dashboard"); // the Overview counts change too
+  const row = rpcRow<{ out_taken: boolean }>(data);
+  refresh(id);
+  if (error) return flash(`/dashboard/conversations/${id}`, error.message.includes("take_over_conversation") ? "handoff_needs_update" : "not_found");
+  if (row && !row.out_taken) return flash(`/dashboard/conversations/${id}`, "assigned_other");
 }
 
+// "Resume AI": ends the human assignment and resolves the handoff. Only the person who has it can do this.
 export async function handBack(formData: FormData) {
-  const { clientId } = await requireClient();
+  const { clientId, user } = await requireClient();
   const id = uuid.parse(formData.get("id"));
-  const db = supabaseAdmin();
-  // If a handoff is open for this chat, closing it also switches the assistant back on.
-  const { data: open } = await db.from("handoff_requests").select("id")
-    .eq("conversation_id", id).eq("client_id", clientId).neq("status", "resolved").maybeSingle();
-  if (open) {
-    await db.rpc("set_handoff_status", { p_client_id: clientId, p_handoff_id: open.id, p_action: "resume_ai", p_assignee: null });
-  } else {
-    await db.from("conversations")
-      .update({ handling: "bot", failed_answer_count: 0, updated_at: new Date().toISOString() })
-      .eq("id", id).eq("client_id", clientId);
-  }
-  revalidatePath(`/dashboard/conversations/${id}`);
-  revalidatePath("/dashboard"); // the Overview counts change too
-  revalidatePath("/dashboard/handoff");
+  const { data, error } = await supabaseAdmin().rpc("resume_ai", {
+    p_client_id: clientId, p_conversation_id: id, p_user_id: user.id, p_label: user.email ?? null,
+  });
+  const row = rpcRow<{ out_resumed: boolean }>(data);
+  refresh(id);
+  if (error) return flash(`/dashboard/conversations/${id}`, error.message.includes("resume_ai") ? "handoff_needs_update" : "not_found");
+  if (row && !row.out_resumed) return flash(`/dashboard/conversations/${id}`, "assigned_other");
 }
 
 export async function sendHumanMessage(formData: FormData) {
-  const { clientId } = await requireClient();
+  const { clientId, user } = await requireClient();
   await requirePaidAccess(clientId); // paid feature: blocked while the subscription is inactive (see lib/billing/access.ts)
   const id = uuid.parse(formData.get("id"));
   const text = z.string().trim().min(1).max(1500).safeParse(formData.get("text"));
+  const requestId = z.string().min(8).max(64).regex(/^[\w-]+$/).safeParse(formData.get("request_id"));
   const back = `/dashboard/conversations/${id}`;
   if (!text.success) return flash(back, "invalid");
 
   const db = supabaseAdmin();
-  const { data: conv } = await db.from("conversations")
-    .select("id, handling, contact_id, last_customer_message_at")
-    .eq("id", id).eq("client_id", clientId).maybeSingle();
+  const [{ data: conv }, { data: open }] = await Promise.all([
+    db.from("conversations").select("id, handling, contact_id, last_customer_message_at").eq("id", id).eq("client_id", clientId).maybeSingle(),
+    db.from("handoff_requests").select("status, assigned_user_id").eq("conversation_id", id).eq("client_id", clientId).neq("status", "resolved").maybeSingle(),
+  ]);
   if (!conv) return flash("/dashboard/conversations", "not_found");
-  if (conv.handling !== "human_active") return flash(back, "take_over_first");
-
-  const record = (patch: object) => db.from("messages").insert({
-    client_id: clientId, conversation_id: id, direction: "outbound", sender: "human",
-    type: "text", body: text.data, ...patch,
-  });
+  // Only the person who has the chat may reply: not while the assistant handles it, not for another agent's chat.
+  const state = conversationStateOf(conv.handling, open as OpenHandoff, user.id);
+  if (!conversationActions(state).canReply) return flash(back, state === "other" ? "assigned_other" : "take_over_first");
 
   // 24-hour window: block the send, keep a visible record, warn the owner.
   const last = conv.last_customer_message_at ? new Date(conv.last_customer_message_at) : null;
+  const base = { client_id: clientId, conversation_id: id, direction: "outbound", sender: "human", type: "text", body: text.data };
   if (!isWithinWindow(last)) {
-    await record({ status: "blocked", error: "outside_24h_window" });
+    await db.from("messages").insert({ ...base, status: "blocked", error: "outside_24h_window" });
     return flash(back, "window_closed");
+  }
+
+  // The row is saved FIRST with the request id: a double click or a retry of the same form hits the unique index and sends nothing.
+  // The message is therefore never lost, and shows "sending" until WhatsApp answers.
+  const { data: row, error: insErr } = await db.from("messages")
+    .insert({ ...base, status: "sending", client_request_id: requestId.success ? requestId.data : null })
+    .select("id").single();
+  if (insErr) {
+    if (insErr.code === "23505") { refresh(id); redirect(back); } // already sent by an earlier click of the same form
+    if (/client_request_id/.test(insErr.message)) return flash(back, "handoff_needs_update");
+    return flash(back, "send_failed");
   }
 
   const [{ data: client }, { data: contact }] = await Promise.all([
@@ -101,13 +106,13 @@ export async function sendHumanMessage(formData: FormData) {
   ]);
   try {
     const sent = await sendClientText(clientId, client!.wa_phone_number_id, contact!.phone, text.data);
-    await record({ status: "sent", wa_message_id: sent.waMessageId });
+    await db.from("messages").update({ status: "sent", wa_message_id: sent.waMessageId }).eq("id", row.id).eq("client_id", clientId);
   } catch (e) {
     console.error("human send failed", e instanceof Error ? e.message : e);
-    await record({ status: "failed", error: "send_failed" });
+    await db.from("messages").update({ status: "failed", error: "send_failed" }).eq("id", row.id).eq("client_id", clientId);
     return flash(back, "send_failed");
   }
-  revalidatePath(back);
+  refresh(id);
   redirect(back);
 }
 

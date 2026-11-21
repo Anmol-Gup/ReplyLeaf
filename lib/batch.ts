@@ -344,7 +344,7 @@ async function afterReply(ctx: BatchContext, deps: BatchDeps, result: ReplyResul
       // Idempotent: a retried webhook finds the open request and gets created=false, so no second email.
       const { created: opened } = await deps.createHandoff(client.id, conversation.id, { source, reason: SOURCE_LABELS[source], summary });
       if (opened) {
-        await deps.notifyOwner(client.id, { type: "needs_human", contactName: contact.name, phone: ctx.phone, lastMessage, reason: source, summary });
+        await deps.notifyOwner(client.id, { type: "needs_human", conversationId: conversation.id, contactName: contact.name, phone: ctx.phone, lastMessage, reason: source, summary });
       }
     });
   }

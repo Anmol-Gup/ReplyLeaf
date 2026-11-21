@@ -24,7 +24,7 @@ export const isFollowUpDue = (l: { status: string; follow_up_at: string | null }
 // ---- where each number leads (existing pages, with their filters already applied)
 const q = (path: string, params: Record<string, string | string[] | undefined>) => `${path}${buildQuery(params)}`;
 export const overviewLinks = {
-  handoffs: q("/dashboard/handoff", { status: [...HANDOFF_WAITING] }),
+  handoffs: q("/dashboard/handoff", { view: "waiting" }),
   appointments: q("/dashboard/appointments", { status: [...APPOINTMENTS_TO_CONFIRM] }),
   tickets: q("/dashboard/tickets", { status: [...TICKETS_OPEN] }),
   highTickets: q("/dashboard/tickets", { status: [...TICKETS_OPEN], priority: ["high"] }),

@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon, { type IconName } from "./Icon";
 import Logo from "./Logo";
 import SubmitButton from "./SubmitButton";
+import NotificationCenter, { alertOutside, usePrefs } from "./NotificationCenter";
+import { useLive } from "./useLive";
 import { PRODUCT_NAME } from "../lib/brand";
+import { safeLink, type LiveCounts, type LiveNotification } from "../lib/notifications";
 
 // Sidebar on desktop, a menu button + dropdown on phones. Navigation only:
 // the same routes as before, no data access here.
@@ -24,7 +27,10 @@ const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard/billing", label: "Billing", icon: "card" },
 ];
 
-function Nav({ pathname, isAdmin }: { pathname: string; isAdmin: boolean }) {
+// Sidebar counts: chats with new customer messages, and handoffs that need someone.
+const badgeFor = (href: string, c: LiveCounts) => (href === "/dashboard/conversations" ? c.unreadChats : href === "/dashboard/handoff" ? c.waiting : 0);
+
+function Nav({ pathname, isAdmin, counts }: { pathname: string; isAdmin: boolean; counts: LiveCounts }) {
   const items = isAdmin ? [...ITEMS, { href: "/admin/signups", label: "Admin: sign-ups", icon: "shield" as IconName }] : ITEMS;
   return (
     <nav className="nav" aria-label="Main">
@@ -33,6 +39,7 @@ function Nav({ pathname, isAdmin }: { pathname: string; isAdmin: boolean }) {
         return (
           <Link key={i.href} href={i.href} aria-current={active ? "page" : undefined}>
             <Icon name={i.icon} /> {i.label}
+            {badgeFor(i.href, counts) > 0 && <span className="nav-badge" aria-label={`${badgeFor(i.href, counts)} need attention`}>{badgeFor(i.href, counts)}</span>}
           </Link>
         );
       })}
@@ -46,13 +53,22 @@ export default function DashboardShell({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [pathname]); // close the phone menu after navigating
+  const { prefs, save } = usePrefs();
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
+  const [toasts, setToasts] = useState<LiveNotification[]>([]);
+  const live = useLive((fresh) => {
+    setToasts((t) => [...t, ...fresh].slice(-3));
+    alertOutside(fresh, prefsRef.current);
+    for (const n of fresh) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 9000);
+  });
 
   return (
     <div className="app">
       <a className="skip-link" href="#main">Skip to content</a>
       <aside className="sidebar">
         <Link href="/dashboard" className="brand"><Logo size={34} /> {PRODUCT_NAME}</Link>
-        <Nav pathname={pathname} isAdmin={isAdmin} />
+        <Nav pathname={pathname} isAdmin={isAdmin} counts={live.data.counts} />
       </aside>
 
       <div className="main">
@@ -66,11 +82,21 @@ export default function DashboardShell({
             </button>
             <span className="who" title={businessName}>{businessName}</span>
           </div>
-          <form action={signOut}>
-            <SubmitButton variant="secondary" small pendingText="Signing out..."><Icon name="logout" size={16} /> Sign out</SubmitButton>
-          </form>
+          <div className="row" style={{ flexWrap: "nowrap" }}>
+            <NotificationCenter data={live.data} offline={live.offline} markRead={live.markRead} prefs={prefs} savePrefs={save} />
+            <form action={signOut}>
+              <SubmitButton variant="secondary" small pendingText="Signing out..."><Icon name="logout" size={16} /> Sign out</SubmitButton>
+            </form>
+          </div>
         </header>
-        <div id="mobile-nav" className="mobile-nav" hidden={!open}><Nav pathname={pathname} isAdmin={isAdmin} /></div>
+        <div id="mobile-nav" className="mobile-nav" hidden={!open}><Nav pathname={pathname} isAdmin={isAdmin} counts={live.data.counts} /></div>
+        <div className="toasts" role="status" aria-live="polite">
+          {toasts.map((n) => (
+            <Link key={n.id} className="toast" href={safeLink(n.link)} onClick={() => { live.markRead({ id: n.id }); setToasts((t) => t.filter((x) => x.id !== n.id)); }}>
+              <b>{n.title}</b>{n.body && <span>{n.body}</span>}
+            </Link>
+          ))}
+        </div>
         <main id="main" className="content" tabIndex={-1}>{children}</main>
       </div>
     </div>

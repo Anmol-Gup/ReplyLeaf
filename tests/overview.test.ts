@@ -27,7 +27,7 @@ test("what each metric counts: the right statuses, and never finished work", () 
 });
 
 test("every card opens the existing page with the SAME statuses it counted, so the numbers match the lists", () => {
-  assert.deepEqual(effectiveSelection(param(overviewLinks.handoffs, "status"), HANDOFF_STATUSES, []).selected, [...HANDOFF_WAITING]);
+  assert.equal(overviewLinks.handoffs, "/dashboard/handoff?view=waiting"); // the queue's own "Waiting" view: requested + assigned
   assert.deepEqual(effectiveSelection(param(overviewLinks.appointments, "status"), APPOINTMENT_STATUSES, []).selected, [...APPOINTMENTS_TO_CONFIRM]);
   assert.deepEqual(effectiveSelection(param(overviewLinks.tickets, "status"), TICKET_STATUSES, []).selected, [...TICKETS_OPEN]);
   assert.deepEqual(effectiveSelection(param(overviewLinks.newLeads, "status"), LEAD_STATUSES, []).selected, [...LEADS_NEW]);

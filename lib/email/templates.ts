@@ -14,7 +14,7 @@ export type OwnerEvent =
   | { type: "ai_key_problem"; problem: "missing" | "invalid" }
   | { type: "whatsapp_problem"; problem: "billing" | "account" | "permission" | "policy" }
   | { type: "onboarded"; businessName: string }
-  | { type: "needs_human"; contactName: string | null; phone: string; reason: HandoffSource; lastMessage: string; summary: string };
+  | { type: "needs_human"; conversationId?: string; contactName: string | null; phone: string; reason: HandoffSource; lastMessage: string; summary: string };
 
 const who = (name: string | null, phone: string) => (name ? `${name} (+${phone})` : `+${phone}`);
 const clip = (s: string, n = 500) => (s.length > n ? `${s.slice(0, n)}...` : s);
@@ -85,11 +85,12 @@ export function ownerEmail(
         text: `Your WhatsApp number is now connected to the assistant for ${event.businessName}.\n\nNext steps: add your business knowledge, then send a test message to your number.\nWhatsApp may take a few minutes to confirm the connection; the dashboard shows the status.${link}`,
       };
     case "needs_human": {
-      const handoffLink = o.appUrl ? `\n\nOpen the Human Handoff page: ${o.appUrl.replace(/\/$/, "")}/dashboard/handoff` : "";
+      const base = o.appUrl?.replace(/\/$/, "");
+      const handoffLink = base ? (event.conversationId ? `\n\nOpen the conversation: ${base}/dashboard/conversations/${event.conversationId}\n(You will be asked to sign in first.)` : `\n\nOpen the Human Handoff page: ${base}/dashboard/handoff`) : "";
       return {
         to: o.to,
         subject: oneLine(`Needs a human: ${who(event.contactName, event.phone)}`),
-        text: `${o.businessName}: the assistant has stopped replying to ${who(event.contactName, event.phone)} and is waiting for you.\n\nReason: ${SOURCE_LABELS[event.reason]}\nSummary: ${clip(event.summary)}\nTheir last message: ${clip(event.lastMessage)}\n\nNext step: open the chat, reply to the customer, then mark it resolved or hand it back to the assistant.${event.reason === "booking_without_link" ? "\nTip: add a booking link in Settings so the assistant can share it next time." : ""}${handoffLink}`,
+        text: `${o.businessName}: the assistant has stopped replying to ${who(event.contactName, event.phone)} and is waiting for you.\n\nReason: ${SOURCE_LABELS[event.reason]}\nSummary: ${clip(event.summary)}\nTheir last message: ${clip(event.lastMessage)}\n\nNext step: open the chat, take over, reply to the customer, then resume the assistant when you are done.${event.reason === "booking_without_link" ? "\nTip: add a booking link in Settings so the assistant can share it next time." : ""}${handoffLink}`,
       };
     }
   }
