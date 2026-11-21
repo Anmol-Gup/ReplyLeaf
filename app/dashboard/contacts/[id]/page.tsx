@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import ActivityList from "../../../../components/ActivityList";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import Icon from "../../../../components/Icon";
+import ShowMore from "../../../../components/ShowMore";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Alert, Badge } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
@@ -128,25 +129,25 @@ export default async function ContactPage({
           <details className="card rec-card" open>
             <summary>Leads ({leadRows.length})</summary>
             <div className="rec-body">
-              {leadRows.length === 0 ? <p className="muted">None.</p> : leadRows.map((l) => (
+              {leadRows.length === 0 ? <p className="muted">None.</p> : <ShowMore plain initial={3} step={3} noun="lead">{leadRows.map((l) => (
                 <div key={l.id} className="rec-assoc"><div><Link href={`/dashboard/leads/${l.id}`}>{l.project_type}</Link>{l.budget && <small className="muted">Budget {l.budget}</small>}</div><Badge tone={LEAD_TONES[l.status]}>{LEAD_LABELS[l.status]}</Badge></div>
-              ))}
+              ))}</ShowMore>}
             </div>
           </details>
           <details className="card rec-card" open>
             <summary>Tickets ({ticketRows.length})</summary>
             <div className="rec-body">
-              {ticketRows.length === 0 ? <p className="muted">None.</p> : ticketRows.map((t) => (
+              {ticketRows.length === 0 ? <p className="muted">None.</p> : <ShowMore plain initial={3} step={3} noun="ticket">{ticketRows.map((t) => (
                 <div key={t.id} className="rec-assoc"><div><Link href={`/dashboard/tickets/${t.id}`}>{ticketRef(t.id)}</Link><small className="muted">{t.subject}</small></div><Badge tone={TICKET_TONES[t.status]}>{TICKET_LABELS[t.status]}</Badge></div>
-              ))}
+              ))}</ShowMore>}
             </div>
           </details>
           <details className="card rec-card" open>
             <summary>Appointments ({apptRows.length})</summary>
             <div className="rec-body">
-              {apptRows.length === 0 ? <p className="muted">None.</p> : apptRows.map((a) => (
+              {apptRows.length === 0 ? <p className="muted">None.</p> : <ShowMore plain initial={3} step={3} noun="appointment">{apptRows.map((a) => (
                 <div key={a.id} className="rec-assoc"><div><Link href={`/dashboard/appointments/${a.id}`}>{a.purpose}</Link><small className="muted">{whenText(a.scheduled_date ?? a.preferred_date, a.scheduled_time ?? a.preferred_time) || "No time yet"}</small></div><Badge tone={APPT_TONES[a.status]}>{APPT_LABELS[a.status]}</Badge></div>
-              ))}
+              ))}</ShowMore>}
             </div>
           </details>
         </aside>
