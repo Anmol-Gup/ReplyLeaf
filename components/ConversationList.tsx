@@ -52,14 +52,14 @@ export default function ConversationsWorkspace({ children }: { children: React.R
             </button>
           ))}
         </div>
-        <div className="search conv-search">
+      </div>
+      <div className={`conv${detail ? " is-detail" : ""}`}>
+        <aside className="conv-list" aria-label="Conversations">
+        <div className="search conv-search conv-search-left">
           <Icon name="search" size={16} />
           <label className="sr-only" htmlFor="conv-search">Search conversations</label>
           <input id="conv-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search conversations..." maxLength={80} />
         </div>
-      </div>
-      <div className={`conv${detail ? " is-detail" : ""}`}>
-        <aside className="conv-list" aria-label="Conversations">
           {failed && <p className="hint conv-note" role="status">Could not refresh. Retrying…</p>}
           {items === null ? <p className="muted conv-note">Loading…</p>
             : items.length === 0 ? <p className="muted conv-note">{q || filter !== "all" ? "No conversations match." : "No conversations yet. They appear here when customers message your WhatsApp number."}</p>

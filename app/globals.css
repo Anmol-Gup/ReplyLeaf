@@ -502,3 +502,4 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .recent-msgs li.from-us { background: var(--brand-soft); align-self: flex-end; }
 @media (max-width: 1000px) { .hdetail { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 900px) { .conv-list, .conv-main .chat-panel { height: auto; max-height: none; } .conv-main .chat-panel { min-height: 70vh; } .handoff-cards { grid-template-columns: minmax(0, 1fr); } }
+.search.conv-search-left { flex: none; margin: 10px 12px; }
