@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ActivityList from "../../../../components/ActivityList";
+import ConfirmForm from "../../../../components/ConfirmForm";
 import Icon from "../../../../components/Icon";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Alert, Badge } from "../../../../components/ui";
@@ -14,7 +15,7 @@ import Notice from "../../Notice";
 import { deleteContact, resolveSuggestion, updateContact } from "../../actions";
 
 // One customer: who they are (left), everything they have raised (centre) and the linked records (right).
-// Only what already exists: editing the details, opening the conversation, and the permanent delete.
+// Only what already exists: editing the details, opening the conversation, and the permanent delete (header button, with a confirmation).
 export default async function ContactPage({
   params, searchParams,
 }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; edit?: string }> }) {
@@ -60,7 +61,10 @@ export default async function ContactPage({
         </div>
         <div className="row">
           {conv && <Link className="btn btn-primary" href={`/dashboard/conversations/${conv.id}`}><Icon name="chat" size={16} /> Open conversation</Link>}
-          {!editing && <Link className="btn btn-secondary" href={`/dashboard/contacts/${id}?edit=1`}>Edit</Link>}
+          <ConfirmForm action={deleteContact} message={`Delete ${c.name || "this contact"}, their conversation and all their messages permanently? This cannot be undone.`}>
+            <input type="hidden" name="id" value={id} /><input type="hidden" name="confirm" value="yes" />
+            <SubmitButton variant="danger" pendingText="Deleting...">Delete</SubmitButton>
+          </ConfirmForm>
         </div>
       </header>
       <Notice code={notice} />
@@ -143,17 +147,6 @@ export default async function ContactPage({
               {apptRows.length === 0 ? <p className="muted">None.</p> : apptRows.map((a) => (
                 <div key={a.id} className="rec-assoc"><div><Link href={`/dashboard/appointments/${a.id}`}>{a.purpose}</Link><small className="muted">{whenText(a.scheduled_date ?? a.preferred_date, a.scheduled_time ?? a.preferred_time) || "No time yet"}</small></div><Badge tone={APPT_TONES[a.status]}>{APPT_LABELS[a.status]}</Badge></div>
               ))}
-            </div>
-          </details>
-          <details className="card rec-card">
-            <summary>Delete contact</summary>
-            <div className="rec-body">
-              <p className="muted" style={{ marginTop: 0 }}>Permanently deletes this contact, their conversation and messages. Use it when someone asks for their data to be erased. It cannot be undone.</p>
-              <form action={deleteContact} className="stack-sm">
-                <input type="hidden" name="id" value={id} />
-                <label className="check"><input type="checkbox" name="confirm" value="yes" required /> I understand this is permanent</label>
-                <div><SubmitButton variant="danger" small pendingText="Deleting...">Delete contact and messages</SubmitButton></div>
-              </form>
             </div>
           </details>
         </aside>
