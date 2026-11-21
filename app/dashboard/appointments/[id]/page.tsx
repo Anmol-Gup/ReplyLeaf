@@ -3,8 +3,8 @@ import ConfirmForm from "../../../../components/ConfirmForm";
 import SubmitButton from "../../../../components/SubmitButton";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import AppointmentEditForm from "../../../../components/AppointmentEditForm";
-import Icon from "../../../../components/Icon";
+import InlineProp from "../../../../components/InlineProp";
+import Icon, { type IconName } from "../../../../components/Icon";
 import { Badge } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { emailsByContact } from "../../../../lib/contact-emails";
@@ -16,10 +16,9 @@ import { deleteAppointment, saveAppointmentNote, updateAppointment } from "../ac
 
 // One appointment: the editable details on the left, what the customer asked for in the middle, the customer on the right. The owner
 // talks to the customer directly; nothing here is sent to them.
-export default async function AppointmentDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; edit?: string }> }) {
+export default async function AppointmentDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
-  const { notice, edit } = await searchParams;
-  const editing = edit === "1";
+  const { notice } = await searchParams;
   const { db } = await requireClient();
   const { data: a } = await db.from("appointments").select("*").eq("id", id).maybeSingle();
   if (!a) notFound(); // also what another business's id looks like: RLS returns nothing
@@ -31,6 +30,13 @@ export default async function AppointmentDetail({ params, searchParams }: { para
   const agreed = whenText(a.scheduled_date, a.scheduled_time);
   const email = a.customer_email || chatEmail;
   const contactLink = whatsappLink(a.customer_phone);
+  // Every current value, so changing one property never touches the others.
+  const hidden = { id: a.id, status, scheduled_date: (a.scheduled_date as string | null) ?? "", scheduled_time: (a.scheduled_time as string | null) ?? "", customer_email: (a.customer_email as string | null) ?? "" };
+  // What the record itself tells us (there is no separate history for appointments).
+  const history: { key: string; icon: IconName; title: string; detail: string; at: string }[] = [
+    ...(a.updated_at && new Date(a.updated_at).getTime() - new Date(a.created_at).getTime() > 2000 ? [{ key: "updated", icon: "check" as IconName, title: `Status: ${STATUS_LABELS[status]}`, detail: agreed ? `Agreed for ${agreed}` : "Last changed", at: a.updated_at as string }] : []),
+    { key: "created", icon: "calendar", title: "Appointment requested", detail: a.purpose as string, at: a.created_at as string },
+  ];
   // The owner's four statuses, plus the record's own if it is an older one (so it is never hidden).
   const options = [...new Set<AppointmentStatus>([...OWNER_STATUSES, status])].map((s) => ({ value: s, label: STATUS_LABELS[s] }));
 
@@ -59,21 +65,26 @@ export default async function AppointmentDetail({ params, searchParams }: { para
           <details className="card rec-card" open>
             <summary>About this appointment</summary>
             <div className="rec-body">
-              {editing ? (
-                <>
-                  <p className="hint" style={{ marginTop: 0 }}>After you have spoken to the customer, set the status here. Nothing is sent to them.</p>
-                  <AppointmentEditForm action={updateAppointment} statuses={options} cancelHref={`/dashboard/appointments/${id}`}
-                    a={{ id: a.id, status, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time, preferred_date: a.preferred_date, preferred_time: a.preferred_time, customer_email: a.customer_email }} />
-                </>
+              <InlineProp label="Status" action={updateAppointment} hidden={hidden} display={<Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>}
+                revealWhen={{ control: "status", value: "confirmed" }}
+                controls={[
+                  { name: "status", kind: "select", value: status, options },
+                  { name: "scheduled_date", kind: "date", value: (a.scheduled_date ?? a.preferred_date ?? "") as string, label: "Agreed date", required: true, reveal: true },
+                  { name: "scheduled_time", kind: "text", value: (a.scheduled_time ?? a.preferred_time ?? "") as string, label: "Agreed time (for example 10:30 or 3pm)", placeholder: "10:30 or 3pm", required: true, maxLength: 60, reveal: true },
+                ]} />
+              {status === "confirmed" ? (
+                <InlineProp label="Agreed" action={updateAppointment} hidden={hidden} alwaysConfirm display={agreed || <span className="muted">Not agreed yet</span>}
+                  controls={[
+                    { name: "scheduled_date", kind: "date", value: (a.scheduled_date ?? "") as string, label: "Agreed date", required: true },
+                    { name: "scheduled_time", kind: "text", value: (a.scheduled_time ?? "") as string, label: "Agreed time", placeholder: "10:30 or 3pm", required: true, maxLength: 60 },
+                  ]} />
               ) : (
-                <>
-                  <div className="rec-prop"><small>Status</small><span><Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge></span></div>
-                  <div className="rec-prop"><small>Agreed</small><span>{agreed || <span className="muted">Not agreed yet</span>}</span></div>
-                  <div className="rec-prop"><small>Email</small><span>{email || <span className="muted">Not given</span>}</span></div>
-                  <div className="rec-prop"><small>Requested</small><span>{fmt(a.created_at)}</span></div>
-                  <p style={{ marginTop: 10 }}><Link href={`/dashboard/appointments/${id}?edit=1`} className="rec-link">Edit properties</Link></p>
-                </>
+                <div className="rec-prop"><small>Agreed</small><span className="muted">Not agreed yet. Set the status to Confirmed to add the date and time.</span></div>
               )}
+              <InlineProp label="Email" action={updateAppointment} hidden={hidden} emptyText="Click to add" display={email || undefined}
+                controls={[{ name: "customer_email", kind: "email", value: email ?? "", placeholder: "customer@example.com", maxLength: 200 }]} />
+              <div className="rec-prop"><small>Requested</small><span>{fmt(a.created_at)}</span></div>
+              <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it. Nothing is sent to the customer.</p>
             </div>
           </details>
         </aside>
@@ -97,6 +108,17 @@ export default async function AppointmentDetail({ params, searchParams }: { para
                 </label>
                 <div><ChangeAwareSubmit pendingText="Saving...">Save note</ChangeAwareSubmit></div>
               </form>
+            </div>
+          </section>
+          <section className="card">
+            <h2 className="rec-title">Activity</h2>
+            <div className="rec-body">
+              {history.map((h) => (
+                <article key={h.key} className="rec-item">
+                  <span className="rec-ico rec-appointment"><Icon name={h.icon} size={16} /></span>
+                  <div className="rec-main"><div className="rec-top"><b>{h.title}</b><span className="muted">{fmt(h.at)}</span></div><p>{h.detail}</p></div>
+                </article>
+              ))}
             </div>
           </section>
         </main>

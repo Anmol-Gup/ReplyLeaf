@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import ActivityList from "../../../../components/ActivityList";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import Icon from "../../../../components/Icon";
+import InlineProp from "../../../../components/InlineProp";
 import SubmitButton from "../../../../components/SubmitButton";
 import { Alert, Badge } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
@@ -18,10 +19,9 @@ import { deleteContact, resolveSuggestion, updateContact } from "../../actions";
 // Only what already exists: editing the details, opening the conversation, and the permanent delete (header button, with a confirmation).
 export default async function ContactPage({
   params, searchParams,
-}: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; edit?: string }> }) {
+}: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
-  const { notice, edit } = await searchParams;
-  const editing = edit === "1";
+  const { notice } = await searchParams;
   const { db } = await requireClient();
   const { data: c } = await db.from("contacts").select("id, name, phone, email, status, tags, suggested, created_at").eq("id", id).maybeSingle();
   if (!c) notFound();
@@ -41,6 +41,8 @@ export default async function ContactPage({
   const items = timeline.map((t) => ({ key: `${t.kind}-${t.id}`, kind: t.kind, title: t.title, detail: t.detail, href: t.href, at: t.at, label: t.statusLabel, tone: t.tone }));
   const w = windowStatus(conv?.last_customer_message_at);
   const tags = (c.tags as string[]) ?? [];
+  // Every current value, so changing one property never touches the others.
+  const hidden = { id, name: c.name ?? "", email: c.email ?? "", status: c.status as string, tags: tags.join(", ") };
   const leadRows = (leads.data ?? []) as { id: string; project_type: string; budget: string | null; status: LeadStatus; created_at: string }[];
   const apptRows = (appts.data ?? []) as { id: string; purpose: string; preferred_date: string | null; preferred_time: string | null; scheduled_date: string | null; scheduled_time: string | null; status: AppointmentStatus }[];
   const ticketRows = (tickets.data ?? []) as { id: string; subject: string; status: TicketStatus }[];
@@ -90,29 +92,19 @@ export default async function ContactPage({
           <details className="card rec-card" open>
             <summary>About this contact</summary>
             <div className="rec-body">
-              {editing ? (
-                <form action={updateContact} className="stack-sm">
-                  <input type="hidden" name="id" value={id} />
-                  <label className="field">Name<input name="name" defaultValue={c.name ?? ""} maxLength={100} /></label>
-                  <label className="field">Email<input name="email" type="email" defaultValue={c.email ?? ""} maxLength={200} /></label>
-                  <label className="field">Status
-                    <select name="status" defaultValue={c.status}>{["new", "lead", "customer", "lost"].map((s) => <option key={s}>{s}</option>)}</select>
-                  </label>
-                  <label className="field">Tags <span className="hint">Comma separated</span><input name="tags" defaultValue={tags.join(", ")} /></label>
-                  <div className="row"><SubmitButton small pendingText="Saving...">Save changes</SubmitButton><Link className="btn btn-ghost btn-sm" href={`/dashboard/contacts/${id}`}>Cancel</Link></div>
-                </form>
-              ) : (
-                <>
-                  <div className="rec-prop"><small>Name</small><span>{c.name || <span className="muted">Not given</span>}</span></div>
-                  <div className="rec-prop"><small>Phone</small><span>+{c.phone}</span></div>
-                  <div className="rec-prop"><small>Email</small><span>{c.email || <span className="muted">Not given</span>}</span></div>
-                  <div className="rec-prop"><small>Status</small><span><Badge tone="success">{c.status}</Badge></span></div>
-                  <div className="rec-prop"><small>Tags</small>{tags.length ? <span className="row">{tags.map((t) => <Badge key={t}>{t}</Badge>)}</span> : <span className="muted">None</span>}</div>
-                  <div className="rec-prop"><small>First message</small><span>{fmt(c.created_at)}</span></div>
-                  {conv?.last_customer_message_at && <div className="rec-prop"><small>Last customer message</small><span>{fmt(conv.last_customer_message_at)}</span></div>}
-                  <p style={{ marginTop: 10 }}><Link href={`/dashboard/contacts/${id}?edit=1`} className="rec-link">Edit properties</Link></p>
-                </>
-              )}
+              <InlineProp label="Name" action={updateContact} hidden={hidden} display={c.name || undefined} emptyText="Click to add a name"
+                controls={[{ name: "name", kind: "text", value: c.name ?? "", maxLength: 100 }]} />
+              <div className="rec-prop"><small>Phone</small><span>+{c.phone}</span></div>
+              <InlineProp label="Email" action={updateContact} hidden={hidden} display={c.email || undefined} emptyText="Click to add an email"
+                controls={[{ name: "email", kind: "email", value: c.email ?? "", maxLength: 200 }]} />
+              <InlineProp label="Status" action={updateContact} hidden={hidden} display={<Badge tone="success">{c.status}</Badge>}
+                controls={[{ name: "status", kind: "select", value: c.status, options: ["new", "lead", "customer", "lost"].map((x) => ({ value: x, label: x })) }]} />
+              <InlineProp label="Tags" action={updateContact} hidden={hidden} emptyText="Click to add tags"
+                display={tags.length ? <span className="row">{tags.map((t) => <Badge key={t}>{t}</Badge>)}</span> : undefined}
+                controls={[{ name: "tags", kind: "text", value: tags.join(", "), placeholder: "Comma separated", maxLength: 400 }]} />
+              <div className="rec-prop"><small>First message</small><span>{fmt(c.created_at)}</span></div>
+              {conv?.last_customer_message_at && <div className="rec-prop"><small>Last customer message</small><span>{fmt(conv.last_customer_message_at)}</span></div>}
+              <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it.</p>
             </div>
           </details>
         </aside>

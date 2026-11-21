@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import ConfirmForm from "../../../../components/ConfirmForm";
 import ShowMore from "../../../../components/ShowMore";
 import SubmitButton from "../../../../components/SubmitButton";
-import Icon from "../../../../components/Icon";
+import Icon, { type IconName } from "../../../../components/Icon";
+import InlineProp from "../../../../components/InlineProp";
 import { Badge } from "../../../../components/ui";
 import { shortName } from "../../../../lib/notifications";
 import { whatsappLink } from "../../../../lib/appointments";
@@ -26,10 +27,9 @@ type Event = { id: string; kind: string; detail: Record<string, unknown> | null;
 const SHOWN_NOTES = 3;
 const SHOWN_EVENTS = 5; // the page shows the latest few and folds the rest away, so a busy ticket never makes it endless
 
-export default async function TicketDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; edit?: string }> }) {
+export default async function TicketDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string }> }) {
   const { id } = await params;
-  const { notice, edit } = await searchParams;
-  const editing = edit === "1";
+  const { notice } = await searchParams;
   const { db, clientId } = await requireClient();
   const { data: t } = await db.from("tickets").select("*").eq("id", id).maybeSingle();
   if (!t) notFound(); // also what another business's id looks like: RLS returns nothing
@@ -54,22 +54,27 @@ export default async function TicketDetail({ params, searchParams }: { params: P
   const { data: msgs } = waIds.length ? await db.from("messages").select("wa_message_id, status").in("wa_message_id", waIds) : { data: [] };
   const deliveryOf = new Map((msgs ?? []).map((m) => [m.wa_message_id as string, m.status as string]));
 
+  const EVENT_ICON: Record<string, IconName> = { created: "alert", status: "check", priority: "alert", category: "settings", assigned: "users", note: "chat", notification: "send", resolved: "check", closed: "check" };
   const renderEvent = (e: Event) => {
     const d = e.detail ?? {};
     const outcome = e.kind === "notification" ? notificationOutcome(d, deliveryOf.get(String(d.wa_message_id ?? "")) ?? null) : null;
     return (
-      <li key={e.id}>
-        <div>
-          {describeTicketEvent(e.kind, d)}{outcome && <>: <Badge tone={outcome.tone}>{outcome.label}</Badge></>}<br />
-          <span className="muted">{shortName(e.actor_label) || "Assistant"} · {fmt(e.created_at)}</span>
+      <article key={e.id} className="rec-item">
+        <span className="rec-ico rec-lead"><Icon name={EVENT_ICON[e.kind] ?? "info"} size={16} /></span>
+        <div className="rec-main">
+          <div className="rec-top"><b>{describeTicketEvent(e.kind, d)}</b><span className="muted">{fmt(e.created_at)}</span></div>
+          {outcome && <p><Badge tone={outcome.tone}>{outcome.label}</Badge></p>}
+          <p>{shortName(e.actor_label) || "Assistant"}</p>
         </div>
-      </li>
+      </article>
     );
   };
 
   const status = t.status as TicketStatus;
   const priority = priorityOf(t.priority);
   const link = whatsappLink(t.customer_phone);
+  // Every current value, so changing one property never touches the others.
+  const hidden = { id: t.id, status, priority, category: t.category ?? "", assigned_user_id: (t.assigned_user_id as string | null) ?? "", message: "" };
   const categories = categoryOptions(parseWorkflowSettings(biz?.workflow_settings).support.categories, t.category);
   const assignedLabel = shortName(team.find((m) => m.id === t.assigned_user_id)?.label) || null;
   // A person who has since left the business is still shown by name once, rather than silently dropped.
@@ -101,47 +106,23 @@ export default async function TicketDetail({ params, searchParams }: { params: P
           <details className="card rec-card" open>
             <summary>About this ticket</summary>
             <div className="rec-body">
-              {editing ? (
-                <form action={updateTicket} className="stack-sm">
-                  <input type="hidden" name="id" value={t.id} />
-                  <label className="field">Status
-                    <select name="status" defaultValue={status}>{allowedStatuses(status).map((s) => <option key={s} value={s}>{TICKET_LABELS[s]}</option>)}</select>
-                  </label>
-                  <label className="field">Priority
-                    <select name="priority" defaultValue={priority}>{PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>)}</select>
-                  </label>
-                  <label className="field">Category
-                    <select name="category" defaultValue={t.category ?? ""}>
-                      <option value="">Not set</option>
-                      {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </label>
-                  <label className="field">Assigned to
-                    <select name="assigned_user_id" defaultValue={t.assigned_user_id ?? ""}>
-                      <option value="">Unassigned</option>
-                      {assigneeOptions.map((m) => <option key={m.id} value={m.id}>{shortName(m.label)}</option>)}
-                    </select>
-                  </label>
-                  <div className="rec-notify">
-                    <label className="check"><input type="checkbox" name="notify" /> Notify customer about this status update</label>
-                    <label className="field">Message to the customer <span className="hint">Optional. Added to the standard update.</span>
-                      <textarea name="message" rows={2} maxLength={1000} placeholder="Your issue has been resolved. Please let us know if you need any further assistance." />
-                    </label>
-                    <p className="hint">Nothing is sent unless you tick the box, and only when the status changes. Sent as a plain message by WhatsApp if the customer wrote in the last 24 hours, otherwise by email if we have their address; if neither is possible it is not sent and you are told why. No paid templates are used.</p>
-                  </div>
-                  <div className="row"><SubmitButton small pendingText="Saving...">Save changes</SubmitButton><Link className="btn btn-ghost btn-sm" href={`/dashboard/tickets/${id}`}>Cancel</Link></div>
-                </form>
-              ) : (
-                <>
-                  <div className="rec-prop"><small>Status</small><span><Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge></span></div>
-                  <div className="rec-prop"><small>Priority</small><span>{PRIORITY_LABELS[priority]}</span></div>
-                  <div className="rec-prop"><small>Category</small><span>{t.category ?? <span className="muted">Not set</span>}</span></div>
-                  <div className="rec-prop"><small>Assigned to</small><span>{assignedLabel ?? (t.assigned_user_id ? "Former team member" : t.assigned_to ?? <span className="muted">Unassigned</span>)}</span></div>
-                  <div className="rec-prop"><small>Raised</small><span>{fmt(t.created_at)}</span></div>
-                  {t.resolved_at && <div className="rec-prop"><small>Resolved</small><span>{fmt(t.resolved_at)}</span></div>}
-                  <p style={{ marginTop: 10 }}><Link href={`/dashboard/tickets/${id}?edit=1`} className="rec-link">Edit properties</Link></p>
-                </>
-              )}
+              <InlineProp label="Status" action={updateTicket} hidden={hidden} alwaysConfirm
+                display={<Badge tone={TICKET_TONES[status]}>{TICKET_LABELS[status]}</Badge>}
+                controls={[
+                  { name: "status", kind: "select", value: status, options: allowedStatuses(status).map((x) => ({ value: x, label: TICKET_LABELS[x] })) },
+                  { name: "notify", kind: "checkbox", value: "", label: "Notify customer about this status update" },
+                  { name: "message", kind: "text", value: "", label: "Message to the customer (optional)", placeholder: "Optional message to the customer", maxLength: 1000 },
+                ]} />
+              <InlineProp label="Priority" action={updateTicket} hidden={hidden} display={PRIORITY_LABELS[priority]}
+                controls={[{ name: "priority", kind: "select", value: priority, options: PRIORITIES.map((x) => ({ value: x, label: PRIORITY_LABELS[x] })) }]} />
+              <InlineProp label="Category" action={updateTicket} hidden={hidden} display={t.category ?? <span className="muted">Not set</span>}
+                controls={[{ name: "category", kind: "select", value: t.category ?? "", options: [{ value: "", label: "Not set" }, ...categories.map((c) => ({ value: c, label: c }))] }]} />
+              <InlineProp label="Assigned to" action={updateTicket} hidden={hidden}
+                display={assignedLabel ?? (t.assigned_user_id ? "Former team member" : t.assigned_to ?? <span className="muted">Unassigned</span>)}
+                controls={[{ name: "assigned_user_id", kind: "select", value: t.assigned_user_id ?? "", options: [{ value: "", label: "Unassigned" }, ...assigneeOptions.map((m) => ({ value: m.id, label: shortName(m.label) }))] }]} />
+              <div className="rec-prop"><small>Raised</small><span>{fmt(t.created_at)}</span></div>
+              {t.resolved_at && <div className="rec-prop"><small>Resolved</small><span>{fmt(t.resolved_at)}</span></div>}
+              <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it. Nothing is sent to the customer unless you tick &ldquo;Notify customer&rdquo; when changing the status.</p>
             </div>
           </details>
         </aside>
@@ -171,7 +152,7 @@ export default async function TicketDetail({ params, searchParams }: { params: P
             <h2 className="rec-title">Activity</h2>
             <div className="rec-body">
               {events.length === 0 ? <p className="muted" style={{ margin: 0 }}>Nothing has happened to this ticket since activity tracking began.</p> : (
-                <ShowMore initial={SHOWN_EVENTS} noun="event">{events.map(renderEvent)}</ShowMore>
+                <ShowMore plain initial={SHOWN_EVENTS} noun="event">{events.map(renderEvent)}</ShowMore>
               )}
             </div>
           </section>
