@@ -508,3 +508,4 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 /* the .search wrapper already lays the icon and the input out side by side: no absolute icon */
 .search.conv-search svg { position: static; flex: none; }
 .search.conv-search input[type="search"] { padding: 0 !important; flex: 1; min-width: 0; }
+.content:has(.conv), .content:has(.handoff-cards) { max-width: none; } /* the workspace pages use the full width instead of a centred column */
