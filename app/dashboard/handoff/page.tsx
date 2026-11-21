@@ -96,7 +96,7 @@ export default async function HumanHandoff({ searchParams }: { searchParams: Pro
       {error ? <ErrorState>Your handoff requests could not be loaded.</ErrorState> : paged.items.length === 0 ? (
         q || view !== "open"
           ? <EmptyState icon="search" title="Nothing here" action={{ href: "/dashboard/handoff", label: "Show open requests" }}>No handoff requests match this view.</EmptyState>
-          : <EmptyState icon="shield" title="No chats are waiting for you">When a customer asks for a person, or the assistant can&apos;t help, the chat appears here and you get an email.</EmptyState>
+          : <EmptyState icon="shield" title="No open handoffs" action={counts.resolved > 0 ? { href: "/dashboard/handoff?view=resolved", label: `View ${counts.resolved} resolved` } : undefined}>When a customer asks for a person, or the assistant can&apos;t help, the chat appears here and you are notified.</EmptyState>
       ) : (
         <ul className="handoff-cards">
           {paged.items.map(({ h, name, phone, last }) => {

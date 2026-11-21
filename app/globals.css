@@ -513,3 +513,4 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .hcard .reason-chip { border-radius: 10px; line-height: 1.35; }
 .hcard-foot > .muted { flex: 1 1 100%; overflow-wrap: anywhere; }
 .hcard-foot .btn { margin-left: auto; }
+.content:has(.stat-card), .content:has(.filters) { max-width: none; } /* also when the list is empty */
