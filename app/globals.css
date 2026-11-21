@@ -509,3 +509,4 @@ ul.readiness li { display: inline-flex; align-items: center; gap: 8px; font-size
 .search.conv-search svg { position: static; flex: none; }
 .search.conv-search input[type="search"] { padding: 0 !important; flex: 1; min-width: 0; }
 .content:has(.conv), .content:has(.handoff-cards) { max-width: none; } /* the workspace pages use the full width instead of a centred column */
+.content:has(.table-wrap) { max-width: none; } /* list pages (contacts, leads, tickets, appointments) use the full width too */
