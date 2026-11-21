@@ -613,3 +613,5 @@ th.check-col, td.check-col { width: 36px; padding-right: 0; }
 .content:has(.dcols) { max-width: none; }
 .dcols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 1000px) { .dcols { grid-template-columns: minmax(0, 1fr); } }
+.rec-big { width: 56px; height: 56px; }
+.rec-notify { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); display: flex; flex-direction: column; gap: 8px; }

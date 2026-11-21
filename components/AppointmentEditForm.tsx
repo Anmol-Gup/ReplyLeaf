@@ -4,11 +4,12 @@ import { useState } from "react";
 import ChangeAwareSubmit from "./ChangeAwareSubmit";
 
 // Update an appointment after you have talked to the customer: set the status, and when it is Confirmed, the date and time you
-// agreed. Your private note is saved with it. Nothing is sent to the customer. When the agreed date and time are hidden their
+// agreed. Nothing is sent to the customer. When the agreed date and time are hidden their
 // values are still posted, so saving never wipes them.
-export default function AppointmentEditForm({ action, a, statuses }: {
+export default function AppointmentEditForm({ action, a, statuses, cancelHref }: {
+  cancelHref?: string;
   action: (formData: FormData) => void | Promise<void>;
-  a: { id: string; status: string; scheduled_date: string | null; scheduled_time: string | null; preferred_date: string | null; preferred_time: string | null; customer_email: string | null; internal_notes: string | null };
+  a: { id: string; status: string; scheduled_date: string | null; scheduled_time: string | null; preferred_date: string | null; preferred_time: string | null; customer_email: string | null };
   statuses: { value: string; label: string }[];
 }) {
   const [status, setStatus] = useState(a.status);
@@ -33,8 +34,7 @@ export default function AppointmentEditForm({ action, a, statuses }: {
         </>
       )}
       <label className="field">Email <span className="hint">Optional. Add it if the customer gives it to you.</span><input type="email" name="customer_email" maxLength={200} autoComplete="off" defaultValue={a.customer_email ?? ""} /></label>
-      <label className="field">Note <span className="hint">Private. Only you see it.</span><textarea name="notes" rows={3} maxLength={2000} defaultValue={a.internal_notes ?? ""} /></label>
-      <div><ChangeAwareSubmit pendingText="Saving...">Save</ChangeAwareSubmit></div>
+      <div className="row"><ChangeAwareSubmit pendingText="Saving...">Save</ChangeAwareSubmit>{cancelHref && <a className="btn btn-ghost btn-sm" href={cancelHref}>Cancel</a>}</div>
     </form>
   );
 }

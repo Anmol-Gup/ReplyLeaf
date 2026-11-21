@@ -63,7 +63,7 @@ export const appointmentUpdateSchema = z.object({
   scheduled_date: z.union([z.literal(""), isoDate]),
   scheduled_time: z.string().trim().max(60),
   customer_email: z.union([z.literal(""), z.string().trim().email().max(200)]), // optional; the owner fills it in
-  notes: z.string().max(2000).transform((v) => v.replace(/\u0000/g, "").trim()),
+  notes: z.string().max(2000).transform((v) => v.replace(/\u0000/g, "").trim()).optional(), // not sent = the stored note is left alone
 });
 
 export type ScheduleProblem = "date" | "past" | "time";
