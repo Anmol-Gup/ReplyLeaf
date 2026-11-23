@@ -65,15 +65,14 @@ export function buildDigest(d: DigestData, sw: DigestSwitches, o: { appUrl?: str
     "", "You get this once a day. Urgent things (a chat that needs a person) are still emailed straight away. Change this under Settings > Email notifications.",
   ].join("\n");
 
-  const details = [
-    ...sections.flatMap((s) => [{ label: s.title, value: " " }, ...s.rows.map((r) => ({ label: r.label || " ", value: r.value }))]),
-    ...(waiting.length ? [{ label: "Still waiting for you", value: " " }, ...waiting.map((w) => ({ label: " ", value: w }))] : []),
-  ];
   const html = emailLayout({
     preheader: `${d.businessName}: ${o.sinceLabel}`,
     heading: "Your daily summary",
     paragraphs: [`Here is what happened at ${d.businessName} (${o.sinceLabel}).`],
-    details,
+    sections: [
+      ...sections.map((x) => ({ title: x.title, items: x.rows.map((r) => `${r.label && r.label !== "Contact" && r.label !== "Lead" && r.label !== "Request" && r.label !== "Ticket" ? `${r.label}: ` : ""}${r.value}`) })),
+      ...(waiting.length ? [{ title: "Still waiting for you", items: waiting }] : []),
+    ],
     button: link ? { label: "Open your dashboard", url: link } : undefined,
     footer: "You get this once a day. A chat that needs a person is still emailed straight away. Change this under Settings, Email notifications.",
   });

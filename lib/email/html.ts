@@ -24,6 +24,8 @@ export type EmailContent = {
   paragraphs: string[];
   /** A name/value table, e.g. who signed up. */
   details?: { label: string; value: string }[];
+  /** Titled lists, one line per record (for summaries with many records). */
+  sections?: { title: string; items: string[] }[];
   /** Details values in normal weight instead of bold. */
   plainValues?: boolean;
   button?: { label: string; url: string };
@@ -42,6 +44,11 @@ export function emailLayout(c: EmailContent): string {
         .map((d, i) => `<tr><td style="padding:10px 14px;width:34%;font-size:13px;color:${MUTED};${i ? `border-top:1px solid ${LINE};` : ""}">${escapeHtml(d.label)}</td><td style="padding:10px 14px;font-size:14px;font-weight:${c.plainValues ? 400 : 600};color:${INK};${i ? `border-top:1px solid ${LINE};` : ""}">${escapeHtml(d.value)}</td></tr>`)
         .join("")}</table>`
     : "";
+
+  const sections = (c.sections ?? []).map((sec) => `<p style="margin:18px 0 6px;font-size:15px;font-weight:700;color:${INK};">${escapeHtml(sec.title)}</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px;border:1px solid ${LINE};border-radius:10px;border-collapse:separate;">${sec.items
+      .map((it, i) => `<tr><td style="padding:10px 14px;font-size:14px;line-height:1.5;color:${BODY};${i ? `border-top:1px solid ${LINE};` : ""}">${escapeHtml(it)}</td></tr>`)
+      .join("")}</table>`).join("");
 
   const url = c.button ? escapeHtml(c.button.url) : "";
   const button = c.button
@@ -64,7 +71,7 @@ export function emailLayout(c: EmailContent): string {
     </td></tr>
     <tr><td style="background:#ffffff;border:1px solid ${LINE};border-radius:14px;padding:32px 30px;">
       <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${INK};letter-spacing:-0.01em;">${escapeHtml(c.heading)}</h1>
-      ${paragraphs}${details}${button}
+      ${paragraphs}${details}${sections}${button}
       ${c.footer ? `<p style="margin:18px 0 0;padding-top:16px;border-top:1px solid ${LINE};font-size:12px;line-height:1.5;color:${MUTED};">${escapeHtml(c.footer)}</p>` : ""}
     </td></tr>
     <tr><td style="padding:16px 8px 0;font-size:12px;line-height:1.5;color:${MUTED};text-align:center;">&copy; ${new Date().getFullYear()} ${escapeHtml(LEGAL_NAME)}</td></tr>

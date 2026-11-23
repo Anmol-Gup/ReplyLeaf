@@ -101,6 +101,13 @@ export function adminAlertEmail(a: { to: string; kind: string; detail: string | 
     to: a.to,
     subject: oneLine(`[WA assistant] ${a.kind}${a.clientName ? ` (${a.clientName})` : ""}`),
     text: `Alert: ${a.kind}\nClient: ${a.clientName ?? "unknown"}\n\n${clip(a.detail ?? "(no detail)", 1500)}`,
+    html: emailLayout({
+      preheader: `${a.kind}${a.clientName ? ` (${a.clientName})` : ""}`,
+      heading: "Something needs your attention",
+      paragraphs: clip(a.detail ?? "(no detail)", 1500).split("\n").map((l) => l.trim()).filter(Boolean),
+      details: [{ label: "Alert", value: a.kind }, { label: "Client", value: a.clientName ?? "unknown" }],
+      plainValues: true,
+    }),
   };
 }
 
