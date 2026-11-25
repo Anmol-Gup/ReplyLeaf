@@ -19,7 +19,49 @@ export type OwnerEvent =
 const who = (name: string | null, phone: string) => (name ? `${name} (+${phone})` : `+${phone}`);
 const clip = (s: string, n = 500) => (s.length > n ? `${s.slice(0, n)}...` : s);
 
-export function ownerEmail(
+const OWNER_HEADINGS: Record<OwnerEvent["type"], string> = {
+  new_lead: "New lead on WhatsApp",
+  appointment_request: "New appointment request",
+  appointment_update: "Appointment update",
+  lead_created: "New project enquiry",
+  ticket_created: "New ticket",
+  ai_key_problem: "Your assistant is switched off",
+  whatsapp_problem: "WhatsApp couldn't deliver a reply",
+  onboarded: "Your WhatsApp number is connected",
+  needs_human: "A customer is waiting for you",
+};
+const DETAIL_LABELS = new Set(["From", "First message", "Customer", "For", "Preferred", "Type", "Notes", "When", "Note", "Project", "Budget", "Timeline", "Summary", "Issue", "Category", "Reference", "Reason", "Their last message"]);
+
+/** Branded HTML for an owner email, built from the same text (so the two can never disagree): detail lines become a table, the "Open ...: link" line a button, everything else paragraphs. */
+function ownerHtml(text: string, heading: string, businessName: string): string {
+  const paragraphs: string[] = [];
+  const details: { label: string; value: string }[] = [];
+  let button: { label: string; url: string } | undefined;
+  for (const block of text.split("\n\n")) {
+    const lines = block.split("\n");
+    const rest: string[] = [];
+    for (const line of lines) {
+      const m = /^(Open [^:]+): (https?:\/\/\S+)$/.exec(line);
+      if (m && !button) button = { label: m[1], url: m[2] };
+      else rest.push(line);
+    }
+    if (!rest.length) continue;
+    const parsed = rest.map((l) => /^([^:]{1,30}): ([\s\S]+)$/.exec(l));
+    if (parsed.every((m) => m && DETAIL_LABELS.has(m[1]))) parsed.forEach((m) => details.push({ label: m![1], value: m![2] }));
+    else paragraphs.push(rest.join(" "));
+  }
+  return emailLayout({
+    preheader: clip(paragraphs[0] ?? heading, 110),
+    heading, paragraphs, details, plainValues: true, button, brandName: businessName,
+  });
+}
+
+export function ownerEmail(event: OwnerEvent, o: { to: string; businessName: string; appUrl?: string }): MailMessage {
+  const msg = plainOwnerEmail(event, o);
+  return { ...msg, html: ownerHtml(msg.text, OWNER_HEADINGS[event.type], o.businessName) };
+}
+
+function plainOwnerEmail(
   event: OwnerEvent, o: { to: string; businessName: string; appUrl?: string },
 ): MailMessage {
   const link = o.appUrl ? `\n\nOpen the dashboard: ${o.appUrl.replace(/\/$/, "")}/dashboard` : "";
