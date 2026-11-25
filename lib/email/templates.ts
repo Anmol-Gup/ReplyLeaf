@@ -204,3 +204,21 @@ export function assignedEmail(a: {
     }),
   };
 }
+
+/** Password reset link, sent by this app (not by Supabase) so it is branded and does not depend on Supabase SMTP. */
+export function passwordResetEmail(a: { to: string; link: string }): MailMessage {
+  return {
+    to: a.to,
+    subject: "Reset your password",
+    text: `We received a request to reset your password.\n\nChoose a new password: ${a.link}\n\nThe link works once and expires in about an hour. If you didn't ask for this, you can ignore this email; your password stays the same.`,
+    html: emailLayout({
+      preheader: "Choose a new password for your account.",
+      heading: "Reset your password",
+      paragraphs: [
+        "We received a request to reset your password. Press the button to choose a new one.",
+        "The link works once and expires in about an hour. If you didn't ask for this, you can ignore this email and your password stays the same.",
+      ],
+      button: { label: "Choose a new password", url: a.link },
+    }),
+  };
+}
