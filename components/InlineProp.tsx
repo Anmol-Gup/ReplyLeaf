@@ -16,7 +16,7 @@ export type InlineControl = {
 
 export default function InlineProp({ label, display, action, hidden, controls, revealWhen, alwaysConfirm = false, emptyText = "Click to add", disabled = false }: {
   label: string; display: React.ReactNode; action: (formData: FormData) => void | Promise<void>; hidden: Record<string, string>;
-  controls: InlineControl[]; revealWhen?: { control: string; value: string }; alwaysConfirm?: boolean; emptyText?: string; disabled?: boolean;
+  controls: InlineControl[]; revealWhen?: { control: string; value: string | string[] }; alwaysConfirm?: boolean; emptyText?: string; disabled?: boolean;
 }) {
   const form = useRef<HTMLFormElement>(null);
   const [editing, setEditing] = useState(false);
@@ -28,7 +28,8 @@ export default function InlineProp({ label, display, action, hidden, controls, r
   useEffect(() => { setValues(Object.fromEntries(controls.map((c) => [c.name, c.value]))); setEditing(false); setSending(false); }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
   const submit = () => { if (sending) return; if (form.current && !form.current.checkValidity()) { form.current.reportValidity(); return; } setSending(true); form.current?.requestSubmit(); };
   const set = (name: string, v: string) => setValues((x) => ({ ...x, [name]: v }));
-  const revealed = !!revealWhen && values[revealWhen.control] === revealWhen.value;
+  const revealValues = revealWhen ? ([] as string[]).concat(revealWhen.value) : [];
+  const revealed = !!revealWhen && revealValues.includes(values[revealWhen.control]);
   const needsSave = alwaysConfirm || revealed || controls.some((c) => c.kind === "checkbox" || c.kind === "textarea");
   const visible = controls.filter((c) => !c.reveal || revealed);
   const cancel = () => { setValues(Object.fromEntries(controls.map((c) => [c.name, c.value]))); setEditing(false); };
@@ -52,7 +53,7 @@ export default function InlineProp({ label, display, action, hidden, controls, r
         {Object.entries(hidden).filter(([k]) => !visible.some((c) => c.name === k)).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         {visible.map((c) => c.kind === "select" ? (
           <select key={c.name} name={c.name} value={values[c.name]} autoFocus aria-label={c.label ?? label}
-            onChange={(e) => { set(c.name, e.target.value); const reveal = revealWhen && c.name === revealWhen.control && e.target.value === revealWhen.value; if (!needsSave && !reveal) setTimeout(submit, 0); }}
+            onChange={(e) => { set(c.name, e.target.value); const reveal = revealWhen && c.name === revealWhen.control && revealValues.includes(e.target.value); if (!needsSave && !reveal) setTimeout(submit, 0); }}
             onBlur={() => { if (!needsSave && !sending) setTimeout(() => { if (!sending && form.current && !form.current.contains(document.activeElement)) cancel(); }, 150); }}>
             {c.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>

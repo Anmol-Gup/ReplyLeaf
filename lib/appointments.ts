@@ -9,23 +9,28 @@ import { parseClockTime, todayInZone } from "./workflow";
 
 type Tone = "brand" | "success" | "warn" | "danger" | "muted"; // same names as components/ui
 
-// The database accepts all six; older records may still carry "reschedule_requested" or "rejected".
-export const APPOINTMENT_STATUSES = ["pending", "confirmed", "reschedule_requested", "rejected", "cancelled", "completed"] as const;
+// The database accepts all eight (migration 0032 added rescheduled and no_show); older records may still carry "reschedule_requested" or "rejected".
+export const APPOINTMENT_STATUSES = ["pending", "confirmed", "rescheduled", "reschedule_requested", "rejected", "cancelled", "completed", "no_show"] as const;
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
 /** The statuses the owner picks from. An older record with another status still shows it, so nothing is hidden. */
-export const OWNER_STATUSES = ["pending", "confirmed", "completed", "cancelled"] as const;
+export const OWNER_STATUSES = ["pending", "confirmed", "rescheduled", "completed", "no_show", "cancelled"] as const;
+
+/** Confirmed and Rescheduled both carry an agreed date and time, so both need one (and both count as upcoming). */
+export const needsSchedule = (s: string) => s === "confirmed" || s === "rescheduled";
 
 export const STATUS_LABELS: Record<AppointmentStatus, string> = {
   pending: "Unconfirmed",
   confirmed: "Confirmed",
+  rescheduled: "Rescheduled",
   reschedule_requested: "Reschedule",
   rejected: "Rejected",
   cancelled: "Cancelled",
   completed: "Completed",
+  no_show: "No show",
 };
 export const STATUS_TONES: Record<AppointmentStatus, Tone> = {
-  pending: "warn", confirmed: "success", reschedule_requested: "brand", rejected: "danger", cancelled: "muted", completed: "muted",
+  pending: "warn", confirmed: "success", rescheduled: "brand", reschedule_requested: "brand", rejected: "danger", cancelled: "muted", completed: "muted", no_show: "danger",
 };
 
 /** "2026-11-20 10am", "2026-11-20", "10am" or "" */
@@ -34,9 +39,9 @@ export const whenText = (date: string | null | undefined, time: string | null | 
 
 export type ApptLike = { status: AppointmentStatus; scheduled_date: string | null; preferred_date: string | null };
 
-/** Confirmed and not in the past (by its agreed date, else its preferred date; no date at all counts as upcoming). */
+/** Confirmed or Rescheduled and not in the past (by its agreed date, else its preferred date; no date at all counts as upcoming). */
 export function isUpcoming(a: ApptLike, today: string): boolean {
-  if (a.status !== "confirmed") return false;
+  if (!needsSchedule(a.status)) return false;
   const d = a.scheduled_date ?? a.preferred_date;
   return !d || d >= today;
 }
@@ -45,8 +50,8 @@ export function overview(rows: ApptLike[], today: string) {
   return {
     pending: rows.filter((r) => r.status === "pending" || r.status === "reschedule_requested").length,
     upcoming: rows.filter((r) => isUpcoming(r, today)).length,
-    confirmed: rows.filter((r) => r.status === "confirmed").length,
-    closed: rows.filter((r) => r.status === "rejected" || r.status === "cancelled").length,
+    confirmed: rows.filter((r) => needsSchedule(r.status)).length,
+    closed: rows.filter((r) => r.status === "rejected" || r.status === "cancelled" || r.status === "no_show").length,
   };
 }
 
@@ -105,6 +110,8 @@ export function appointmentStatusMessage(business: string, purpose: string, stat
   const tail = extra ? ` ${extra}` : "";
   switch (status) {
     case "confirmed": return `${head} it is confirmed${when ? ` for ${when}` : ""}.${tail} If that time no longer works for you, just reply here and we'll find another.`;
+    case "rescheduled": return `${head} it has been rescheduled${when ? ` to ${when}` : ""}.${tail} If that time does not work for you, just reply here and we'll find another.`;
+    case "no_show": return `${head} we missed you at your appointment.${tail} If you'd still like to meet, just reply here and we'll find a new time.`;
     case "cancelled": return `${head} it has been cancelled.${tail} If you'd like to book again, just message us here.`;
     case "completed": return `${head} it is marked as completed.${tail} Thank you!`;
     case "rejected": return `${head} we are not able to take this request.${tail}`;

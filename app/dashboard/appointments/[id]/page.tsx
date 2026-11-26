@@ -9,7 +9,7 @@ import { Badge } from "../../../../components/ui";
 import { requireClient } from "../../../../lib/auth/session";
 import { emailsByContact } from "../../../../lib/contact-emails";
 import { fmt } from "../../../../lib/dashboard";
-import { OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
+import { needsSchedule, OWNER_STATUSES, STATUS_LABELS, STATUS_TONES, whatsappLink, whenText, type AppointmentStatus } from "../../../../lib/appointments";
 import Notice from "../../Notice";
 import { editNote } from "../../note-actions";
 import ActivityList, { type ActivityItem } from "../../../../components/ActivityList";
@@ -72,7 +72,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
             <summary>About this appointment</summary>
             <div className="rec-body">
               <InlineProp label="Status" action={updateAppointment} hidden={hidden} display={<Badge tone={STATUS_TONES[status]}>{STATUS_LABELS[status]}</Badge>}
-                revealWhen={{ control: "status", value: "confirmed" }}
+                revealWhen={{ control: "status", value: ["confirmed", "rescheduled"] }}
                 controls={[
                   { name: "status", kind: "select", value: status, options },
                   { name: "scheduled_date", kind: "date", value: (a.scheduled_date ?? a.preferred_date ?? "") as string, label: "Agreed date", required: true, reveal: true },
@@ -80,7 +80,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
                   { name: "notify", kind: "checkbox", value: "", label: "Notify customer about this update" },
                   { name: "message", kind: "text", value: "", label: "Message to the customer (optional)", placeholder: "Optional message to the customer", maxLength: 1000 },
                 ]} />
-              {status === "confirmed" ? (
+              {needsSchedule(status) ? (
                 <InlineProp label="Agreed" action={updateAppointment} hidden={hidden} alwaysConfirm display={agreed || <span className="muted">Not agreed yet</span>}
                   controls={[
                     { name: "scheduled_date", kind: "date", value: (a.scheduled_date ?? "") as string, label: "Agreed date", required: true },
@@ -89,7 +89,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
                     { name: "message", kind: "text", value: "", label: "Message to the customer (optional)", placeholder: "Optional message to the customer", maxLength: 1000 },
                   ]} />
               ) : (
-                <div className="rec-prop"><small>Agreed</small><span className="muted">Not agreed yet. Set the status to Confirmed to add the date and time.</span></div>
+                <div className="rec-prop"><small>Agreed</small><span className="muted">Not agreed yet. Set the status to Confirmed or Rescheduled to add the date and time.</span></div>
               )}
               <InlineProp label="Email" action={updateAppointment} hidden={hidden} emptyText="Click to add" display={email || undefined}
                 controls={[{ name: "customer_email", kind: "email", value: email ?? "", placeholder: "customer@example.com", maxLength: 200 }]} />

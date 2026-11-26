@@ -27,7 +27,7 @@ export function buildTimeline(r: Raw): TimelineItem[] {
     ...r.appointments.map((a): TimelineItem => ({
       kind: "appointment", id: a.id, title: `Appointment: ${a.purpose}`, detail: whenText(a.scheduled_date ?? a.preferred_date, a.scheduled_time ?? a.preferred_time),
       statusLabel: APPT_LABELS[a.status], tone: APPT_TONES[a.status], href: `/dashboard/appointments/${a.id}`, at: a.created_at,
-      open: a.status === "pending" || a.status === "reschedule_requested" || a.status === "confirmed",
+      open: a.status === "pending" || a.status === "reschedule_requested" || a.status === "confirmed" || a.status === "rescheduled",
     })),
     ...r.tickets.map((t): TimelineItem => ({
       kind: "ticket", id: t.id, title: `Ticket ${ticketRef(t.id)}: ${t.subject}`, detail: t.priority === "high" ? "Urgent" : "",

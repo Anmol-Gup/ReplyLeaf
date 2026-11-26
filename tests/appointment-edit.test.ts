@@ -1,15 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appointmentStatusMessage, appointmentUpdateSchema, APPOINTMENT_STATUSES, deliveryNotice, OWNER_STATUSES, scheduleNotice, STATUS_LABELS, validateSchedule, whatsappLink, whenText } from "../lib/appointments";
+import { appointmentStatusMessage, isUpcoming, needsSchedule, overview, appointmentUpdateSchema, APPOINTMENT_STATUSES, deliveryNotice, OWNER_STATUSES, scheduleNotice, STATUS_LABELS, validateSchedule, whatsappLink, whenText } from "../lib/appointments";
 import { NOTICES } from "../lib/dashboard";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date("2026-11-20T10:00:00Z");
 
-test("status names are short, and the owner picks from four of them", () => {
+test("status names are short, and the owner picks from six of them", () => {
   assert.equal(STATUS_LABELS.pending, "Unconfirmed");
   assert.equal(STATUS_LABELS.confirmed, "Confirmed");
-  assert.deepEqual([...OWNER_STATUSES], ["pending", "confirmed", "completed", "cancelled"]);
+  assert.deepEqual([...OWNER_STATUSES], ["pending", "confirmed", "rescheduled", "completed", "no_show", "cancelled"]);
+  assert.equal(STATUS_LABELS.rescheduled, "Rescheduled");
+  assert.equal(STATUS_LABELS.no_show, "No show");
   for (const s of OWNER_STATUSES) assert.ok((APPOINTMENT_STATUSES as readonly string[]).includes(s));
   // older records may still carry other statuses and must stay valid
   for (const old of ["rejected", "reschedule_requested"]) assert.equal(appointmentUpdateSchema.safeParse({ id: ID, status: old, scheduled_date: "", scheduled_time: "", customer_email: "", notes: "" }).success, true);
@@ -109,4 +111,29 @@ test("telling the customer about an appointment: every outcome has a notice, and
   const long = appointmentStatusMessage("Biz", "p".repeat(500), "cancelled", "", `a\n\n  b ${"z".repeat(900)}`);
   assert.ok(!long.includes("\n"));
   assert.ok(long.length < 1000);
+});
+
+test("Rescheduled and No show: valid statuses, Rescheduled needs an agreed time like Confirmed", () => {
+  for (const status of ["rescheduled", "no_show"]) {
+    assert.equal(appointmentUpdateSchema.safeParse({ id: ID, status, scheduled_date: "", scheduled_time: "", customer_email: "" }).success, true, status);
+  }
+  assert.equal(needsSchedule("confirmed"), true);
+  assert.equal(needsSchedule("rescheduled"), true);
+  for (const s of ["pending", "no_show", "completed", "cancelled", "reschedule_requested"]) assert.equal(needsSchedule(s), false, s);
+  // a rescheduled booking is upcoming (until its new date passes); a no-show never is
+  const row = (status: "rescheduled" | "no_show", d: string) => ({ status, scheduled_date: d, preferred_date: null });
+  assert.equal(isUpcoming(row("rescheduled", "2026-12-01"), "2026-11-20"), true);
+  assert.equal(isUpcoming(row("rescheduled", "2026-11-01"), "2026-11-20"), false);
+  assert.equal(isUpcoming(row("no_show", "2026-12-01"), "2026-11-20"), false);
+  const o = overview([row("rescheduled", "2026-12-01"), row("no_show", "2026-11-10"), { status: "confirmed", scheduled_date: "2026-12-02", preferred_date: null }], "2026-11-20");
+  assert.equal(o.confirmed, 2); // confirmed + rescheduled
+  assert.equal(o.upcoming, 2);
+  assert.equal(o.closed, 1); // the no-show
+  // messages to the customer
+  const re = appointmentStatusMessage("AG", "check-up", "rescheduled", "2026-12-01 3pm", "Sorry for the change.");
+  assert.match(re, /rescheduled to 2026-12-01 3pm\./);
+  assert.match(re, /Sorry for the change\./);
+  assert.doesNotMatch(appointmentStatusMessage("AG", "x", "rescheduled", "", ""), / to \./);
+  assert.match(appointmentStatusMessage("AG", "check-up", "no_show", "", ""), /missed you/);
+  assert.ok(NOTICES.appt_needs_update);
 });

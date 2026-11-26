@@ -9,7 +9,7 @@ import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
 import { noteSchema } from "../../../lib/notes";
 import { notifyCustomerDetailed } from "../../../lib/appointment-notify";
-import { appointmentStatusMessage, appointmentUpdateSchema, deliveryNotice, scheduleNotice, validateSchedule, whenText } from "../../../lib/appointments";
+import { appointmentStatusMessage, appointmentUpdateSchema, deliveryNotice, needsSchedule, scheduleNotice, validateSchedule, whenText } from "../../../lib/appointments";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { parseWorkflowSettings } from "../../../lib/workflow-settings";
 
@@ -34,12 +34,12 @@ export async function updateAppointment(formData: FormData) {
   const { data: before } = await db.from("appointments").select("id, conversation_id, status, scheduled_date, scheduled_time, timezone, customer_name, customer_phone, purpose").eq("id", v.id).eq("client_id", clientId).maybeSingle();
   if (!before) return redirect("/dashboard/appointments?notice=not_found");
 
-  // A confirmed appointment must have the agreed date and a clock time. The date is checked against today only when it is new or
+  // A confirmed or rescheduled appointment must have the agreed date and a clock time. The date is checked against today only when it is new or
   // changed, so an old confirmed appointment can still be marked completed after its date has passed.
-  if (v.status === "confirmed") {
+  if (needsSchedule(v.status)) {
     const { data: biz } = await db.from("clients").select("workflow_settings").eq("id", clientId).maybeSingle();
     const zone = (before.timezone as string | null)?.trim() || parseWorkflowSettings(biz?.workflow_settings).appointments.timezone;
-    const changed = before.status !== "confirmed" || v.scheduled_date !== (before.scheduled_date ?? "") || v.scheduled_time !== (before.scheduled_time ?? "");
+    const changed = before.status !== v.status || v.scheduled_date !== (before.scheduled_date ?? "") || v.scheduled_time !== (before.scheduled_time ?? "");
     const ok = validateSchedule({ date: v.scheduled_date, time: v.scheduled_time }, { timeZone: zone, now: new Date(), checkPast: changed });
     if (!ok.ok) return go(v.id, scheduleNotice(ok.problem));
   }
@@ -55,7 +55,8 @@ export async function updateAppointment(formData: FormData) {
     ...(v.notes !== undefined ? { internal_notes: v.notes || null } : {}), updated_at: new Date().toISOString(),
   }).eq("id", v.id).eq("client_id", clientId);
   // Two open requests for the same thing are not allowed (the same rule that stops the assistant saving a duplicate).
-  if (error) return go(v.id, error.code === "23505" ? "appt_conflict" : "appt_failed");
+  // 23514: the database has not had migration 0032 yet (it does not know the newest statuses), so nothing was saved.
+  if (error) return go(v.id, error.code === "23505" ? "appt_conflict" : error.code === "23514" ? "appt_needs_update" : "appt_failed");
   revalidatePath("/dashboard/appointments");
   revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(detail(v.id));
@@ -70,7 +71,7 @@ export async function updateAppointment(formData: FormData) {
   if (notify) {
     const changed = v.status !== before.status || v.scheduled_date !== ((before.scheduled_date as string | null) ?? "") || v.scheduled_time !== ((before.scheduled_time as string | null) ?? "");
     if (!changed) return go(v.id, "appt_nothing_to_notify");
-    const when = v.status === "confirmed" ? whenText(v.scheduled_date, v.scheduled_time) : "";
+    const when = needsSchedule(v.status) ? whenText(v.scheduled_date, v.scheduled_time) : "";
     const message = appointmentStatusMessage(clientName, before.purpose as string, v.status, when, text("message"));
     const sent = await notifyCustomerDetailed(clientId, before.conversation_id as string, clientName, "Update on your appointment", message, v.customer_email || null);
     return go(v.id, deliveryNotice("appt", sent.channel));

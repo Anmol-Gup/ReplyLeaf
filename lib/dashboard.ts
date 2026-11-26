@@ -33,6 +33,7 @@ export const NOTICES: Record<string, { kind: "ok" | "warn" | "error"; text: stri
   appt_date_past: { kind: "error", text: "That date has already passed. Pick today or a later date." },
   appt_need_time: { kind: "error", text: "To confirm, enter the time as a clock time, for example 10:30 or 3pm." },
   tkt_done_failed: { kind: "error", text: "Ticket updated, but sending the message to the customer FAILED, so they have not been told." },
+  appt_needs_update: { kind: "error", text: "This isn't available just yet. We're finishing a quick setup on our side, so nothing was changed. Please try again in a little while." },
   appt_conflict: { kind: "error", text: "Another open request for the same thing already exists for this customer, so this one could not be set back to open." },
   appt_failed: { kind: "error", text: "The appointment could not be saved. Refresh and try again." },
   subscription_required: { kind: "warn", text: "That needs an active subscription. Subscribe or update your payment method below. You can still view and export your data." },

@@ -46,7 +46,7 @@ export default async function Appointments({ searchParams }: { searchParams: Pro
         <Stat value={o.pending} label="Waiting for you" />
         <Stat value={o.upcoming} label="Upcoming" />
         <Stat value={o.confirmed} label="Confirmed in total" />
-        <Stat value={o.closed} label="Rejected or cancelled" />
+        <Stat value={o.closed} label="Cancelled or no show" />
       </div>
       <div className="filters">
         <MultiSelectFilter action="/dashboard/appointments" options={options} selected={statuses} hidden={{ q, upcoming: onlyUpcoming ? "1" : undefined }} />

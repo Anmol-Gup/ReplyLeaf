@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { needsSchedule } from "../lib/appointments";
 import ChangeAwareSubmit from "./ChangeAwareSubmit";
 
 // Update an appointment after you have talked to the customer: set the status, and when it is Confirmed, the date and time you
@@ -13,7 +14,7 @@ export default function AppointmentEditForm({ action, a, statuses, cancelHref }:
   statuses: { value: string; label: string }[];
 }) {
   const [status, setStatus] = useState(a.status);
-  const confirmed = status === "confirmed";
+  const confirmed = needsSchedule(status);
   return (
     <form action={action} className="stack-sm">
       <input type="hidden" name="id" value={a.id} />
