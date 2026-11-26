@@ -77,12 +77,16 @@ export default async function AppointmentDetail({ params, searchParams }: { para
                   { name: "status", kind: "select", value: status, options },
                   { name: "scheduled_date", kind: "date", value: (a.scheduled_date ?? a.preferred_date ?? "") as string, label: "Agreed date", required: true, reveal: true },
                   { name: "scheduled_time", kind: "text", value: (a.scheduled_time ?? a.preferred_time ?? "") as string, label: "Agreed time (for example 10:30 or 3pm)", placeholder: "10:30 or 3pm", required: true, maxLength: 60, reveal: true },
+                  { name: "notify", kind: "checkbox", value: "", label: "Notify customer about this update" },
+                  { name: "message", kind: "text", value: "", label: "Message to the customer (optional)", placeholder: "Optional message to the customer", maxLength: 1000 },
                 ]} />
               {status === "confirmed" ? (
                 <InlineProp label="Agreed" action={updateAppointment} hidden={hidden} alwaysConfirm display={agreed || <span className="muted">Not agreed yet</span>}
                   controls={[
                     { name: "scheduled_date", kind: "date", value: (a.scheduled_date ?? "") as string, label: "Agreed date", required: true },
                     { name: "scheduled_time", kind: "text", value: (a.scheduled_time ?? "") as string, label: "Agreed time", placeholder: "10:30 or 3pm", required: true, maxLength: 60 },
+                    { name: "notify", kind: "checkbox", value: "", label: "Notify customer about the new time" },
+                    { name: "message", kind: "text", value: "", label: "Message to the customer (optional)", placeholder: "Optional message to the customer", maxLength: 1000 },
                   ]} />
               ) : (
                 <div className="rec-prop"><small>Agreed</small><span className="muted">Not agreed yet. Set the status to Confirmed to add the date and time.</span></div>
@@ -92,7 +96,7 @@ export default async function AppointmentDetail({ params, searchParams }: { para
               <InlineProp label="Assigned to" action={updateAppointment} hidden={hidden} emptyText="Click to assign" display={(a.assigned_to as string | null) || undefined}
                 controls={[{ name: "assignee_email", kind: "email", value: (a.assigned_to as string | null) ?? "", placeholder: "Email (yours or a teammate's), empty = unassigned", maxLength: 200 }]} />
               <div className="rec-prop"><small>Requested</small><span>{fmt(a.created_at)}</span></div>
-              <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it. Nothing is sent to the customer. Assigning emails the person you choose.</p>
+              <p className="hint" style={{ marginBottom: 0 }}>Click a value to change it. Nothing is sent to the customer unless you tick &ldquo;Notify customer&rdquo; when changing the status or the agreed time. Assigning emails the person you choose.</p>
             </div>
           </details>
         </aside>

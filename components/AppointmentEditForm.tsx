@@ -4,7 +4,7 @@ import { useState } from "react";
 import ChangeAwareSubmit from "./ChangeAwareSubmit";
 
 // Update an appointment after you have talked to the customer: set the status, and when it is Confirmed, the date and time you
-// agreed. Nothing is sent to the customer. When the agreed date and time are hidden their
+// agreed. (This form does not notify the customer; the appointment page's inline status does.) When the agreed date and time are hidden their
 // values are still posted, so saving never wipes them.
 export default function AppointmentEditForm({ action, a, statuses, cancelHref }: {
   cancelHref?: string;

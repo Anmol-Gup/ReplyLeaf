@@ -23,7 +23,7 @@ export async function notifyCustomer(clientId: string, conversationId: string, b
 }
 
 export async function notifyCustomerDetailed(
-  clientId: string, conversationId: string, businessName: string, subject: string, text: string,
+  clientId: string, conversationId: string, businessName: string, subject: string, text: string, recordEmail?: string | null,
 ): Promise<CustomerNotice> {
   const db = supabaseAdmin();
   const { data: conv } = await db.from("conversations").select("contact_id, last_customer_message_at")
@@ -52,7 +52,8 @@ export async function notifyCustomerDetailed(
   }
 
   const mailer = getMailer();
-  const emailTo = (contact?.email ?? contact?.notify_email) as string | null | undefined; // the owner-confirmed email first, else the one they gave for updates
+  // An email the owner typed on the record itself comes first, then the owner-confirmed contact email, else the one they gave for updates.
+  const emailTo = (recordEmail || contact?.email || contact?.notify_email) as string | null | undefined;
   if (mailer && emailTo) {
     attempted = true;
     try {

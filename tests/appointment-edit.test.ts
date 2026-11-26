@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appointmentUpdateSchema, APPOINTMENT_STATUSES, deliveryNotice, OWNER_STATUSES, scheduleNotice, STATUS_LABELS, validateSchedule, whatsappLink, whenText } from "../lib/appointments";
+import { appointmentStatusMessage, appointmentUpdateSchema, APPOINTMENT_STATUSES, deliveryNotice, OWNER_STATUSES, scheduleNotice, STATUS_LABELS, validateSchedule, whatsappLink, whenText } from "../lib/appointments";
 import { NOTICES } from "../lib/dashboard";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -72,9 +72,11 @@ test("a link to chat with the customer: digits only, unusable numbers give no li
   assert.equal(whatsappLink("1".repeat(20)), null);
 });
 
-test("the appointment page sends the customer nothing: only a plain 'updated' notice remains", () => {
+test("the appointment page sends the customer nothing by itself: a plain 'updated' notice stays, and telling them is opt-in", () => {
   assert.equal(NOTICES.appt_done.text, "Appointment updated.");
-  for (const gone of ["appt_done_whatsapp", "appt_done_email", "appt_done_not_sent", "appt_done_failed", "appt_need_alternative"]) assert.equal(NOTICES[gone], undefined, gone);
+  assert.equal(NOTICES.appt_need_alternative, undefined); // the old guided buttons stay gone
+  // the notify outcomes only exist for the opt-in tick box, and they say what really happened
+  for (const c of ["whatsapp", "email", "failed", "none"] as const) assert.ok(NOTICES[deliveryNotice("appt", c)], c);
 });
 
 test("tickets still report what really happened when the customer was told", () => {
@@ -84,4 +86,27 @@ test("tickets still report what really happened when the customer was told", () 
   assert.equal(deliveryNotice("tkt", "none"), "tkt_done_not_sent");
   for (const c of ["whatsapp", "email", "failed", "none"] as const) assert.ok(NOTICES[deliveryNotice("tkt", c)], c);
   assert.equal(NOTICES.tkt_done_failed.kind, "error");
+});
+
+test("telling the customer about an appointment: every outcome has a notice, and the text is safe", () => {
+  for (const c of ["whatsapp", "email", "failed", "none"] as const) assert.ok(NOTICES[deliveryNotice("appt", c)], c);
+  assert.equal(deliveryNotice("appt", "none"), "appt_done_not_sent");
+  assert.equal(NOTICES.appt_done_failed.kind, "error");
+  assert.equal(NOTICES.appt_done_not_sent.kind, "warn");
+  assert.match(NOTICES.appt_done_not_sent.text, /NOT told/);
+  assert.ok(NOTICES.appt_nothing_to_notify);
+
+  const confirmed = appointmentStatusMessage("AG Enterprises", "project status", "confirmed", "2026-11-30 11:00 AM", "See you then.");
+  assert.match(confirmed, /^Update from AG Enterprises on your appointment request "project status": it is confirmed for 2026-11-30 11:00 AM\./);
+  assert.match(confirmed, /See you then\./);
+  assert.match(confirmed, /reply here/);
+  // no time given: no dangling "for"
+  assert.doesNotMatch(appointmentStatusMessage("Biz", "x", "confirmed", "", ""), / for \./);
+  assert.match(appointmentStatusMessage("Biz", "x", "cancelled", "", ""), /cancelled/);
+  assert.match(appointmentStatusMessage("Biz", "x", "completed", "", ""), /completed/);
+  assert.match(appointmentStatusMessage("Biz", "x", "pending", "", ""), /waiting/);
+  // the owner's line is trimmed to one line and capped; long purposes are capped too
+  const long = appointmentStatusMessage("Biz", "p".repeat(500), "cancelled", "", `a\n\n  b ${"z".repeat(900)}`);
+  assert.ok(!long.includes("\n"));
+  assert.ok(long.length < 1000);
 });

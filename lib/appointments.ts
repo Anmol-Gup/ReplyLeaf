@@ -4,7 +4,8 @@ import { parseClockTime, todayInZone } from "./workflow";
 // Pure helpers for appointment requests (unit-tested).
 //
 // How appointments work: the assistant collects the details (what, preferred date and time, notes). The owner then talks to the
-// customer themselves, and afterwards sets the status here by hand. Nothing is sent to the customer from this page.
+// customer themselves, and afterwards sets the status here by hand. Telling the customer is opt-in: the owner ticks "Notify customer"
+// when changing the status or the agreed time (WhatsApp if the 24-hour window is open, else email, else the owner is told it was not sent).
 
 type Tone = "brand" | "success" | "warn" | "danger" | "muted"; // same names as components/ui
 
@@ -91,6 +92,25 @@ export function whatsappLink(phone: string | null | undefined, text = ""): strin
   const digits = (phone ?? "").replace(/\D/g, "");
   if (digits.length < 7 || digits.length > 15) return null;
   return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text.slice(0, 1500))}` : ""}`;
+}
+
+/**
+ * The customer-facing text for an appointment update. Only the status, the agreed time (when confirmed) and the optional line the owner
+ * typed: never internal notes, the assignee or the customer's own details.
+ */
+export function appointmentStatusMessage(business: string, purpose: string, status: AppointmentStatus, when: string, line: string): string {
+  const extra = line.replace(/\s+/g, " ").trim().slice(0, 600);
+  const what = purpose.replace(/\s+/g, " ").trim().slice(0, 120);
+  const head = `Update from ${business} on your appointment request "${what}":`;
+  const tail = extra ? ` ${extra}` : "";
+  switch (status) {
+    case "confirmed": return `${head} it is confirmed${when ? ` for ${when}` : ""}.${tail} If that time no longer works for you, just reply here and we'll find another.`;
+    case "cancelled": return `${head} it has been cancelled.${tail} If you'd like to book again, just message us here.`;
+    case "completed": return `${head} it is marked as completed.${tail} Thank you!`;
+    case "rejected": return `${head} we are not able to take this request.${tail}`;
+    case "reschedule_requested": return `${head} we need to find a new time.${tail} Please reply here with what suits you.`;
+    default: return `${head} it is waiting for our team to confirm.${tail}`;
+  }
 }
 
 /** The notice code that says what really happened when a customer was told (tickets): sent by WhatsApp, by email, tried but FAILED, or not reachable. */

@@ -8,7 +8,8 @@ import { requirePaidAccess } from "../../../lib/billing/gate";
 import { parseIds } from "../../../lib/bulk";
 import { requireClient } from "../../../lib/auth/session";
 import { noteSchema } from "../../../lib/notes";
-import { appointmentUpdateSchema, scheduleNotice, validateSchedule } from "../../../lib/appointments";
+import { notifyCustomerDetailed } from "../../../lib/appointment-notify";
+import { appointmentStatusMessage, appointmentUpdateSchema, deliveryNotice, scheduleNotice, validateSchedule, whenText } from "../../../lib/appointments";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { parseWorkflowSettings } from "../../../lib/workflow-settings";
 
@@ -24,12 +25,13 @@ export async function updateAppointment(formData: FormData) {
   await requirePaidAccess(clientId);
   const rawId = String(formData.get("id") ?? "");
   const text = (n: string) => String(formData.get(n) ?? "");
+  const notify = formData.get("notify") !== null; // telling the customer is opt-in
   const parsed = appointmentUpdateSchema.safeParse({ id: formData.get("id"), status: formData.get("status"), scheduled_date: text("scheduled_date"), scheduled_time: text("scheduled_time"), customer_email: text("customer_email"), notes: formData.has("notes") ? text("notes") : undefined });
   if (!parsed.success) return z.string().uuid().safeParse(rawId).success ? go(rawId, "invalid") : redirect("/dashboard/appointments?notice=invalid");
   const v = parsed.data;
 
   const db = supabaseAdmin();
-  const { data: before } = await db.from("appointments").select("id, status, scheduled_date, scheduled_time, timezone, customer_name, customer_phone, purpose").eq("id", v.id).eq("client_id", clientId).maybeSingle();
+  const { data: before } = await db.from("appointments").select("id, conversation_id, status, scheduled_date, scheduled_time, timezone, customer_name, customer_phone, purpose").eq("id", v.id).eq("client_id", clientId).maybeSingle();
   if (!before) return redirect("/dashboard/appointments?notice=not_found");
 
   // A confirmed appointment must have the agreed date and a clock time. The date is checked against today only when it is new or
@@ -57,10 +59,23 @@ export async function updateAppointment(formData: FormData) {
   revalidatePath("/dashboard/appointments");
   revalidatePath("/dashboard"); // the Overview counts change too
   revalidatePath(detail(v.id));
+  let assignEmailFailed = false;
   if (typed && typed.email && typed.email !== prevAssignee) {
-    const sent = await emailAssignee(typed, { kind: "appointment", title: before.purpose as string, customerName: (before.customer_name as string | null) ?? null, phone: (before.customer_phone as string | null) ?? "", detailLabel: "Details", detail: "", path: detail(v.id), assignedBy: user.email ?? "A teammate", businessName: clientName });
-    if (!sent) return go(v.id, "assign_email_failed");
+    assignEmailFailed = !(await emailAssignee(typed, { kind: "appointment", title: before.purpose as string, customerName: (before.customer_name as string | null) ?? null, phone: (before.customer_phone as string | null) ?? "", detailLabel: "Details", detail: "", path: detail(v.id), assignedBy: user.email ?? "A teammate", businessName: clientName }));
   }
+
+  // Telling the customer is opt-in, and only when the status or the agreed time really changed (so a double click or a repeat save never
+  // sends twice). WhatsApp if the 24-hour window is open, else email, else nothing is sent and the owner is told. Internal notes and the
+  // assignee are never part of the message.
+  if (notify) {
+    const changed = v.status !== before.status || v.scheduled_date !== ((before.scheduled_date as string | null) ?? "") || v.scheduled_time !== ((before.scheduled_time as string | null) ?? "");
+    if (!changed) return go(v.id, "appt_nothing_to_notify");
+    const when = v.status === "confirmed" ? whenText(v.scheduled_date, v.scheduled_time) : "";
+    const message = appointmentStatusMessage(clientName, before.purpose as string, v.status, when, text("message"));
+    const sent = await notifyCustomerDetailed(clientId, before.conversation_id as string, clientName, "Update on your appointment", message, v.customer_email || null);
+    return go(v.id, deliveryNotice("appt", sent.channel));
+  }
+  if (assignEmailFailed) return go(v.id, "assign_email_failed");
   return go(v.id, "appt_done");
 }
 
