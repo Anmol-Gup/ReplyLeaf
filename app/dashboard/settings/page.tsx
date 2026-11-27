@@ -141,9 +141,20 @@ export default async function Settings({ searchParams }: { searchParams: Promise
 
       {tab === "workflows" && (
         <form action={updateWorkflows} className="stack">
+          <WorkflowCard name="appointments_enabled" title="Appointment requests" switchLabel="Collect appointment requests" defaultChecked={w.appointments.enabled}
+            always={<label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book, instead of collecting a request. Works even if appointment requests are off.</span>
+              <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
+            </label>}
+            description="With no booking link, the assistant collects the appointment details from the customer by itself (what it is for, preferred date and time, name), checks them against your working days and hours, and sends you a pending request to accept or reject on the Appointments page. With a booking link, it shares the link instead.">
+
+            <p className="hint">Appointments follow your working days, hours and time zone from the Business hours card below.</p>
+            <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
+              <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
+            </label>
+                    </WorkflowCard>
           <section className="card stack">
             <h2>Business hours</h2>
-            <p className="muted">Used by the whole assistant. While you are closed, it still answers questions as usual. When a customer asks for a person or an appointment, or it cannot answer, it says you are not available right now, when you are next available, and shares your contact details from your Knowledge base. Appointment requests and the Human handoff text use the same hours.</p>
+            <p className="muted">Shared by the whole assistant: appointment requests, the human handoff text and the closed-hours replies all use these hours. While you are closed, the assistant still answers normal questions from your Knowledge base as usual. Only when a customer asks to speak to a person does it say you are not available right now, when you are next available, and share your contact details from the Knowledge base.</p>
             <fieldset className="field"><legend>Working days <span className="hint">Information for the assistant. It never promises that a time is free: there is no calendar connection.</span></legend>
               <div className="row">
                 {WEEKDAYS.map((d) => <label key={d} className="check"><input type="checkbox" name={`day_${d}`} defaultChecked={w.appointments.workingDays.includes(d)} /> {WEEKDAY_LABELS[d]}</label>)}
@@ -158,17 +169,6 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             </div>
             <p className="hint">Keep your email, phone or WhatsApp number in your Knowledge base (core knowledge). While you are closed, the assistant shares those details exactly as written, and nothing it does not find there. Choose your time zone above so it knows when you are closed.</p>
           </section>
-          <WorkflowCard name="appointments_enabled" title="Appointment requests" switchLabel="Collect appointment requests" defaultChecked={w.appointments.enabled}
-            always={<label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book, instead of collecting a request. Works even if appointment requests are off.</span>
-              <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
-            </label>}
-            description="With no booking link, the assistant collects the appointment details from the customer by itself (what it is for, preferred date and time, name), checks them against your working days and hours, and sends you a pending request to accept or reject on the Appointments page. With a booking link, it shares the link instead.">
-
-            <p className="hint">Appointments follow your working days, hours and time zone from the Business hours card above.</p>
-            <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
-              <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
-            </label>
-                    </WorkflowCard>
           <WorkflowCard name="enquiries_enabled" title="Project enquiries" switchLabel="Collect project enquiries" defaultChecked={w.enquiries.enabled}
             description="When a customer asks about a project or service, the assistant works out what it needs to know (service, description, key requirements, budget and timeline when relevant), asks naturally, shows a summary, and saves a lead only after the customer confirms. You do not need to list the questions.">
 
