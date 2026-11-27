@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 // Every claim on this page must describe something the app does today. There is no calendar connection, so never
 // promise live availability or automatic bookings: appointments are REQUESTS that the owner confirms.
 const NAV_LINKS = [
+  { href: "#demo", label: "Demo" },
   { href: "#features", label: "Features" },
   { href: "#how-it-works", label: "How it works" },
   { href: "#use-cases", label: "Use cases" },
@@ -92,6 +93,21 @@ export default function Home() {
             <p className="lp-fine">No complicated setup. Your customers continue chatting on WhatsApp, in plain text.</p>
           </div>
           <ChatPreview />
+        </section>
+
+        <section id="demo" className="lp-section lp-demo" aria-labelledby="lp-demo-title">
+          <div className="lp-section-head">
+            <p className="lp-eyebrow">Product demo</p>
+            <h2 id="lp-demo-title">See Replyleaf in action.</h2>
+            <p>From connecting your WhatsApp Business number to answers, handoffs, appointments, tickets and usage, in under a minute and a half.</p>
+          </div>
+          <div className="lp-video">
+            <video controls preload="metadata" playsInline poster="/replyleaf/demo-poster.jpg" aria-label="Replyleaf product demo video">
+              <source src="/replyleaf/demo.mp4" type="video/mp4" />
+              <track kind="captions" src="/replyleaf/demo.en.vtt" srcLang="en" label="English" default />
+              Your browser can&apos;t play this video. <a href="/replyleaf/demo.mp4">Download the demo</a>.
+            </video>
+          </div>
         </section>
 
         <section id="features" className="lp-section">

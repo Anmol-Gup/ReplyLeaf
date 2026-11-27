@@ -112,3 +112,8 @@
 .lp-footer a:hover { text-decoration: underline; }
 .lp-footer-legal { max-width: 1160px; margin: 32px auto 0; padding-top: 20px; border-top: 1px solid rgb(255 255 255 / 0.12); font-size: 0.85rem; color: #9ec3b2; overflow-wrap: anywhere; }
 @media (min-width: 760px) { .lp-footer-inner { grid-template-columns: 2fr 1fr 1fr; } }
+
+/* Product demo video */
+.lp-demo { padding-top: 24px; }
+.lp-video { max-width: 960px; margin: 0 auto; border-radius: 18px; overflow: hidden; background: #0b141a; box-shadow: 0 30px 70px rgba(16, 36, 26, 0.2), 0 0 0 1px rgba(16, 36, 26, 0.1); }
+.lp-video video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #0b141a; }
