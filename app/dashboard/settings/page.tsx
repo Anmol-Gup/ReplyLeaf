@@ -142,8 +142,8 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       {tab === "workflows" && (
         <form action={updateWorkflows} className="stack">
           <section className="card stack">
-            <h2>Business hours and contact</h2>
-            <p className="muted">Used by the whole assistant. While you are closed, it still answers questions as usual. When a customer asks for a person or an appointment, or it cannot answer, it says you are not available right now, when you are next available, and shares your contact details below. Appointment requests follow the same hours.</p>
+            <h2>Business hours</h2>
+            <p className="muted">Used by the whole assistant. While you are closed, it still answers questions as usual. When a customer asks for a person or an appointment, or it cannot answer, it says you are not available right now, when you are next available, and shares your contact details from your Knowledge base. Appointment requests and the Human handoff text use the same hours.</p>
             <fieldset className="field"><legend>Working days <span className="hint">Information for the assistant. It never promises that a time is free: there is no calendar connection.</span></legend>
               <div className="row">
                 {WEEKDAYS.map((d) => <label key={d} className="check"><input type="checkbox" name={`day_${d}`} defaultChecked={w.appointments.workingDays.includes(d)} /> {WEEKDAY_LABELS[d]}</label>)}
@@ -156,9 +156,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <label className="field">Opens <input type="time" name="open_time" defaultValue={w.appointments.openTime} /></label>
               <label className="field">Closes <input type="time" name="close_time" defaultValue={w.appointments.closeTime} /></label>
             </div>
-            <label className="field">Contact details to share when you are closed (optional) <span className="hint">Shared exactly as written, for example: Call +91 98765 43210 or email hello@yourbusiness.com. Choose your time zone above so the assistant knows when you are closed.</span>
-              <textarea name="business_contact" rows={2} maxLength={300} defaultValue={w.business.contact} placeholder="Call +91 98765 43210 or email hello@yourbusiness.com" />
-            </label>
+            <p className="hint">Keep your email, phone or WhatsApp number in your Knowledge base (core knowledge). While you are closed, the assistant shares those details exactly as written, and nothing it does not find there. Choose your time zone above so it knows when you are closed.</p>
           </section>
           <WorkflowCard name="appointments_enabled" title="Appointment requests" switchLabel="Collect appointment requests" defaultChecked={w.appointments.enabled}
             always={<label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book, instead of collecting a request. Works even if appointment requests are off.</span>
@@ -166,7 +164,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             </label>}
             description="With no booking link, the assistant collects the appointment details from the customer by itself (what it is for, preferred date and time, name), checks them against your working days and hours, and sends you a pending request to accept or reject on the Appointments page. With a booking link, it shares the link instead.">
 
-            <p className="hint">Appointments follow your working days, hours and time zone from the Business hours and contact card above.</p>
+            <p className="hint">Appointments follow your working days, hours and time zone from the Business hours card above.</p>
             <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
               <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
             </label>
@@ -200,7 +198,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           <WorkflowCard name="handoff_enabled" title="Human handoff" switchLabel="Hand chats over to my team" defaultChecked={w.handoff.enabled}
             description="When a customer asks for a person, the assistant steps aside for that chat and you are emailed. Turn this off only if nobody can follow up.">
 
-            <label className="field">When your team is available <input name="availability" maxLength={200} defaultValue={w.handoff.availability} placeholder="Mon-Fri, 9am-6pm" /></label>
+            <p className="hint">When your team is available: the assistant uses your Business hours above.</p>
             <label className="field">Expected response time <span className="hint">The assistant may tell customers this. Leave empty and it promises no time.</span>
               <input name="response_time" maxLength={100} defaultValue={w.handoff.responseTime} placeholder="within 1 business day" />
             </label>

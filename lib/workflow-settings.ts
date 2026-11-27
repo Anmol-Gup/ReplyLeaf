@@ -26,11 +26,6 @@ export const workflowSettingsSchema = z.object({
     // The business's time zone: "today" and the opening hours are in this zone. null = not chosen yet.
     timezone: z.string().trim().max(60).refine(isTimeZone, "unknown time zone").nullable().default(null),
   }).prefault({}),
-  // Business-wide. The working days, hours and time zone live in `appointments` (one set, used by appointments AND by the "closed now" rule).
-  // `contact` is the owner's text shared with a customer when the business is closed (for example a phone number and an email).
-  business: z.object({
-    contact: text(300).default(""),
-  }).prefault({}),
   enquiries: z.object({
     enabled: z.boolean().default(true),
     services: list(20, 100).default([]),
@@ -57,10 +52,6 @@ export const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = workflowSettingsSchem
 
 /** Stored JSON -> settings. Anything invalid falls back to the defaults. */
 export function parseWorkflowSettings(raw: unknown): WorkflowSettings {
-  // The contact box briefly lived under appointments (appointments.outOfHoursContact): keep any text saved there.
-  const o = (raw ?? {}) as { appointments?: { outOfHoursContact?: unknown }; business?: { contact?: unknown } };
-  const legacy = typeof o.appointments?.outOfHoursContact === "string" ? o.appointments.outOfHoursContact : "";
-  if (legacy && !o.business?.contact) raw = { ...o, business: { ...(o.business ?? {}), contact: legacy } };
   const r = workflowSettingsSchema.safeParse(raw ?? {});
   return r.success ? r.data : DEFAULT_WORKFLOW_SETTINGS;
 }
@@ -100,7 +91,7 @@ export function renderWorkflowRules(s: WorkflowSettings, bookingLink: string | n
     const a = s.appointments;
     out.push(`APPOINTMENTS: there is no calendar and no booking link. You can only collect an appointment REQUEST that the team confirms later.
 - Today's date is ${today}. Working days: ${dayList(a.workingDays)}; hours ${a.openTime}-${a.closeTime}${a.timezone ? ` (${a.timezone} time)` : ""}. This is information only: never promise that a day or time is free, and never say availability. Do not suggest or accept a day outside the working days or a time outside the hours; if the customer asks for one, say so kindly and ask for another. The system also checks this and will not let such a request through.
-${outOfHoursNote(s.business.contact)}
+${outOfHoursNote()}
 - Set intent to "appointment_request" and workflow.flow to "appointment". Collect, without a form: what the appointment is for (purpose), preferred date, preferred time, the customer's name if you do not already have it, and extra details such as online or in person or a time zone only when they matter. Ask for one or two missing things at a time, never everything at once, and never re-ask something already said in this chat. The customer's WhatsApp number is already known: do not ask for it. EMAIL: when you show the summary, politely add one line asking if they would like to share their email address for appointment-related updates, and that they can also get updates here on WhatsApp (for example: "Would you like to share your email address for appointment-related updates? You can also receive updates here on WhatsApp."). Skip that line if <saved_progress> already shows a known customer email or they already gave one. If they decline or ignore it, carry on: it never delays or blocks the request. If they give one, put it in contact.email.
 - Fill the appointment fields with everything known so far on EVERY turn of this flow (null for unknown). Use preferred_date as YYYY-MM-DD resolved from today's date; if the customer is vague, ask.
 - Once you have the purpose, a date or time, and the name (the customer name may already be known; do not ask again): set workflow.stage to "awaiting_confirmation", summarise the request in your reply and ask the customer to confirm. Do not submit yet.
@@ -141,21 +132,23 @@ ${outOfHoursNote(s.business.contact)}
   // --- handoff
   if (s.handoff.enabled) {
     const h = s.handoff;
-    out.push(`HUMAN HANDOFF: enabled.${h.availability ? ` The team is available: ${h.availability}.` : ""}${h.responseTime ? ` Expected response time: ${h.responseTime}. You may tell the customer this.` : " Do not promise any response time."}${h.escalationInstructions ? `\n- Hand over to a person in these cases too: ${h.escalationInstructions}` : ""}`);
+    out.push(`HUMAN HANDOFF: enabled.${teamAvailability(s)}${h.responseTime ? ` Expected response time: ${h.responseTime}. You may tell the customer this.` : " Do not promise any response time."}${h.escalationInstructions ? `\n- Hand over to a person in these cases too: ${h.escalationInstructions}` : ""}`);
   } else {
     out.push("HUMAN HANDOFF: disabled. Never say that a team member or person will take over or follow up, and do not offer it. If you cannot help, say so politely and suggest contacting the business directly. Use intent \"other\" or \"question\", never \"human_needed\".");
   }
   return out.join("\n\n");
 }
 
-/** One clean line from the owner's contact text (no line breaks or control characters), or "". */
-export const cleanContact = (v: string | null | undefined): string => (v ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+/** What the assistant may say about when the team is available: the business hours when a time zone is set (one set of hours everywhere), else the older text. */
+const teamAvailability = (s: WorkflowSettings): string => {
+  const a = s.appointments;
+  if (a.timezone) return ` The team is available: ${dayList(a.workingDays.length ? a.workingDays : [...WEEKDAYS])}, ${a.openTime}-${a.closeTime} (${a.timezone} time). Use only these hours.`;
+  return s.handoff.availability ? ` The team is available: ${s.handoff.availability}.` : "";
+};
 
-/** The rule line that makes the assistant share the owner's contact details when a request falls outside the working days or hours. "" when none are set. */
-export function outOfHoursNote(contact: string | null | undefined): string {
-  const c = cleanContact(contact);
-  return c ? `- When the customer asks for a day or time outside the working days or hours, say so politely and, in the SAME message, share these contact details exactly as written: ${c}. These details come from the business, so they are not invented. Share them only for that reason, never any other phone number or email.` : "";
-}
+/** The rule line for appointment requests: a day or time outside the working days or hours gets the business's contact details from its knowledge. */
+export const outOfHoursNote = (): string =>
+  "- When the customer asks for a day or time outside the working days or hours, say so politely and, in the SAME message, share the business's contact details (email, phone, WhatsApp) from the business knowledge exactly as written. If the knowledge has none, skip this. Never invent or change a phone number or email.";
 
 // ---- "closed right now": decided by code, in the business's time zone, then told to the assistant (it never guesses the time)
 export type OpenStatus = { open: boolean; now: string; hours: string; nextOpen: string | null } | null;
@@ -192,11 +185,10 @@ export function businessStatus(now: Date, s: WorkflowSettings): OpenStatus {
 }
 
 /** The rule added to the assistant's context while the business is closed. "" when it is open or the time zone is not set. */
-export function renderClosedHours(s: WorkflowSettings, status: OpenStatus): string {
+export function renderClosedHours(status: OpenStatus): string {
   if (!status || status.open) return "";
-  const c = cleanContact(s.business.contact);
-  const when = status.nextOpen ? `, and the team is next available ${status.nextOpen}` : "";
-  return `The business is CLOSED right now: it is ${status.now}, and the business hours are ${status.hours}${when}. Keep answering questions from the business knowledge exactly as usual. But when the customer asks to speak to a person, asks for an appointment or a time, or you cannot answer from the knowledge: say kindly that the team is not available right now${status.nextOpen ? ` and that they are next available ${status.nextOpen}` : ""}${c ? `, and in the SAME message share these contact details exactly as written: ${c}. Share no other phone number or email` : ""}. Do not mention being closed when it has nothing to do with what the customer asked.`;
+  const next = status.nextOpen ? ` and the team is next available ${status.nextOpen}` : "";
+  return `The business is CLOSED right now: it is ${status.now}, and the business hours are ${status.hours}${next}. Keep answering questions from the business knowledge exactly as usual. But when the customer asks to speak to a person, asks for an appointment or a time, or you cannot answer from the knowledge: say kindly that the team is not available right now${status.nextOpen ? ` and that they are next available ${status.nextOpen}` : ""}, and in the SAME message share the business's contact details (email, phone, WhatsApp) from the business knowledge exactly as written. If the knowledge has none, say the team will reply when it is next available. Never invent or change a phone number or email. Use these business hours, not any other hours. Do not mention being closed when it has nothing to do with what the customer asked.`;
 }
 
 /** The settings form (checkboxes, text boxes, one-item-per-line textareas) -> the settings shape, before validation.
@@ -213,7 +205,6 @@ export function formToWorkflowInput(get: (name: string) => string | null): unkno
       closeTime: text("close_time") || "17:00",
       timezone: text("timezone").trim() || null,
     },
-    business: { contact: text("business_contact") },
     enquiries: {
       enabled: on("enquiries_enabled"),
       services: linesToList(text("services"), 20, 100),

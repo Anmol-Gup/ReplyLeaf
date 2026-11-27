@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ReplyResult } from "./ai/schema";
-import { cleanContact, WEEKDAYS, WEEKDAY_LABELS, type BookingMode, type WorkflowSettings } from "./workflow-settings";
+import { WEEKDAYS, WEEKDAY_LABELS, type BookingMode, type WorkflowSettings } from "./workflow-settings";
 
 // Server-side rules for the assistant's multi-step workflows. The model PROPOSES an action; this file DECIDES.
 // Pure and unit-tested. Nothing is saved because a model said so: it must pass every check below.
@@ -168,23 +168,20 @@ const toMinutes = (hhmmText: string) => { const [h, m] = hhmmText.split(":").map
  * for the customer when it does not, otherwise null. Only what is known is checked, and this is NOT availability: there is
  * no calendar, so a request that passes is still only a request.
  */
-/** " You can also reach us at: ..." when the owner has set contact details for outside hours, otherwise "". */
-const contactTail = (contact: string | null | undefined): string => { const c = cleanContact(contact); return c ? ` You can also reach us at: ${c}.` : ""; };
-
 export function appointmentWindowIssue(
-  a: { preferredDate: string | null; preferredTime: string | null }, s: WorkflowSettings["appointments"], now: Date, contact?: string | null,
+  a: { preferredDate: string | null; preferredTime: string | null }, s: WorkflowSettings["appointments"], now: Date,
 ): string | null {
   if (a.preferredDate) {
     const d = new Date(`${a.preferredDate}T00:00:00Z`);
     const day = WEEKDAYS[(d.getUTCDay() + 6) % 7];
     if (s.workingDays.length > 0 && !s.workingDays.includes(day)) {
-      return `Sorry, we don't take appointments on ${WEEKDAY_LABELS[day]}s (we work ${s.workingDays.map((w) => WEEKDAY_LABELS[w].slice(0, 3)).join(", ")}). Could you pick another day?${contactTail(contact)}`;
+      return `Sorry, we don't take appointments on ${WEEKDAY_LABELS[day]}s (we work ${s.workingDays.map((w) => WEEKDAY_LABELS[w].slice(0, 3)).join(", ")}). Could you pick another day?`;
     }
   }
   const t = parseClockTime(a.preferredTime);
   if (t !== null) {
     const open = toMinutes(s.openTime), close = toMinutes(s.closeTime);
-    if (t < open || t >= close) return `Our hours are ${hhmm(open)} to ${hhmm(close)}. Could you pick a time in that window?${contactTail(contact)}`;
+    if (t < open || t >= close) return `Our hours are ${hhmm(open)} to ${hhmm(close)}. Could you pick a time in that window?`;
   }
   return null;
 }
@@ -219,7 +216,7 @@ export function decideAction({ prev, result, mode, settings, contactName, now }:
   if (flow === "appointment") {
     const v = validateAppointment(result.appointment, contactName, now, settings.appointments.timezone);
     if (!v.ok) return { kind: "rejected", flow, reason: `missing: ${v.missing.join(", ")}` };
-    const issue = appointmentWindowIssue(v.value, settings.appointments, now, settings.business.contact);
+    const issue = appointmentWindowIssue(v.value, settings.appointments, now);
     return issue ? { kind: "rejected", flow, reason: "outside_working_window", customerMessage: issue } : { kind: "appointment", value: v.value };
   }
   if (flow === "issue") {

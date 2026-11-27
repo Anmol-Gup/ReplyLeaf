@@ -63,7 +63,7 @@ export function buildSystemPrompt(c: PromptClient, retrieved: RetrievedChunk[] =
     context.push(`${ctx.open.leads} project enquir${ctx.open.leads > 1 ? "ies" : "y"} from this customer ${ctx.open.leads > 1 ? "are" : "is"} already with the team. A different project is a new enquiry; never submit the same one again.`);
   }
   // While the business is closed (decided here, in the business time zone) the assistant is told so, with the reopening time and the owner's contact details.
-  const closed = renderClosedHours(c.workflow, businessStatus(ctx.now ?? new Date(), c.workflow));
+  const closed = renderClosedHours(businessStatus(ctx.now ?? new Date(), c.workflow));
   if (closed) context.push(closed);
   const workflowRules = renderWorkflowRules(c.workflow, c.bookingLink, ctx.today);
 
