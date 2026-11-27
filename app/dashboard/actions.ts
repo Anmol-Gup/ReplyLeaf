@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { parseIds } from "../../lib/bulk";
@@ -9,7 +10,10 @@ import { clearSessionCookies, requireClient } from "../../lib/auth/session";
 import { requirePaidAccess } from "../../lib/billing/gate";
 import { conversationActions, conversationStateOf, type OpenHandoff } from "../../lib/conversation-state";
 import { deleteContactData } from "../../lib/privacy";
+import { runBatches } from "../../lib/batch";
+import { requeueUnanswered } from "../../lib/resume-requeue";
 import { supabaseAdmin } from "../../lib/supabase-admin";
+import { supabaseBatchDeps } from "../../lib/supabase-batch";
 import { sendClientText } from "../../lib/supabase-deps";
 import { MAX_DOCUMENTS } from "../../lib/kb/chunk";
 import { ExtractError, extractText, MAX_UPLOAD_BYTES } from "../../lib/kb/extract";
@@ -62,6 +66,8 @@ export async function handBack(formData: FormData) {
   refresh(id);
   if (error) return flash(`/dashboard/conversations/${id}`, error.message.includes("resume_ai") ? "handoff_needs_update" : "not_found");
   if (row && !row.out_resumed) return flash(`/dashboard/conversations/${id}`, "assigned_other");
+  // A customer message that arrived while a person was handling the chat is answered now, not lost.
+  if (await requeueUnanswered(clientId, id)) after(() => runBatches([id], supabaseBatchDeps()));
 }
 
 export async function sendHumanMessage(formData: FormData) {

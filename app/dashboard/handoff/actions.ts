@@ -1,13 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { requireClient } from "../../../lib/auth/session";
 import { z } from "zod";
 import { emailAssignee } from "../../../lib/assign";
 import { cleanNote, handoffFormSchema, SOURCE_LABELS, type HandoffSource } from "../../../lib/handoff";
 import { findMemberByEmail } from "../../../lib/team";
+import { runBatches } from "../../../lib/batch";
+import { requeueUnanswered } from "../../../lib/resume-requeue";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
+import { supabaseBatchDeps } from "../../../lib/supabase-batch";
 
 // SECURITY MODEL (same as the other dashboard actions): requireClient() derives clientId from the
 // signed-in owner's membership. Writes use the service role, so every call passes that clientId and
@@ -123,6 +127,7 @@ export async function queueResumeAi(formData: FormData) {
   if (error) return go(to, "handoff_needs_update");
   refreshAll(conv);
   const row = (Array.isArray(data) ? data[0] : data) as { out_resumed: boolean } | null;
+  if (row?.out_resumed && (await requeueUnanswered(clientId, conv))) after(() => runBatches([conv], supabaseBatchDeps())); // answer what the customer asked while a person had the chat
   return go(to, row && !row.out_resumed ? "assigned_other" : "handoff_resumed");
 }
 
