@@ -141,12 +141,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
 
       {tab === "workflows" && (
         <form action={updateWorkflows} className="stack">
-          <WorkflowCard name="appointments_enabled" title="Appointment requests" switchLabel="Collect appointment requests" defaultChecked={w.appointments.enabled}
-            always={<label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book, instead of collecting a request. Works even if appointment requests are off.</span>
-              <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
-            </label>}
-            description="With no booking link, the assistant collects the appointment details from the customer by itself (what it is for, preferred date and time, name), checks them against your working days and hours, and sends you a pending request to accept or reject on the Appointments page. With a booking link, it shares the link instead.">
-
+          <section className="card stack">
+            <h2>Business hours and contact</h2>
+            <p className="muted">Used by the whole assistant. While you are closed, it still answers questions as usual. When a customer asks for a person or an appointment, or it cannot answer, it says you are not available right now, when you are next available, and shares your contact details below. Appointment requests follow the same hours.</p>
             <fieldset className="field"><legend>Working days <span className="hint">Information for the assistant. It never promises that a time is free: there is no calendar connection.</span></legend>
               <div className="row">
                 {WEEKDAYS.map((d) => <label key={d} className="check"><input type="checkbox" name={`day_${d}`} defaultChecked={w.appointments.workingDays.includes(d)} /> {WEEKDAY_LABELS[d]}</label>)}
@@ -159,9 +156,17 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <label className="field">Opens <input type="time" name="open_time" defaultValue={w.appointments.openTime} /></label>
               <label className="field">Closes <input type="time" name="close_time" defaultValue={w.appointments.closeTime} /></label>
             </div>
-            <label className="field">Contact details to share outside working hours (optional) <span className="hint">When a customer asks for a day or time you do not work, the assistant says so and shares exactly this text, for example: Call +91 98765 43210 or email hello@yourbusiness.com.</span>
-              <textarea name="out_of_hours_contact" rows={2} maxLength={300} defaultValue={w.appointments.outOfHoursContact} placeholder="Call +91 98765 43210 or email hello@yourbusiness.com" />
+            <label className="field">Contact details to share when you are closed (optional) <span className="hint">Shared exactly as written, for example: Call +91 98765 43210 or email hello@yourbusiness.com. Choose your time zone above so the assistant knows when you are closed.</span>
+              <textarea name="business_contact" rows={2} maxLength={300} defaultValue={w.business.contact} placeholder="Call +91 98765 43210 or email hello@yourbusiness.com" />
             </label>
+          </section>
+          <WorkflowCard name="appointments_enabled" title="Appointment requests" switchLabel="Collect appointment requests" defaultChecked={w.appointments.enabled}
+            always={<label className="field">Booking link <span className="hint">Optional, for example Calendly. If set, the assistant shares it when a customer wants to book, instead of collecting a request. Works even if appointment requests are off.</span>
+              <input name="booking_link" type="url" maxLength={500} defaultValue={c?.booking_link ?? ""} placeholder="https://calendly.com/your-name" />
+            </label>}
+            description="With no booking link, the assistant collects the appointment details from the customer by itself (what it is for, preferred date and time, name), checks them against your working days and hours, and sends you a pending request to accept or reject on the Appointments page. With a booking link, it shares the link instead.">
+
+            <p className="hint">Appointments follow your working days, hours and time zone from the Business hours and contact card above.</p>
             <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
               <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
             </label>

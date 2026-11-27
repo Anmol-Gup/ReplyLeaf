@@ -169,22 +169,22 @@ const toMinutes = (hhmmText: string) => { const [h, m] = hhmmText.split(":").map
  * no calendar, so a request that passes is still only a request.
  */
 /** " You can also reach us at: ..." when the owner has set contact details for outside hours, otherwise "". */
-const contactTail = (s: WorkflowSettings["appointments"]): string => { const c = cleanContact(s.outOfHoursContact); return c ? ` You can also reach us at: ${c}.` : ""; };
+const contactTail = (contact: string | null | undefined): string => { const c = cleanContact(contact); return c ? ` You can also reach us at: ${c}.` : ""; };
 
 export function appointmentWindowIssue(
-  a: { preferredDate: string | null; preferredTime: string | null }, s: WorkflowSettings["appointments"], now: Date,
+  a: { preferredDate: string | null; preferredTime: string | null }, s: WorkflowSettings["appointments"], now: Date, contact?: string | null,
 ): string | null {
   if (a.preferredDate) {
     const d = new Date(`${a.preferredDate}T00:00:00Z`);
     const day = WEEKDAYS[(d.getUTCDay() + 6) % 7];
     if (s.workingDays.length > 0 && !s.workingDays.includes(day)) {
-      return `Sorry, we don't take appointments on ${WEEKDAY_LABELS[day]}s (we work ${s.workingDays.map((w) => WEEKDAY_LABELS[w].slice(0, 3)).join(", ")}). Could you pick another day?${contactTail(s)}`;
+      return `Sorry, we don't take appointments on ${WEEKDAY_LABELS[day]}s (we work ${s.workingDays.map((w) => WEEKDAY_LABELS[w].slice(0, 3)).join(", ")}). Could you pick another day?${contactTail(contact)}`;
     }
   }
   const t = parseClockTime(a.preferredTime);
   if (t !== null) {
     const open = toMinutes(s.openTime), close = toMinutes(s.closeTime);
-    if (t < open || t >= close) return `Our hours are ${hhmm(open)} to ${hhmm(close)}. Could you pick a time in that window?${contactTail(s)}`;
+    if (t < open || t >= close) return `Our hours are ${hhmm(open)} to ${hhmm(close)}. Could you pick a time in that window?${contactTail(contact)}`;
   }
   return null;
 }
@@ -219,7 +219,7 @@ export function decideAction({ prev, result, mode, settings, contactName, now }:
   if (flow === "appointment") {
     const v = validateAppointment(result.appointment, contactName, now, settings.appointments.timezone);
     if (!v.ok) return { kind: "rejected", flow, reason: `missing: ${v.missing.join(", ")}` };
-    const issue = appointmentWindowIssue(v.value, settings.appointments, now);
+    const issue = appointmentWindowIssue(v.value, settings.appointments, now, settings.business.contact);
     return issue ? { kind: "rejected", flow, reason: "outside_working_window", customerMessage: issue } : { kind: "appointment", value: v.value };
   }
   if (flow === "issue") {

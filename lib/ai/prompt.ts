@@ -3,7 +3,7 @@
 //  2. Customer text is untrusted data. It only ever appears inside
 //     <customer_messages> tags in a user turn, never in the system prompt.
 
-import { renderWorkflowRules, type WorkflowSettings } from "../workflow-settings";
+import { businessStatus, renderClosedHours, renderWorkflowRules, type WorkflowSettings } from "../workflow-settings";
 import type { WorkflowState } from "../workflow";
 
 export type PromptClient = {
@@ -18,6 +18,7 @@ export type PromptClient = {
 /** Server-side facts about THIS conversation. Owner-written or server-generated text only, never customer text. */
 export type PromptContext = {
   today: string; // YYYY-MM-DD (UTC)
+  now?: Date; // the current moment (defaults to now); used to tell the assistant whether the business is closed right now
   flowState: WorkflowState | null;
   open: { appointments: { status: "pending" | "reschedule_requested"; rescheduleNote: string | null }[]; tickets: number; leads: number };
 };
@@ -61,6 +62,9 @@ export function buildSystemPrompt(c: PromptClient, retrieved: RetrievedChunk[] =
   if (ctx.open.leads > 0) {
     context.push(`${ctx.open.leads} project enquir${ctx.open.leads > 1 ? "ies" : "y"} from this customer ${ctx.open.leads > 1 ? "are" : "is"} already with the team. A different project is a new enquiry; never submit the same one again.`);
   }
+  // While the business is closed (decided here, in the business time zone) the assistant is told so, with the reopening time and the owner's contact details.
+  const closed = renderClosedHours(c.workflow, businessStatus(ctx.now ?? new Date(), c.workflow));
+  if (closed) context.push(closed);
   const workflowRules = renderWorkflowRules(c.workflow, c.bookingLink, ctx.today);
 
   return `You are the WhatsApp assistant for "${c.name}". You chat with the business's customers on its behalf.

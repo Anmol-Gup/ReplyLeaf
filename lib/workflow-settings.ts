@@ -25,8 +25,11 @@ export const workflowSettingsSchema = z.object({
     closeTime: hhmm.default("17:00"),
     // The business's time zone: "today" and the opening hours are in this zone. null = not chosen yet.
     timezone: z.string().trim().max(60).refine(isTimeZone, "unknown time zone").nullable().default(null),
-    // Shared with the customer when they ask for a day or time outside the working days and hours (for example a phone number and an email).
-    outOfHoursContact: text(300).default(""),
+  }).prefault({}),
+  // Business-wide. The working days, hours and time zone live in `appointments` (one set, used by appointments AND by the "closed now" rule).
+  // `contact` is the owner's text shared with a customer when the business is closed (for example a phone number and an email).
+  business: z.object({
+    contact: text(300).default(""),
   }).prefault({}),
   enquiries: z.object({
     enabled: z.boolean().default(true),
@@ -54,6 +57,10 @@ export const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = workflowSettingsSchem
 
 /** Stored JSON -> settings. Anything invalid falls back to the defaults. */
 export function parseWorkflowSettings(raw: unknown): WorkflowSettings {
+  // The contact box briefly lived under appointments (appointments.outOfHoursContact): keep any text saved there.
+  const o = (raw ?? {}) as { appointments?: { outOfHoursContact?: unknown }; business?: { contact?: unknown } };
+  const legacy = typeof o.appointments?.outOfHoursContact === "string" ? o.appointments.outOfHoursContact : "";
+  if (legacy && !o.business?.contact) raw = { ...o, business: { ...(o.business ?? {}), contact: legacy } };
   const r = workflowSettingsSchema.safeParse(raw ?? {});
   return r.success ? r.data : DEFAULT_WORKFLOW_SETTINGS;
 }
@@ -93,7 +100,7 @@ export function renderWorkflowRules(s: WorkflowSettings, bookingLink: string | n
     const a = s.appointments;
     out.push(`APPOINTMENTS: there is no calendar and no booking link. You can only collect an appointment REQUEST that the team confirms later.
 - Today's date is ${today}. Working days: ${dayList(a.workingDays)}; hours ${a.openTime}-${a.closeTime}${a.timezone ? ` (${a.timezone} time)` : ""}. This is information only: never promise that a day or time is free, and never say availability. Do not suggest or accept a day outside the working days or a time outside the hours; if the customer asks for one, say so kindly and ask for another. The system also checks this and will not let such a request through.
-${outOfHoursNote(a.outOfHoursContact)}
+${outOfHoursNote(s.business.contact)}
 - Set intent to "appointment_request" and workflow.flow to "appointment". Collect, without a form: what the appointment is for (purpose), preferred date, preferred time, the customer's name if you do not already have it, and extra details such as online or in person or a time zone only when they matter. Ask for one or two missing things at a time, never everything at once, and never re-ask something already said in this chat. The customer's WhatsApp number is already known: do not ask for it. EMAIL: when you show the summary, politely add one line asking if they would like to share their email address for appointment-related updates, and that they can also get updates here on WhatsApp (for example: "Would you like to share your email address for appointment-related updates? You can also receive updates here on WhatsApp."). Skip that line if <saved_progress> already shows a known customer email or they already gave one. If they decline or ignore it, carry on: it never delays or blocks the request. If they give one, put it in contact.email.
 - Fill the appointment fields with everything known so far on EVERY turn of this flow (null for unknown). Use preferred_date as YYYY-MM-DD resolved from today's date; if the customer is vague, ask.
 - Once you have the purpose, a date or time, and the name (the customer name may already be known; do not ask again): set workflow.stage to "awaiting_confirmation", summarise the request in your reply and ask the customer to confirm. Do not submit yet.
@@ -150,6 +157,48 @@ export function outOfHoursNote(contact: string | null | undefined): string {
   return c ? `- When the customer asks for a day or time outside the working days or hours, say so politely and, in the SAME message, share these contact details exactly as written: ${c}. These details come from the business, so they are not invented. Share them only for that reason, never any other phone number or email.` : "";
 }
 
+// ---- "closed right now": decided by code, in the business's time zone, then told to the assistant (it never guesses the time)
+export type OpenStatus = { open: boolean; now: string; hours: string; nextOpen: string | null } | null;
+
+const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+
+/**
+ * Is the business open at `now`? Uses the working days, hours and time zone saved in the settings. Returns null when no time zone has
+ * been chosen (the local time is unknown, so nothing is claimed). No working days ticked means every day counts as a working day.
+ */
+export function businessStatus(now: Date, s: WorkflowSettings): OpenStatus {
+  const zone = s.appointments.timezone;
+  if (!zone) return null;
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
+  } catch { return null; }
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const dayIx = WEEKDAYS.findIndex((d) => d === get("weekday").slice(0, 3).toLowerCase());
+  if (dayIx < 0) return null;
+  const minutes = (Number(get("hour")) % 24) * 60 + Number(get("minute"));
+  const a = s.appointments;
+  const works = (i: number) => a.workingDays.length === 0 || a.workingDays.includes(WEEKDAYS[i]);
+  const open = works(dayIx) && minutes >= toMin(a.openTime) && minutes < toMin(a.closeTime);
+  let nextOpen: string | null = null;
+  if (!open) {
+    if (works(dayIx) && minutes < toMin(a.openTime)) nextOpen = `today at ${a.openTime}`;
+    else for (let k = 1; k <= 7 && !nextOpen; k++) {
+      const i = (dayIx + k) % 7;
+      if (works(i)) nextOpen = `${k === 1 ? "tomorrow" : WEEKDAY_LABELS[WEEKDAYS[i]]} at ${a.openTime}`;
+    }
+  }
+  return { open, now: `${WEEKDAY_LABELS[WEEKDAYS[dayIx]]} ${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")} (${zone})`, hours: `${dayList(a.workingDays.length ? a.workingDays : [...WEEKDAYS])}, ${a.openTime}-${a.closeTime}`, nextOpen };
+}
+
+/** The rule added to the assistant's context while the business is closed. "" when it is open or the time zone is not set. */
+export function renderClosedHours(s: WorkflowSettings, status: OpenStatus): string {
+  if (!status || status.open) return "";
+  const c = cleanContact(s.business.contact);
+  const when = status.nextOpen ? `, and the team is next available ${status.nextOpen}` : "";
+  return `The business is CLOSED right now: it is ${status.now}, and the business hours are ${status.hours}${when}. Keep answering questions from the business knowledge exactly as usual. But when the customer asks to speak to a person, asks for an appointment or a time, or you cannot answer from the knowledge: say kindly that the team is not available right now${status.nextOpen ? ` and that they are next available ${status.nextOpen}` : ""}${c ? `, and in the SAME message share these contact details exactly as written: ${c}. Share no other phone number or email` : ""}. Do not mention being closed when it has nothing to do with what the customer asked.`;
+}
+
 /** The settings form (checkboxes, text boxes, one-item-per-line textareas) -> the settings shape, before validation.
  *  `get` returns a field's text, or null when it is missing (an unchecked checkbox is missing). */
 export function formToWorkflowInput(get: (name: string) => string | null): unknown {
@@ -163,8 +212,8 @@ export function formToWorkflowInput(get: (name: string) => string | null): unkno
       openTime: text("open_time") || "09:00",
       closeTime: text("close_time") || "17:00",
       timezone: text("timezone").trim() || null,
-      outOfHoursContact: text("out_of_hours_contact"),
     },
+    business: { contact: text("business_contact") },
     enquiries: {
       enabled: on("enquiries_enabled"),
       services: linesToList(text("services"), 20, 100),
