@@ -159,6 +159,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <label className="field">Opens <input type="time" name="open_time" defaultValue={w.appointments.openTime} /></label>
               <label className="field">Closes <input type="time" name="close_time" defaultValue={w.appointments.closeTime} /></label>
             </div>
+            <label className="field">Contact details to share outside working hours (optional) <span className="hint">When a customer asks for a day or time you do not work, the assistant says so and shares exactly this text, for example: Call +91 98765 43210 or email hello@yourbusiness.com.</span>
+              <textarea name="out_of_hours_contact" rows={2} maxLength={300} defaultValue={w.appointments.outOfHoursContact} placeholder="Call +91 98765 43210 or email hello@yourbusiness.com" />
+            </label>
             <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
               <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
             </label>

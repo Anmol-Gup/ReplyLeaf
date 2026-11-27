@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ReplyResult } from "./ai/schema";
-import { WEEKDAYS, WEEKDAY_LABELS, type BookingMode, type WorkflowSettings } from "./workflow-settings";
+import { cleanContact, WEEKDAYS, WEEKDAY_LABELS, type BookingMode, type WorkflowSettings } from "./workflow-settings";
 
 // Server-side rules for the assistant's multi-step workflows. The model PROPOSES an action; this file DECIDES.
 // Pure and unit-tested. Nothing is saved because a model said so: it must pass every check below.
@@ -168,6 +168,9 @@ const toMinutes = (hhmmText: string) => { const [h, m] = hhmmText.split(":").map
  * for the customer when it does not, otherwise null. Only what is known is checked, and this is NOT availability: there is
  * no calendar, so a request that passes is still only a request.
  */
+/** " You can also reach us at: ..." when the owner has set contact details for outside hours, otherwise "". */
+const contactTail = (s: WorkflowSettings["appointments"]): string => { const c = cleanContact(s.outOfHoursContact); return c ? ` You can also reach us at: ${c}.` : ""; };
+
 export function appointmentWindowIssue(
   a: { preferredDate: string | null; preferredTime: string | null }, s: WorkflowSettings["appointments"], now: Date,
 ): string | null {
@@ -175,13 +178,13 @@ export function appointmentWindowIssue(
     const d = new Date(`${a.preferredDate}T00:00:00Z`);
     const day = WEEKDAYS[(d.getUTCDay() + 6) % 7];
     if (s.workingDays.length > 0 && !s.workingDays.includes(day)) {
-      return `Sorry, we don't take appointments on ${WEEKDAY_LABELS[day]}s (we work ${s.workingDays.map((w) => WEEKDAY_LABELS[w].slice(0, 3)).join(", ")}). Could you pick another day?`;
+      return `Sorry, we don't take appointments on ${WEEKDAY_LABELS[day]}s (we work ${s.workingDays.map((w) => WEEKDAY_LABELS[w].slice(0, 3)).join(", ")}). Could you pick another day?${contactTail(s)}`;
     }
   }
   const t = parseClockTime(a.preferredTime);
   if (t !== null) {
     const open = toMinutes(s.openTime), close = toMinutes(s.closeTime);
-    if (t < open || t >= close) return `Our hours are ${hhmm(open)} to ${hhmm(close)}. Could you pick a time in that window?`;
+    if (t < open || t >= close) return `Our hours are ${hhmm(open)} to ${hhmm(close)}. Could you pick a time in that window?${contactTail(s)}`;
   }
   return null;
 }

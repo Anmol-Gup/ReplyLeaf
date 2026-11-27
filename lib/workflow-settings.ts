@@ -25,6 +25,8 @@ export const workflowSettingsSchema = z.object({
     closeTime: hhmm.default("17:00"),
     // The business's time zone: "today" and the opening hours are in this zone. null = not chosen yet.
     timezone: z.string().trim().max(60).refine(isTimeZone, "unknown time zone").nullable().default(null),
+    // Shared with the customer when they ask for a day or time outside the working days and hours (for example a phone number and an email).
+    outOfHoursContact: text(300).default(""),
   }).prefault({}),
   enquiries: z.object({
     enabled: z.boolean().default(true),
@@ -91,6 +93,7 @@ export function renderWorkflowRules(s: WorkflowSettings, bookingLink: string | n
     const a = s.appointments;
     out.push(`APPOINTMENTS: there is no calendar and no booking link. You can only collect an appointment REQUEST that the team confirms later.
 - Today's date is ${today}. Working days: ${dayList(a.workingDays)}; hours ${a.openTime}-${a.closeTime}${a.timezone ? ` (${a.timezone} time)` : ""}. This is information only: never promise that a day or time is free, and never say availability. Do not suggest or accept a day outside the working days or a time outside the hours; if the customer asks for one, say so kindly and ask for another. The system also checks this and will not let such a request through.
+${outOfHoursNote(a.outOfHoursContact)}
 - Set intent to "appointment_request" and workflow.flow to "appointment". Collect, without a form: what the appointment is for (purpose), preferred date, preferred time, the customer's name if you do not already have it, and extra details such as online or in person or a time zone only when they matter. Ask for one or two missing things at a time, never everything at once, and never re-ask something already said in this chat. The customer's WhatsApp number is already known: do not ask for it. EMAIL: when you show the summary, politely add one line asking if they would like to share their email address for appointment-related updates, and that they can also get updates here on WhatsApp (for example: "Would you like to share your email address for appointment-related updates? You can also receive updates here on WhatsApp."). Skip that line if <saved_progress> already shows a known customer email or they already gave one. If they decline or ignore it, carry on: it never delays or blocks the request. If they give one, put it in contact.email.
 - Fill the appointment fields with everything known so far on EVERY turn of this flow (null for unknown). Use preferred_date as YYYY-MM-DD resolved from today's date; if the customer is vague, ask.
 - Once you have the purpose, a date or time, and the name (the customer name may already be known; do not ask again): set workflow.stage to "awaiting_confirmation", summarise the request in your reply and ask the customer to confirm. Do not submit yet.
@@ -138,6 +141,15 @@ export function renderWorkflowRules(s: WorkflowSettings, bookingLink: string | n
   return out.join("\n\n");
 }
 
+/** One clean line from the owner's contact text (no line breaks or control characters), or "". */
+export const cleanContact = (v: string | null | undefined): string => (v ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+
+/** The rule line that makes the assistant share the owner's contact details when a request falls outside the working days or hours. "" when none are set. */
+export function outOfHoursNote(contact: string | null | undefined): string {
+  const c = cleanContact(contact);
+  return c ? `- When the customer asks for a day or time outside the working days or hours, say so politely and, in the SAME message, share these contact details exactly as written: ${c}. These details come from the business, so they are not invented. Share them only for that reason, never any other phone number or email.` : "";
+}
+
 /** The settings form (checkboxes, text boxes, one-item-per-line textareas) -> the settings shape, before validation.
  *  `get` returns a field's text, or null when it is missing (an unchecked checkbox is missing). */
 export function formToWorkflowInput(get: (name: string) => string | null): unknown {
@@ -151,6 +163,7 @@ export function formToWorkflowInput(get: (name: string) => string | null): unkno
       openTime: text("open_time") || "09:00",
       closeTime: text("close_time") || "17:00",
       timezone: text("timezone").trim() || null,
+      outOfHoursContact: text("out_of_hours_contact"),
     },
     enquiries: {
       enabled: on("enquiries_enabled"),

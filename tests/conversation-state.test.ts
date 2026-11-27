@@ -11,6 +11,9 @@ test("state per viewer", () => {
 test("only the assignee may reply; the other agent has no button", () => {
   assert.deepEqual(conversationActions("ai"), { button: "take_over", canReply: false });
   assert.deepEqual(conversationActions("waiting"), { button: "take_over", canReply: false });
+  // paused because the owner replied from the WhatsApp Business app: the badge stays "Waiting for human", the button is Resume AI
+  assert.deepEqual(conversationActions("waiting", { status: "human_active", assigned_user_id: null, source: "owner" }), { button: "resume_ai", canReply: false });
+  assert.deepEqual(conversationActions("waiting", { status: "requested", assigned_user_id: null, source: "customer_request" }), { button: "take_over", canReply: false });
   assert.deepEqual(conversationActions("mine"), { button: "resume_ai", canReply: true });
   assert.deepEqual(conversationActions("other"), { button: null, canReply: false });
 });
