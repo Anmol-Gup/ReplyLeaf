@@ -26,6 +26,14 @@ export const workflowSettingsSchema = z.object({
     // The business's time zone: "today" and the opening hours are in this zone. null = not chosen yet.
     timezone: z.string().trim().max(60).refine(isTimeZone, "unknown time zone").nullable().default(null),
   }).prefault({}),
+  // The business's own hours, used ONLY for the closed-hours replies and the human handoff text (appointments have their own, above).
+  // A field never saved yet (undefined) follows the appointment value, so existing businesses keep working with no change.
+  business: z.object({
+    workingDays: z.array(z.enum(WEEKDAYS)).max(7).optional(),
+    openTime: hhmm.optional(),
+    closeTime: hhmm.optional(),
+    timezone: z.string().trim().max(60).refine(isTimeZone, "unknown time zone").nullable().optional(),
+  }).prefault({}),
   enquiries: z.object({
     enabled: z.boolean().default(true),
     services: list(20, 100).default([]),
@@ -139,9 +147,15 @@ ${outOfHoursNote()}
   return out.join("\n\n");
 }
 
-/** What the assistant may say about when the team is available: the business hours when a time zone is set (one set of hours everywhere), else the older text. */
+/** The business hours (closed-hours replies, human handoff). Fields never saved yet follow the appointment hours. */
+export function businessHours(s: WorkflowSettings) {
+  const a = s.appointments, b = s.business;
+  return { workingDays: b.workingDays ?? a.workingDays, openTime: b.openTime ?? a.openTime, closeTime: b.closeTime ?? a.closeTime, timezone: b.timezone !== undefined ? b.timezone : a.timezone };
+}
+
+/** What the assistant may say about when the team is available: the business hours when a time zone is set, else the older text. */
 const teamAvailability = (s: WorkflowSettings): string => {
-  const a = s.appointments;
+  const a = businessHours(s);
   if (a.timezone) return ` The team is available: ${dayList(a.workingDays.length ? a.workingDays : [...WEEKDAYS])}, ${a.openTime}-${a.closeTime} (${a.timezone} time). Use only these hours.`;
   return s.handoff.availability ? ` The team is available: ${s.handoff.availability}.` : "";
 };
@@ -160,7 +174,8 @@ const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h
  * been chosen (the local time is unknown, so nothing is claimed). No working days ticked means every day counts as a working day.
  */
 export function businessStatus(now: Date, s: WorkflowSettings): OpenStatus {
-  const zone = s.appointments.timezone;
+  const a = businessHours(s);
+  const zone = a.timezone;
   if (!zone) return null;
   let parts: Intl.DateTimeFormatPart[];
   try {
@@ -170,7 +185,6 @@ export function businessStatus(now: Date, s: WorkflowSettings): OpenStatus {
   const dayIx = WEEKDAYS.findIndex((d) => d === get("weekday").slice(0, 3).toLowerCase());
   if (dayIx < 0) return null;
   const minutes = (Number(get("hour")) % 24) * 60 + Number(get("minute"));
-  const a = s.appointments;
   const works = (i: number) => a.workingDays.length === 0 || a.workingDays.includes(WEEKDAYS[i]);
   const open = works(dayIx) && minutes >= toMin(a.openTime) && minutes < toMin(a.closeTime);
   let nextOpen: string | null = null;
@@ -204,6 +218,12 @@ export function formToWorkflowInput(get: (name: string) => string | null): unkno
       openTime: text("open_time") || "09:00",
       closeTime: text("close_time") || "17:00",
       timezone: text("timezone").trim() || null,
+    },
+    business: {
+      workingDays: WEEKDAYS.filter((d) => on(`b_day_${d}`)),
+      openTime: text("b_open_time") || "09:00",
+      closeTime: text("b_close_time") || "17:00",
+      timezone: text("b_timezone").trim() || null,
     },
     enquiries: {
       enabled: on("enquiries_enabled"),

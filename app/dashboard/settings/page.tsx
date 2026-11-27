@@ -13,7 +13,7 @@ import { assistantSetup, parseTab, SETTINGS_TABS } from "../../../lib/settings-t
 import { removeAiKey, saveAiKey, setPlatformProvider, updateNotifications, updateWorkflows } from "./actions";
 import { BILLING_STATUS_UNAVAILABLE, detectEligibility, ELIGIBILITY_LABELS, FREE_SERVICE_MESSAGES, monthBounds, summariseUsage, WHATSAPP_MANAGER_URL, type UsageRow } from "../../../lib/wa-usage";
 import ChangeAwareSubmit from "../../../components/ChangeAwareSubmit";
-import { parseWorkflowSettings, WEEKDAYS, WEEKDAY_LABELS } from "../../../lib/workflow-settings";
+import { businessHours, parseWorkflowSettings, WEEKDAYS, WEEKDAY_LABELS } from "../../../lib/workflow-settings";
 
 // Every IANA zone this server knows (Node 20+). A zone saved earlier that is missing here is still listed.
 // Some systems list "Asia/Calcutta" and not "Asia/Kolkata", so the common names are added explicitly.
@@ -30,6 +30,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
     .select("name, booking_link, ai_provider, ai_mode, ai_key_status, ai_key_last4, ai_key_checked_at, owner_email, monthly_message_cap, wa_phone_number_id, wa_free_allowance, wa_free_tier_seen_at, wa_paid_service_seen_at, onboarding_status, onboarding_step, status, workflow_settings").eq("id", clientId).single();
   const { data: n } = await db.from("notification_settings").select("primary_email, additional_emails, appointment_notifications, lead_notifications, handoff_notifications, ticket_notifications, delivery").eq("client_id", clientId).maybeSingle();
   const w = parseWorkflowSettings(c?.workflow_settings);
+  const bh = businessHours(w);
   const mode = (c?.ai_mode ?? "platform") as AiMode;
   const status = (c?.ai_key_status ?? "none") as KeyStatus;
   const provider = (c?.ai_provider ?? "gemini") as KeyProvider;
@@ -147,14 +148,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             </label>}
             description="With no booking link, the assistant collects the appointment details from the customer by itself (what it is for, preferred date and time, name), checks them against your working days and hours, and sends you a pending request to accept or reject on the Appointments page. With a booking link, it shares the link instead.">
 
-            <p className="hint">Appointments follow your working days, hours and time zone from the Business hours card below.</p>
-            <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
-              <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
-            </label>
-                    </WorkflowCard>
-          <section className="card stack">
-            <h2>Business hours</h2>
-            <p className="muted">Shared by the whole assistant: appointment requests, the human handoff text and the closed-hours replies all use these hours. While you are closed, the assistant still answers normal questions from your Knowledge base as usual. Only when a customer asks to speak to a person does it say you are not available right now, when you are next available, and share your contact details from the Knowledge base.</p>
+            <p className="hint">Customers can only request a day and time inside these working days, hours and time zone. They are separate from your Business hours below.</p>
             <fieldset className="field"><legend>Working days <span className="hint">Information for the assistant. It never promises that a time is free: there is no calendar connection.</span></legend>
               <div className="row">
                 {WEEKDAYS.map((d) => <label key={d} className="check"><input type="checkbox" name={`day_${d}`} defaultChecked={w.appointments.workingDays.includes(d)} /> {WEEKDAY_LABELS[d]}</label>)}
@@ -166,6 +160,25 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <div className="row">
               <label className="field">Opens <input type="time" name="open_time" defaultValue={w.appointments.openTime} /></label>
               <label className="field">Closes <input type="time" name="close_time" defaultValue={w.appointments.closeTime} /></label>
+            </div>
+            <label className="field">Additional instructions (optional) <span className="hint">Added on top of the standard behaviour, never instead of it. For example: ask whether they are a new patient.</span>
+              <textarea name="appointment_instructions" rows={3} maxLength={1000} defaultValue={w.appointments.instructions} />
+            </label>
+                    </WorkflowCard>
+          <section className="card stack">
+            <h2>Business hours</h2>
+            <p className="muted">Used only for closed-hours replies and the human handoff text. Appointments have their own hours in the Appointment requests card above. While you are closed, the assistant still answers normal questions from your Knowledge base as usual. Only when a customer asks to speak to a person does it say you are not available right now, when you are next available, and share your contact details from the Knowledge base.</p>
+            <fieldset className="field"><legend>Working days <span className="hint">Used for closed-hours replies and the human handoff text.</span></legend>
+              <div className="row">
+                {WEEKDAYS.map((d) => <label key={d} className="check"><input type="checkbox" name={`b_day_${d}`} defaultChecked={bh.workingDays.includes(d)} /> {WEEKDAY_LABELS[d]}</label>)}
+              </div>
+            </fieldset>
+            <label className="field">Time zone <span className="hint">The hours below are in this zone.</span>
+              <TimezoneSelect name="b_timezone" defaultValue={bh.timezone} zones={[...new Set([...(bh.timezone ? [bh.timezone] : []), ...TIME_ZONES])].sort()} />
+            </label>
+            <div className="row">
+              <label className="field">Opens <input type="time" name="b_open_time" defaultValue={bh.openTime} /></label>
+              <label className="field">Closes <input type="time" name="b_close_time" defaultValue={bh.closeTime} /></label>
             </div>
             <p className="hint">Keep your email, phone or WhatsApp number in your Knowledge base (core knowledge). While you are closed, the assistant shares those details exactly as written, and nothing it does not find there. Choose your time zone above so it knows when you are closed.</p>
           </section>
@@ -198,7 +211,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           <WorkflowCard name="handoff_enabled" title="Human handoff" switchLabel="Hand chats over to my team" defaultChecked={w.handoff.enabled}
             description="When a customer asks for a person, the assistant steps aside for that chat and you are emailed. Turn this off only if nobody can follow up.">
 
-            <p className="hint">When your team is available: the assistant uses your Business hours above.</p>
+            <p className="hint">When your team is available: the assistant uses the Business hours card above.</p>
             <label className="field">Expected response time <span className="hint">The assistant may tell customers this. Leave empty and it promises no time.</span>
               <input name="response_time" maxLength={100} defaultValue={w.handoff.responseTime} placeholder="within 1 business day" />
             </label>

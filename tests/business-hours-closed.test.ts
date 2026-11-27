@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { businessStatus, DEFAULT_WORKFLOW_SETTINGS, outOfHoursNote, renderClosedHours, renderWorkflowRules, workflowSettingsSchema } from "../lib/workflow-settings";
+import { businessHours, businessStatus, DEFAULT_WORKFLOW_SETTINGS, outOfHoursNote, renderClosedHours, renderWorkflowRules, workflowSettingsSchema } from "../lib/workflow-settings";
 import { appointmentWindowIssue } from "../lib/workflow";
 import { buildSystemPrompt, type PromptClient } from "../lib/ai/prompt";
 
@@ -12,9 +12,23 @@ const settings = (appointments: object = {}, handoff: object = {}) => workflowSe
 const NOW = new Date("2026-01-02T12:00:00Z"); // a Friday
 const KB = "Email: hello@biz.com\nWhatsApp: +91 98765 43210";
 
-test("there is no separate contact setting any more: the contact details are read from the knowledge base", () => {
-  assert.equal("business" in DEFAULT_WORKFLOW_SETTINGS, false);
-  assert.equal("business" in workflowSettingsSchema.parse({ business: { contact: "x" } }), false); // an old saved value is simply ignored
+test("there is no contact setting: only hours. Business hours follow the appointment hours until they are saved separately", () => {
+  assert.equal("contact" in (DEFAULT_WORKFLOW_SETTINGS.business as object), false);
+  assert.equal("contact" in (workflowSettingsSchema.parse({ business: { contact: "x" } }).business as object), false); // an old value is ignored
+  const old = workflowSettingsSchema.parse({ appointments: { timezone: "Asia/Kolkata", openTime: "10:00", closeTime: "18:00", workingDays: ["mon"] } });
+  assert.deepEqual(businessHours(old), { workingDays: ["mon"], openTime: "10:00", closeTime: "18:00", timezone: "Asia/Kolkata" });
+});
+
+test("business hours and appointment hours are independent: each only affects its own behaviour", () => {
+  const s = workflowSettingsSchema.parse({
+    appointments: { timezone: "Asia/Kolkata", openTime: "09:00", closeTime: "17:00", workingDays: ["mon", "tue", "wed", "thu", "fri"] },
+    business: { timezone: "Asia/Kolkata", openTime: "12:00", closeTime: "14:00", workingDays: ["mon"] },
+  });
+  assert.equal(businessStatus(new Date("2026-01-02T05:00:00Z"), s)?.open, false); // Fri 10:30 IST: appointments allow it, the business is closed
+  assert.equal(businessStatus(new Date("2026-01-05T07:00:00Z"), s)?.open, true);  // Mon 12:30 IST: business open
+  const issue = appointmentWindowIssue({ preferredDate: "2026-01-09", preferredTime: "10am" }, s.appointments, NOW);
+  assert.equal(issue, null); // Friday 10am is fine for appointments
+  assert.match(renderWorkflowRules(s, null, "2026-01-02"), /Monday, 12:00-14:00/); // the handoff line uses the business hours
 });
 
 test("businessStatus: open and closed in the business's own time zone (India is 5h30 ahead of UTC)", () => {
