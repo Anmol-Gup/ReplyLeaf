@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { runBatches } from "../../../../lib/batch";
+import { notifyClosedWhilePaused, runBatches } from "../../../../lib/batch";
 import { env } from "../../../../lib/env";
 import { recordEvents } from "../../../../lib/inbound";
 import { supabaseBatchDeps } from "../../../../lib/supabase-batch";
@@ -46,14 +46,17 @@ export async function POST(req: Request) {
 
   // 1) Store the messages BEFORE answering Meta. This is a quick DB-only step;
   //    if it fails we return 500 so Meta retries, and the unique wamid dedupes.
-  const { conversationIds, failed } = await recordEvents(events, supabaseInboundDeps());
+  const { conversationIds, pausedConversationIds = [], failed } = await recordEvents(events, supabaseInboundDeps());
 
   // 2) Answer 200 right away and do the slow work (wait for the batch window,
   //    call the model, send the reply) with after(). On Vercel after() is backed
   //    by waitUntil, so the function stays alive until it finishes (maxDuration).
   //    The same call also sweeps stranded batches, so every webhook (even a mere
   //    delivery status) helps recover work a crashed worker left behind.
-  after(() => runBatches(conversationIds, supabaseBatchDeps()));
+  after(async () => {
+    const deps = supabaseBatchDeps();
+    await Promise.all([runBatches(conversationIds, deps), ...pausedConversationIds.map((id) => notifyClosedWhilePaused(id, deps))]);
+  });
 
   return failed > 0 ? new Response("Temporary error", { status: 500 }) : new Response("ok", { status: 200 });
 }

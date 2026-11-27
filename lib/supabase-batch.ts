@@ -9,7 +9,7 @@ import { KEY_EMAIL_INTERVAL_MS, type AiMode, type KeyStatus } from "./ai-keys";
 import { billingEnforced, computeAccess, type SubscriptionRow } from "./billing/access";
 import { decryptSecret } from "./crypto";
 import { env } from "./env";
-import { parseWorkflowSettings } from "./workflow-settings";
+import { CLOSED_NOTICE_PREFIX, parseWorkflowSettings } from "./workflow-settings";
 import { notifyOwner, raiseAlert, reportWhatsAppProblem, sendClientText } from "./supabase-deps";
 import { supabaseAdmin } from "./supabase-admin";
 
@@ -121,6 +121,9 @@ export function supabaseBatchDeps(): BatchDeps {
         delayNoticeSent: oldest ? (recent.data ?? []).some((m) => m.direction !== "inbound" && m.body === FALLBACK_REPLY && Date.parse(m.created_at as string) >= oldest) : false,
       };
 
+      const lastOut = (recent.data ?? []).find((m) => m.direction !== "inbound" && m.status !== "blocked" && m.status !== "failed" && m.body);
+      const closedNoticeSent = typeof lastOut?.body === "string" && (lastOut.body as string).startsWith(CLOSED_NOTICE_PREFIX);
+
       const c = client.data!;
       // BYOK: this business's own key, decrypted only here, only for the length of this batch. It is never logged.
       let apiKey: string | null = null;
@@ -143,6 +146,7 @@ export function supabaseBatchDeps(): BatchDeps {
           ai: { mode: c.ai_mode as AiMode, apiKey, keyStatus: c.ai_key_status as KeyStatus },
           billing: computeAccess((subRow.data as SubscriptionRow) ?? null, { exempt: c.billing_exempt === true, enforced: billingEnforced(), now: new Date() }),
         },
+        closedNoticeSent,
         conversation: {
           id: conv.id, handling: conv.handling, failedAnswerCount: conv.failed_answer_count,
           lastCustomerMessageAt: conv.last_customer_message_at ? new Date(conv.last_customer_message_at) : null,

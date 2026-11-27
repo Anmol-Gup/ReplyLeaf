@@ -3,7 +3,7 @@ import {
   ACTION_FAILED_REPLY, ALREADY_SUBMITTED_REPLY, appointmentWindowIssue, decideAction, nextWorkflowState, REJECTED_SUBMIT_REPLY, validateAppointment,
   type AppointmentInput, type Decision, type LeadInput, type TicketInput, type WorkflowState,
 } from "./workflow";
-import { bookingMode, type WorkflowSettings } from "./workflow-settings";
+import { bookingMode, businessStatus, closedHandoffNotice, findContacts, type WorkflowSettings } from "./workflow-settings";
 import { ticketRef } from "./tickets";
 import { classifyWhatsAppError, isBlockingProblem, type SendProblem } from "./whatsapp/errors";
 import { WhatsAppApiError } from "./whatsapp/send";
@@ -65,6 +65,8 @@ export type BatchContext = {
   history: ChatTurn[]; // earlier turns, customer turns already wrapped
   repliesThisMonth: number;
   recentInboundCount: number; // customer messages in the last hour
+  /** True when the latest message we sent in this chat is already the "team not available" notice, so it is not repeated. */
+  closedNoticeSent?: boolean;
   /** Rescue state while the AI is unavailable: when the oldest waiting message arrived, and whether the "temporary delay" notice already went out for it. */
   retry?: { oldestPendingAt: Date | null; delayNoticeSent: boolean };
 };
@@ -145,6 +147,22 @@ export async function processConversationBatch(conversationId: string, deps: Bat
     const more = await deps.complete(conversationId, pendingIds);
     if (!more) return;
     await deps.sleep(BATCH_WAIT_MS); // new messages arrived while we were replying
+  }
+}
+
+/**
+ * A customer wrote while their chat is with a person (the assistant stays paused) and the business is closed: send ONE fixed notice
+ * (hours, next available time, the contact details written in the knowledge) instead of leaving them without any answer.
+ * Not repeated until someone else has written in the chat. No AI call. Never throws.
+ */
+export async function notifyClosedWhilePaused(conversationId: string, deps: BatchDeps, now = new Date()): Promise<void> {
+  try {
+    const ctx = await deps.load(conversationId);
+    if (!ctx || ctx.conversation.handling !== "human_active" || !ctx.client.billing.allowed || ctx.closedNoticeSent) return;
+    const notice = closedHandoffNotice(businessStatus(now, ctx.client.workflow), findContacts(ctx.client.kbText, ctx.client.businessInfo));
+    if (notice) await sendGuarded(ctx, deps, now, notice);
+  } catch (e) {
+    console.error("closed notice failed", errorText(e));
   }
 }
 

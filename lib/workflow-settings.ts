@@ -191,6 +191,28 @@ export function renderClosedHours(status: OpenStatus): string {
   return `The business is CLOSED right now: it is ${status.now}, and the business hours are ${status.hours}${next}. Keep answering questions from the business knowledge exactly as usual. But when the customer asks to speak to a person, asks for an appointment or a time, or you cannot answer from the knowledge: say kindly that the team is not available right now${status.nextOpen ? ` and that they are next available ${status.nextOpen}` : ""}, and in the SAME message share the business's contact details (email, phone, WhatsApp) from the business knowledge exactly as written. If the knowledge has none, say the team will reply when it is next available. Never invent or change a phone number or email. Use these business hours, not any other hours. Do not mention being closed when it has nothing to do with what the customer asked.`;
 }
 
+/** Start of the notice sent to a customer who writes while their chat is waiting for a person and the business is closed. Used to send it only once. */
+export const CLOSED_NOTICE_PREFIX = "Thanks for your message! Our team is not available right now";
+
+/** Email addresses and phone numbers written in the business knowledge, exactly as written (never invented). */
+export function findContacts(...texts: (string | null | undefined)[]): { emails: string[]; phones: string[] } {
+  const all = texts.filter(Boolean).join("\n");
+  const uniq = (a: string[]) => [...new Set(a.map((x) => x.trim()))].slice(0, 3);
+  return {
+    emails: uniq(all.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? []),
+    phones: uniq(all.match(/\+?\d[\d\s-]{7,}\d/g) ?? []),
+  };
+}
+
+/** The fixed notice for a chat that is waiting for a person while the business is closed. "" when open or the time zone is not set. */
+export function closedHandoffNotice(status: OpenStatus, contacts: { emails: string[]; phones: string[] }): string {
+  if (!status || status.open) return "";
+  const when = status.nextOpen ? ` Your message is saved and they will reply when they are next available, ${status.nextOpen}.` : " Your message is saved and they will reply when they are next available.";
+  const bits = [...contacts.emails.map((e) => `email ${e}`), ...contacts.phones.map((p) => `phone/WhatsApp ${p}`)];
+  const reach = bits.length ? ` You can also reach us: ${bits.join(", ")}.` : "";
+  return `${CLOSED_NOTICE_PREFIX} (our hours: ${status.hours}).${when}${reach}`;
+}
+
 /** The settings form (checkboxes, text boxes, one-item-per-line textareas) -> the settings shape, before validation.
  *  `get` returns a field's text, or null when it is missing (an unchecked checkbox is missing). */
 export function formToWorkflowInput(get: (name: string) => string | null): unknown {

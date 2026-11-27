@@ -40,6 +40,8 @@ export interface InboundDeps {
 export type RecordOutcome = {
   /** Bot-handled conversations to schedule a batch for (deduped). */
   conversationIds: string[];
+  /** Conversations with a person where a new customer message arrived (the assistant stays silent; the closed-hours notice may apply). */
+  pausedConversationIds?: string[];
   /** Messages we failed to store. The route answers 500 so Meta retries them. */
   failed: number;
 };
@@ -76,6 +78,7 @@ export async function recordEvents(
   }
 
   const conversationIds = new Set<string>();
+  const paused = new Set<string>();
   let failed = 0;
 
   // Onboarding confirmations. A failure counts as failed so Meta retries the webhook.
@@ -115,6 +118,7 @@ export async function recordEvents(
       // but died before replying, the claim step picks the batch back up, and if
       // it was already handled the claim simply fails.
       if (rec.handling === "bot") conversationIds.add(rec.conversationId);
+      else if (!rec.duplicate) paused.add(rec.conversationId);
     } catch (e) {
       failed++;
       console.error("recording inbound message failed", errorText(e));
@@ -125,7 +129,7 @@ export async function recordEvents(
       }
     }
   }
-  return { conversationIds: [...conversationIds], failed };
+  return { conversationIds: [...conversationIds], pausedConversationIds: [...paused], failed };
 }
 
 export function errorText(e: unknown): string {
