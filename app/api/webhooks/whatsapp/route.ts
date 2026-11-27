@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
   // 1) Store the messages BEFORE answering Meta. This is a quick DB-only step;
   //    if it fails we return 500 so Meta retries, and the unique wamid dedupes.
-  const { conversationIds, pausedConversationIds = [], failed } = await recordEvents(events, supabaseInboundDeps());
+  const { conversationIds, pausedMessages = [], failed } = await recordEvents(events, supabaseInboundDeps());
 
   // 2) Answer 200 right away and do the slow work (wait for the batch window,
   //    call the model, send the reply) with after(). On Vercel after() is backed
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   //    delivery status) helps recover work a crashed worker left behind.
   after(async () => {
     const deps = supabaseBatchDeps();
-    await Promise.all([runBatches(conversationIds, deps), ...pausedConversationIds.map((id) => notifyClosedWhilePaused(id, deps))]);
+    await Promise.all([runBatches(conversationIds, deps), ...pausedMessages.map((m) => notifyClosedWhilePaused(m.conversationId, m.text, deps))]);
   });
 
   return failed > 0 ? new Response("Temporary error", { status: 500 }) : new Response("ok", { status: 200 });

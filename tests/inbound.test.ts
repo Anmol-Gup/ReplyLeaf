@@ -62,14 +62,14 @@ test("human takeover: message is stored but no batch is scheduled", async () => 
   const out = await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
   assert.deepEqual(f.stored, ["wamid.1"]);
   assert.deepEqual(out.conversationIds, []);
-  assert.deepEqual(out.pausedConversationIds, ["conv1"]); // the closed-hours notice may apply; the assistant itself stays silent
+  assert.deepEqual(out.pausedMessages?.map((m) => m.conversationId), ["conv1"]); // the closed-hours notice may apply; the assistant itself stays silent
 });
 
 test("a Meta retry of a message in a chat with a person does not trigger the notice twice", async () => {
   const f = fakeDeps({ handling: "human_active" });
   await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
   const again = await recordEvents({ statuses: [], messages: [msg()] }, f.deps);
-  assert.deepEqual(again.pausedConversationIds, []);
+  assert.deepEqual(again.pausedMessages, []);
 });
 
 test("storage failure: alerts and reports failed so the route can return 500 (Meta retries)", async () => {

@@ -3,7 +3,7 @@ import {
   ACTION_FAILED_REPLY, ALREADY_SUBMITTED_REPLY, appointmentWindowIssue, decideAction, nextWorkflowState, REJECTED_SUBMIT_REPLY, validateAppointment,
   type AppointmentInput, type Decision, type LeadInput, type TicketInput, type WorkflowState,
 } from "./workflow";
-import { bookingMode, businessStatus, closedHandoffNotice, findContacts, type WorkflowSettings } from "./workflow-settings";
+import { bookingMode, businessStatus, type WorkflowSettings } from "./workflow-settings";
 import { ticketRef } from "./tickets";
 import { classifyWhatsAppError, isBlockingProblem, type SendProblem } from "./whatsapp/errors";
 import { WhatsAppApiError } from "./whatsapp/send";
@@ -65,8 +65,6 @@ export type BatchContext = {
   history: ChatTurn[]; // earlier turns, customer turns already wrapped
   repliesThisMonth: number;
   recentInboundCount: number; // customer messages in the last hour
-  /** True when the latest message we sent in this chat is already the "team not available" notice, so it is not repeated. */
-  closedNoticeSent?: boolean;
   /** Rescue state while the AI is unavailable: when the oldest waiting message arrived, and whether the "temporary delay" notice already went out for it. */
   retry?: { oldestPendingAt: Date | null; delayNoticeSent: boolean };
 };
@@ -151,18 +149,20 @@ export async function processConversationBatch(conversationId: string, deps: Bat
 }
 
 /**
- * A customer wrote while their chat is with a person (the assistant stays paused) and the business is closed: send ONE fixed notice
- * (hours, next available time, the contact details written in the knowledge) instead of leaving them without any answer.
- * Not repeated until someone else has written in the chat. No AI call. Never throws.
+ * A customer wrote while their chat is with a person: the assistant stays silent, EXCEPT when the business is closed and the customer asks
+ * for a person again. Then the reply is the assistant's own (it knows the closed hours and shares the contact details from the knowledge).
+ * Normal questions get no reply here, and nothing about the handoff changes. Never throws.
  */
-export async function notifyClosedWhilePaused(conversationId: string, deps: BatchDeps, now = new Date()): Promise<void> {
+export async function notifyClosedWhilePaused(conversationId: string, text: string, deps: BatchDeps, now = new Date()): Promise<void> {
   try {
     const ctx = await deps.load(conversationId);
-    if (!ctx || ctx.conversation.handling !== "human_active" || !ctx.client.billing.allowed || ctx.closedNoticeSent) return;
-    const notice = closedHandoffNotice(businessStatus(now, ctx.client.workflow), findContacts(ctx.client.kbText, ctx.client.businessInfo));
-    if (notice) await sendGuarded(ctx, deps, now, notice);
+    if (!ctx || ctx.conversation.handling !== "human_active" || !ctx.client.billing.allowed) return;
+    if (businessStatus(now, ctx.client.workflow)?.open !== false) return; // open (or hours unknown): a person will answer
+    const gen = await deps.generate(ctx, [text], false);
+    if (gen.result.intent !== "human_needed" || !gen.result.reply.trim()) return;
+    await sendGuarded(ctx, deps, now, gen.result.reply, { usage: gen.usage, provider: gen.provider, model: gen.model });
   } catch (e) {
-    console.error("closed notice failed", errorText(e));
+    console.error("closed reply while paused failed", errorText(e));
   }
 }
 

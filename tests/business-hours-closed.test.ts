@@ -48,7 +48,8 @@ test("while closed the assistant is told so, with the reopening time, and to sha
   assert.match(closed, /CLOSED right now/); assert.match(closed, /Saturday 11:30/); assert.match(closed, /next available Monday at 09:00/);
   assert.match(closed, /contact details \(email, phone, WhatsApp\) from the business knowledge exactly as written/);
   assert.match(closed, /If the knowledge has none, say the team will reply/); assert.match(closed, /Never invent or change a phone number or email/);
-  assert.match(closed, /answering questions from the business knowledge exactly as usual|Keep answering questions from the business knowledge exactly as usual/);
+  assert.match(closed, /Answer every normal question .* from the business knowledge exactly as usual, and do NOT share contact details/);
+  assert.match(closed, /ONLY when the customer asks to speak to, talk to, call or be connected with a person/); // contacts only for a request for a person
   assert.equal(renderClosedHours(businessStatus(new Date("2026-01-02T05:00:00Z"), s)), ""); // open
   assert.equal(renderClosedHours(null), "");                                                  // no time zone
 });
@@ -69,8 +70,9 @@ test("one set of hours: the human-handoff text quotes the business hours, not th
   assert.match(noTz, /The team is available: Mon - Sat, 9 AM - 6 PM\./);
 });
 
-test("an appointment day or time you do not work: the rule shares the knowledge-base contact details, and the built-in message is unchanged", () => {
-  assert.match(outOfHoursNote(), /contact details \(email, phone, WhatsApp\) from the business knowledge exactly as written/);
+test("an appointment day or time you do not work: no contact details are shared, and the built-in message is unchanged", () => {
+  assert.doesNotMatch(outOfHoursNote(), /email|phone|WhatsApp/i);
+  assert.match(outOfHoursNote(), /Do not share contact details/);
   assert.match(renderWorkflowRules(settings(), null, "2026-01-02"), /outside the working days or hours, say so politely/);
   const a = settings().appointments;
   const sat = appointmentWindowIssue({ preferredDate: "2026-01-10", preferredTime: "10am" }, a, NOW) ?? "";
@@ -78,59 +80,54 @@ test("an appointment day or time you do not work: the rule shares the knowledge-
   assert.equal(appointmentWindowIssue({ preferredDate: "2026-01-09", preferredTime: "10am" }, a, NOW), null);
 });
 
-// ---- the notice a customer gets when they write to a chat that is waiting for a person while the business is closed
-import { CLOSED_NOTICE_PREFIX, closedHandoffNotice, findContacts } from "../lib/workflow-settings";
+// ---- a chat waiting for a person: silent, except when the business is closed and the customer asks for a person again
 import { notifyClosedWhilePaused, type BatchContext, type BatchDeps } from "../lib/batch";
 
-test("findContacts reads emails and phone numbers from the knowledge exactly as written", () => {
-  const c = findContacts(KB, null);
-  assert.deepEqual(c.emails, ["hello@biz.com"]);
-  assert.deepEqual(c.phones, ["+91 98765 43210"]);
-  assert.deepEqual(findContacts("nothing here", null), { emails: [], phones: [] });
-});
-
-test("closedHandoffNotice: only while closed, with the next time and the contacts", () => {
-  const closed = businessStatus(new Date("2026-01-02T18:00:00Z"), settings());
-  const n = closedHandoffNotice(closed, findContacts(KB));
-  assert.ok(n.startsWith(CLOSED_NOTICE_PREFIX));
-  assert.match(n, /Monday at 09:00/);
-  assert.match(n, /hello@biz\.com/);
-  assert.match(n, /\+91 98765 43210/);
-  assert.equal(closedHandoffNotice(businessStatus(new Date("2026-01-02T05:00:00Z"), settings()), findContacts(KB)), "");
-  assert.equal(closedHandoffNotice(null, findContacts(KB)), "");
-});
-
-function paused(over: Partial<BatchContext> = {}, at = "2026-01-02T18:00:00Z") {
-  const sent: string[] = [];
+function paused(over: Partial<BatchContext> = {}, at = "2026-01-02T18:00:00Z", intent = "human_needed", reply = "Team is away, next Monday 09:00. Email hello@biz.com") {
+  const sent: string[] = []; const generated: string[][] = [];
   const ctx = {
     client: { id: "c1", name: "Biz", waPhoneNumberId: "PN", aiProvider: "gemini", monthlyMessageCap: 100, businessInfo: null, businessHours: null, bookingLink: null, kbText: KB,
       workflow: settings(), ai: { mode: "platform", apiKey: null, keyStatus: "none" }, billing: { allowed: true, reason: "active", banner: "none", graceEndsAt: null, paidThrough: null } },
     conversation: { id: "v1", handling: "human_active", failedAnswerCount: 0, lastCustomerMessageAt: new Date(at), workflowState: null },
     open: { appointments: [], tickets: 0, leads: 0 }, contact: { id: "k", name: "A" }, phone: "91", pending: [], history: [], repliesThisMonth: 0, recentInboundCount: 1, ...over,
   } as unknown as BatchContext;
-  const deps = { load: async () => ctx, sendText: async (_c: unknown, b: string) => { sent.push(b); return { waMessageId: "w" }; }, saveReply: async () => {} } as unknown as BatchDeps;
-  return { ctx, deps, sent, at: new Date(at) };
+  const deps = {
+    load: async () => ctx,
+    generate: async (_c: unknown, lines: string[]) => { generated.push(lines); return { result: { intent, reply }, usage: { inputTokens: 1, outputTokens: 1 }, provider: "gemini", model: "m" }; },
+    sendText: async (_c: unknown, b: string) => { sent.push(b); return { waMessageId: "w" }; }, saveReply: async () => {},
+  } as unknown as BatchDeps;
+  return { ctx, deps, sent, generated, at: new Date(at) };
 }
 
-test("a customer writing to a waiting chat while closed gets the notice once", async () => {
+test("waiting chat, closed, customer asks for a person again: the assistant's closed reply goes out", async () => {
   const t = paused();
-  await notifyClosedWhilePaused("v1", t.deps, t.at);
-  assert.equal(t.sent.length, 1);
-  assert.match(t.sent[0], /hello@biz\.com/);
-  const again = paused({ closedNoticeSent: true });
-  await notifyClosedWhilePaused("v1", again.deps, again.at);
-  assert.equal(again.sent.length, 0);
+  await notifyClosedWhilePaused("v1", "Person se baat karni h", t.deps, t.at);
+  assert.deepEqual(t.generated, [["Person se baat karni h"]]);
+  assert.deepEqual(t.sent, ["Team is away, next Monday 09:00. Email hello@biz.com"]);
 });
 
-test("no notice while open, when the assistant is handling the chat, or when the subscription is inactive", async () => {
+test("waiting chat, closed, a normal question: the assistant stays silent", async () => {
+  const t = paused({}, "2026-01-02T18:00:00Z", "faq");
+  await notifyClosedWhilePaused("v1", "What services do you offer?", t.deps, t.at);
+  assert.equal(t.sent.length, 0);
+});
+
+test("waiting chat while open, with the assistant handling it, or with an inactive subscription: no reply and no AI call", async () => {
   const open = paused({}, "2026-01-02T05:00:00Z");
-  await notifyClosedWhilePaused("v1", open.deps, open.at);
-  assert.equal(open.sent.length, 0);
+  await notifyClosedWhilePaused("v1", "person please", open.deps, open.at);
+  assert.equal(open.sent.length + open.generated.length, 0);
   const bot = paused({ conversation: { id: "v1", handling: "bot", failedAnswerCount: 0, lastCustomerMessageAt: new Date("2026-01-02T18:00:00Z"), workflowState: null } });
-  await notifyClosedWhilePaused("v1", bot.deps, bot.at);
-  assert.equal(bot.sent.length, 0);
+  await notifyClosedWhilePaused("v1", "person please", bot.deps, bot.at);
+  assert.equal(bot.sent.length + bot.generated.length, 0);
   const t = paused();
   t.ctx.client.billing = { allowed: false, reason: "none", banner: "none", graceEndsAt: null, paidThrough: null } as never;
-  await notifyClosedWhilePaused("v1", t.deps, t.at);
+  await notifyClosedWhilePaused("v1", "person please", t.deps, t.at);
+  assert.equal(t.sent.length + t.generated.length, 0);
+});
+
+test("an AI failure while the chat waits for a person never throws and sends nothing", async () => {
+  const t = paused();
+  (t.deps as { generate: unknown }).generate = async () => { throw new Error("503"); };
+  await notifyClosedWhilePaused("v1", "person please", t.deps, t.at);
   assert.equal(t.sent.length, 0);
 });
