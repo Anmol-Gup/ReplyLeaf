@@ -31,11 +31,11 @@ export default async function ConversationPage({
   ]);
   const chat = [...(messages ?? [])].reverse();
   const [{ data: open }, team] = await Promise.all([
-    db.from("handoff_requests").select("id, status, assigned_user_id, source").eq("conversation_id", id).neq("status", "resolved").maybeSingle(),
+    db.from("handoff_requests").select("id, status, assigned_user_id").eq("conversation_id", id).neq("status", "resolved").maybeSingle(),
     listTeam(clientId),
   ]);
   const state = conversationStateOf(conv.handling, open as OpenHandoff, user.id);
-  const act = conversationActions(state, open as OpenHandoff);
+  const act = conversationActions(state);
   const w = windowStatus(conv.last_customer_message_at);
   const canReply = act.canReply && w.open;
   const ho = open as (OpenHandoff & { id: string }) | null;
