@@ -1,4 +1,5 @@
 import type { AiConfig } from "./config";
+import { retryConfig, withJitter, type RetryConfig } from "./retry-config";
 import { ADAPTERS, AiProviderError, type Adapter, type ChatTurn, type Provider } from "./providers";
 import { REPLY_JSON_SCHEMA, ReplySchema, type ReplyResult } from "./schema";
 
@@ -16,6 +17,9 @@ export type GenerateReplyInput = {
   userTurn: string; // current customer messages, from wrapCustomerMessages()
   adapters?: Record<Provider, Adapter>; // test seam
   sleep?: (ms: number) => Promise<void>; // test seam
+  retry?: Partial<RetryConfig>; // test seam; the defaults come from retryConfig() (environment variables)
+  random?: () => number; // test seam (jitter)
+  now?: () => number; // test seam (the retry time budget)
 };
 
 export type GenerateReplyOutput = {
@@ -32,12 +36,15 @@ export class InvalidModelOutputError extends Error {
   }
 }
 
-const MAX_ATTEMPTS = 2;
-const TRANSIENT_RETRY_DELAY_MS = 1500;
+const MAX_ATTEMPTS = 2; // for output that fails validation (models occasionally slip)
 
-/** The provider is briefly overloaded or unreachable (not a bad key, not a bad request): worth one more try. */
+/** The provider is briefly overloaded or unreachable (not a bad key, not a bad request): worth waiting and trying again. */
 export const isTransientProviderError = (e: unknown): boolean =>
   /\b(500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|ECONNRESET|ETIMEDOUT|fetch failed/i.test(e instanceof Error ? e.message : String(e));
+
+/** Transient errors plus rate limits and quota ("429 RESOURCE_EXHAUSTED"): trying again later can work. A refused key never matches. */
+export const isRetryableProviderError = (e: unknown): boolean =>
+  isTransientProviderError(e) || /\b429\b|RESOURCE_EXHAUSTED|rate.?limit|quota/i.test(e instanceof Error ? e.message : String(e));
 
 export async function generateReply(input: GenerateReplyInput): Promise<GenerateReplyOutput> {
   const { provider, config } = input;
@@ -50,7 +57,14 @@ export async function generateReply(input: GenerateReplyInput): Promise<Generate
   const usage: Usage = { inputTokens: 0, outputTokens: 0 };
   let problem = "no output";
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  const cfg: RetryConfig = { ...retryConfig(), ...input.retry };
+  const clock = input.now ?? Date.now;
+  const sleep = input.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms)));
+  const startedAt = clock();
+  let retries = 0; // provider-outage retries used
+  let invalid = 0; // outputs that failed validation
+
+  while (invalid < MAX_ATTEMPTS) {
     let raw;
     try {
       raw = await adapter({
@@ -61,12 +75,16 @@ export async function generateReply(input: GenerateReplyInput): Promise<Generate
         timeoutMs: 25_000,
       });
     } catch (e) {
-      // A brief provider outage ("high demand") gets the same one retry that invalid output gets. Anything else
-      // (a refused key, a bad request) is thrown straight away so the caller can react to it.
-      if (attempt < MAX_ATTEMPTS && isTransientProviderError(e)) {
-        problem = "provider temporarily unavailable";
-        await (input.sleep ?? ((ms) => new Promise((res) => setTimeout(res, ms))))(TRANSIENT_RETRY_DELAY_MS);
-        continue;
+      // A brief provider outage ("high demand") is waited out: a few more tries with growing pauses (and some randomness), as long as
+      // the time budget allows. Anything else (a refused key, a bad request) is thrown straight away so the caller can react to it.
+      if (isRetryableProviderError(e) && retries < cfg.delaysMs.length) {
+        const delay = withJitter(cfg.delaysMs[retries], input.random);
+        if (clock() - startedAt + delay < cfg.budgetMs) {
+          retries++;
+          problem = "provider temporarily unavailable";
+          await sleep(delay);
+          continue;
+        }
       }
       throw e;
     }
@@ -76,6 +94,7 @@ export async function generateReply(input: GenerateReplyInput): Promise<Generate
     const parsed = parseModelOutput(raw.text);
     if (parsed.ok) return { result: parsed.value, usage, provider, model };
     problem = parsed.problem; // try once more; models occasionally slip
+    invalid++;
   }
   throw new InvalidModelOutputError(`Model output failed validation: ${problem}`, usage, provider, model);
 }

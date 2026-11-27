@@ -39,7 +39,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
   newLead?: boolean; crmFails?: boolean; handoffCreated?: boolean; handoffFails?: boolean; apptCreated?: boolean; apptFails?: boolean; leadCreated?: boolean; ticketCreated?: boolean; genThrows?: unknown;
 } = {}) {
   const log = { sent: [] as string[], saved: [] as SaveReply[], alerts: [] as string[], conv: [] as object[],
-    generated: [] as string[][], completed: [] as string[][], failedUsage: 0, sleeps: 0,
+    generated: [] as string[][], completed: [] as string[][], deferred: [] as number[], failedUsage: 0, sleeps: 0,
     crm: [] as object[], owner: [] as OwnerEvent[], unanswered: [] as string[], handoffs: [] as { source: string; reason: string; summary: string }[], appts: [] as object[], leads: [] as object[], tickets: [] as object[], keyReports: [] as { problem: string; markInvalid?: boolean }[], sendProblems: [] as string[], notifyEmails: [] as string[] };
   const claims = [...(opts.claimResults ?? [true])];
   const more = [...(opts.moreAfter ?? [false])];
@@ -47,6 +47,7 @@ function fakeDeps(ctx: BatchContext | null, opts: {
     claim: async () => claims.length ? claims.shift()! : false,
     load: async () => ctx,
     complete: async (_c, ids) => { log.completed.push(ids); return more.length ? more.shift()! : false; },
+    deferBatch: async (_c, seconds) => { log.deferred.push(seconds); return true; },
     generate: async (_ctx, lines) => {
       log.generated.push(lines);
       if (opts.genThrows) throw opts.genThrows;

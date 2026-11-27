@@ -15,7 +15,8 @@ import type { OwnerEvent } from "./email/templates";
 import type { PromptClient } from "./ai/prompt";
 import type { ChatTurn, Provider } from "./ai/providers";
 import type { GenerateReplyOutput, Usage } from "./ai/generate-reply";
-import { InvalidModelOutputError } from "./ai/generate-reply";
+import { InvalidModelOutputError, isRetryableProviderError } from "./ai/generate-reply";
+import { redactSecrets, retryConfig } from "./ai/retry-config";
 import type { ReplyResult } from "./ai/schema";
 import { isWithinWindow } from "./whatsapp/window";
 
@@ -29,7 +30,8 @@ export const CUSTOMER_MESSAGES_PER_HOUR = 30; // per-customer rate limit
 export const HANDOFF_AFTER_FAILED_ANSWERS = 2;
 
 export const NON_TEXT_REPLY = "Sorry, I can only read text messages right now. Could you please type your message?";
-export const FALLBACK_REPLY = "Sorry, something went wrong on our side. Please try again in a moment.";
+// Shown when the AI is briefly unavailable. It is sent at most once per waiting message, and the reply follows when the AI is back.
+export const FALLBACK_REPLY = "Thanks for your message! We're experiencing a temporary delay. Please give us a moment while we process your request. \u{1F60A}";
 export const CAP_REPLY = "Thanks for your message! Our team will get back to you personally as soon as they can.";
 
 export type BatchClient = PromptClient & {
@@ -63,6 +65,8 @@ export type BatchContext = {
   history: ChatTurn[]; // earlier turns, customer turns already wrapped
   repliesThisMonth: number;
   recentInboundCount: number; // customer messages in the last hour
+  /** Rescue state while the AI is unavailable: when the oldest waiting message arrived, and whether the "temporary delay" notice already went out for it. */
+  retry?: { oldestPendingAt: Date | null; delayNoticeSent: boolean };
 };
 
 export type SaveReply = {
@@ -80,6 +84,8 @@ export type SaveReply = {
 export interface BatchDeps {
   claim(conversationId: string): Promise<boolean>;
   load(conversationId: string): Promise<BatchContext | null>;
+  /** Keeps the pending rows, releases the lease and makes the batch due again after `delaySeconds` (the AI was unavailable). False if it could not. */
+  deferBatch(conversationId: string, delaySeconds: number): Promise<boolean>;
   /** Removes handled pending rows and releases the lease. True if more messages arrived meanwhile. */
   complete(conversationId: string, pendingIds: string[]): Promise<boolean>;
   generate(ctx: BatchContext, customerLines: string[], hasUnreadableMedia: boolean): Promise<GenerateReplyOutput>;
@@ -124,9 +130,14 @@ export async function processConversationBatch(conversationId: string, deps: Bat
       if (ctx) {
         pendingIds = ctx.pending.map((p) => p.id);
         await handleBatch(ctx, deps, now());
+        // A message that had been waiting through an AI outage has now been handled: leave a trace for monitoring (no secrets, no text).
+        if (ctx.retry?.delayNoticeSent && ctx.conversation.handling === "bot") {
+          console.info("ai recovered after a delay", { clientId: ctx.client.id, conversationId: ctx.conversation.id, waitedSeconds: ctx.retry.oldestPendingAt ? Math.round((now().getTime() - ctx.retry.oldestPendingAt.getTime()) / 1000) : null });
+        }
       }
     } catch (e) {
-      await handleFailure(e, ctx, deps, now());
+      // The AI was briefly unavailable: the customer's message stays queued and is tried again shortly, so nothing is released here.
+      if (await handleFailure(e, ctx, deps, now())) return;
     }
 
     // Release even after a failure: the customer already got the fallback, and
@@ -403,8 +414,9 @@ async function aiUnavailable(ctx: BatchContext, deps: BatchDeps, now: Date, prob
   }));
 }
 
-async function handleFailure(e: unknown, ctx: BatchContext | null, deps: BatchDeps, now: Date): Promise<void> {
-  const detail = errorText(e);
+/** Returns true when the batch was put back for a later retry (the caller must not release it). */
+async function handleFailure(e: unknown, ctx: BatchContext | null, deps: BatchDeps, now: Date): Promise<boolean> {
+  const detail = redactSecrets(errorText(e)); // never a key in a log, alert or email
   console.error("batch processing failed", detail);
   // WhatsApp refused to send for a reason that retrying cannot fix (payment, account, permission, policy). Record exactly what
   // Meta said, tell the owner (once a day), keep the customer's message and chat as they are, and do NOT send a fallback:
@@ -418,7 +430,7 @@ async function handleFailure(e: unknown, ctx: BatchContext | null, deps: BatchDe
       } catch (alertErr) {
         console.error("could not record a WhatsApp send problem", errorText(alertErr));
       }
-      return;
+      return false;
     }
   }
   // Their own key was refused by the provider: that is not a platform fault. Mark it, tell the owner, hand the chat over.
@@ -429,8 +441,34 @@ async function handleFailure(e: unknown, ctx: BatchContext | null, deps: BatchDe
     } catch (err) {
       console.error("could not handle a refused AI credential", errorText(err));
     }
-    return;
+    return false;
   }
+
+  // The AI itself failed. A brief outage (overloaded, rate limited) is waited out: say "temporary delay" ONCE, keep the customer's
+  // message queued and try again about a minute later, for up to the rescue window. The reply goes out when the AI is back.
+  const outage = !(e instanceof WhatsAppApiError) && isRetryableProviderError(e); // a WhatsApp send error that mentions "500" is not an AI outage
+  const aiProblem = outage || e instanceof InvalidModelOutputError;
+  const alreadyTold = ctx?.retry?.delayNoticeSent === true;
+  if (ctx && outage && ctx.conversation.handling === "bot") {
+    const cfg = retryConfig();
+    const waitedMs = ctx.retry?.oldestPendingAt ? now.getTime() - ctx.retry.oldestPendingAt.getTime() : 0;
+    if (isWithinWindow(ctx.conversation.lastCustomerMessageAt, now) && waitedMs < cfg.rescueWindowMs) {
+      if (!alreadyTold) {
+        try { await sendGuarded(ctx, deps, now, FALLBACK_REPLY); } catch (sendErr) { console.error("delay notice failed", errorText(sendErr)); }
+      }
+      try {
+        if (await deps.deferBatch(ctx.conversation.id, cfg.rescueDelaySeconds)) {
+          console.warn("ai provider unavailable, will retry", { clientId: ctx.client.id, conversationId: ctx.conversation.id, waitedSeconds: Math.round(waitedMs / 1000), error: detail.slice(0, 200) });
+          return true;
+        }
+      } catch (deferErr) {
+        console.error("could not put the batch back", errorText(deferErr));
+      }
+    }
+  }
+
+  // Out of options (the rescue window passed, the 24-hour window closed, or the failure is not a provider outage): alert, say the
+  // delay line once, and for an AI failure hand the chat to a person so the customer is not left waiting.
   try {
     if (e instanceof InvalidModelOutputError && ctx) {
       await deps.recordFailedUsage(ctx.client.id, e.usage, e.provider, e.model);
@@ -439,11 +477,20 @@ async function handleFailure(e: unknown, ctx: BatchContext | null, deps: BatchDe
   } catch (alertErr) {
     console.error("could not record failure", errorText(alertErr));
   }
-  if (ctx && ctx.conversation.handling === "bot" && isWithinWindow(ctx.conversation.lastCustomerMessageAt, now)) {
+  if (ctx && ctx.conversation.handling === "bot" && isWithinWindow(ctx.conversation.lastCustomerMessageAt, now) && !alreadyTold) {
     try {
       await sendGuarded(ctx, deps, now, FALLBACK_REPLY);
     } catch (fallbackErr) {
       console.error("fallback send failed", errorText(fallbackErr));
     }
   }
+  if (ctx && aiProblem && ctx.conversation.handling === "bot") {
+    const lastMessage = ctx.pending.filter((p) => p.type === "text" && p.body).map((p) => p.body as string).join(" / ");
+    await safely(deps, ctx.client.id, "conversation", () => deps.updateConversation(ctx.client.id, ctx.conversation.id, { handling: "human_active" }));
+    await safely(deps, ctx.client.id, "handoff", async () => {
+      const { created } = await deps.createHandoff(ctx.client.id, ctx.conversation.id, { source: "failed_answers", reason: SOURCE_LABELS.failed_answers, summary: summaryOrFallback(null, lastMessage) });
+      if (created) await deps.notifyOwner(ctx.client.id, { type: "needs_human", conversationId: ctx.conversation.id, contactName: ctx.contact.name, phone: ctx.phone, lastMessage, reason: "failed_answers", summary: summaryOrFallback(null, lastMessage) });
+    });
+  }
+  return false;
 }

@@ -3,7 +3,7 @@ import { generateReply } from "./ai/generate-reply";
 import { buildSystemPrompt, renderProgress, wrapCustomerMessages } from "./ai/prompt";
 import { retrieveKnowledge } from "./kb/retrieve";
 import type { ChatTurn, Provider } from "./ai/providers";
-import type { BatchContext, BatchDeps } from "./batch";
+import { FALLBACK_REPLY, type BatchContext, type BatchDeps } from "./batch";
 import { appointmentDedupeKey, parseWorkflowState, todayInZone } from "./workflow";
 import { KEY_EMAIL_INTERVAL_MS, type AiMode, type KeyStatus } from "./ai-keys";
 import { billingEnforced, computeAccess, type SubscriptionRow } from "./billing/access";
@@ -107,12 +107,19 @@ export function supabaseBatchDeps(): BatchDeps {
       const kbChangedAt = Math.max(Date.parse((lastDoc.data?.[0]?.updated_at as string | undefined) ?? "") || 0, Date.parse((changed.data?.kb_changed_at as string | undefined) ?? "") || 0);
       // History = recent messages that are not part of this batch, oldest first.
       const history: ChatTurn[] = (recent.data ?? [])
-        .filter((m) => !pendingMessageIds.has(m.id as string) && m.body && m.status !== "blocked" && m.status !== "failed")
+        .filter((m) => !pendingMessageIds.has(m.id as string) && m.body && m.status !== "blocked" && m.status !== "failed" && !(m.direction !== "inbound" && m.body === FALLBACK_REPLY)) // the "temporary delay" notice is not part of the conversation
         .slice(0, HISTORY_TURNS)
         .reverse()
         .map((m) => m.direction === "inbound"
           ? { role: "user" as const, text: wrapCustomerMessages([m.body as string]) }
           : { role: "assistant" as const, text: Date.parse(m.created_at as string) < kbChangedAt ? STALE_REPLY : m.body as string });
+
+      // Rescue state: when the oldest waiting message arrived, and whether the "temporary delay" notice already went out after it.
+      const oldest = (pendingRows.data ?? []).map((p) => Date.parse(p.created_at as string)).filter((t) => Number.isFinite(t)).sort((a, b) => a - b)[0];
+      const retry = {
+        oldestPendingAt: oldest ? new Date(oldest) : null,
+        delayNoticeSent: oldest ? (recent.data ?? []).some((m) => m.direction !== "inbound" && m.body === FALLBACK_REPLY && Date.parse(m.created_at as string) >= oldest) : false,
+      };
 
       const c = client.data!;
       // BYOK: this business's own key, decrypted only here, only for the length of this batch. It is never logged.
@@ -152,7 +159,17 @@ export function supabaseBatchDeps(): BatchDeps {
         history,
         repliesThisMonth: replies.count ?? 0,
         recentInboundCount: recentInbound.count ?? 0,
+        retry,
       };
+    },
+
+    async deferBatch(conversationId, delaySeconds) {
+      // The waiting messages stay in the queue (they survive a restart); only the lease is released and the due time moved on.
+      const { error } = await db.from("conversations")
+        .update({ batch_due_at: new Date(Date.now() + delaySeconds * 1000).toISOString(), batch_lease_until: null })
+        .eq("id", conversationId);
+      if (error) throw new Error(`deferBatch failed: ${error.message}`);
+      return true;
     },
 
     async complete(conversationId, pendingIds) {
