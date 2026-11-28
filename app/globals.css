@@ -154,6 +154,9 @@ a.stat:hover { border-color: var(--brand); }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; font-weight: 700; text-decoration: none; color: var(--text); line-height: 1.2; font-size: 0.95rem; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--radius-sm); color: var(--text); text-decoration: none; font-weight: 500; font-size: 0.93rem; }
+.nav-help { margin: auto 0 0; padding: 12px; font-size: 0.82rem; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.nav-help a { color: var(--brand-text); font-weight: 600; }
+.mobile-nav .nav-help { margin: 8px 0 0; }
 .nav a:hover { background: var(--surface-2); }
 .nav a[aria-current="page"] { background: var(--brand-soft); color: var(--brand-text); font-weight: 600; }
 .main { min-width: 0; display: flex; flex-direction: column; }

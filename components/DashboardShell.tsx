@@ -30,6 +30,11 @@ const ITEMS: { href: string; label: string; icon: IconName }[] = [
 // Sidebar counts: chats with new customer messages, and handoffs that need someone.
 const badgeFor = (href: string, c: LiveCounts) => (href === "/dashboard/conversations" ? c.unreadChats : href === "/dashboard/handoff" ? c.waiting : 0);
 
+function Help({ email }: { email: string | null }) {
+  if (!email) return null;
+  return <p className="nav-help">Need help or have a question?<br /><a href={`mailto:${email}?subject=Replyleaf%20help`}>{email}</a></p>;
+}
+
 function Nav({ pathname, isAdmin, counts }: { pathname: string; isAdmin: boolean; counts: LiveCounts }) {
   const items = isAdmin ? [...ITEMS, { href: "/admin/signups", label: "Admin: sign-ups", icon: "shield" as IconName }] : ITEMS;
   return (
@@ -48,8 +53,8 @@ function Nav({ pathname, isAdmin, counts }: { pathname: string; isAdmin: boolean
 }
 
 export default function DashboardShell({
-  businessName, signOut, isAdmin = false, children,
-}: { businessName: string; signOut: () => Promise<void>; isAdmin?: boolean; children: React.ReactNode }) {
+  businessName, signOut, isAdmin = false, supportEmail = null, children,
+}: { businessName: string; signOut: () => Promise<void>; isAdmin?: boolean; supportEmail?: string | null; children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [pathname]); // close the phone menu after navigating
@@ -69,6 +74,7 @@ export default function DashboardShell({
       <aside className="sidebar">
         <Link href="/dashboard" className="brand"><Logo size={34} /> {PRODUCT_NAME}</Link>
         <Nav pathname={pathname} isAdmin={isAdmin} counts={live.data.counts} />
+        <Help email={supportEmail} />
       </aside>
 
       <div className="main">
@@ -89,7 +95,7 @@ export default function DashboardShell({
             </form>
           </div>
         </header>
-        <div id="mobile-nav" className="mobile-nav" hidden={!open}><Nav pathname={pathname} isAdmin={isAdmin} counts={live.data.counts} /></div>
+        <div id="mobile-nav" className="mobile-nav" hidden={!open}><Nav pathname={pathname} isAdmin={isAdmin} counts={live.data.counts} /><Help email={supportEmail} /></div>
         <div className="toasts" role="status" aria-live="polite">
           {toasts.map((n) => (
             <Link key={n.id} className="toast" href={safeLink(n.link)} onClick={() => { live.markRead({ id: n.id }); setToasts((t) => t.filter((x) => x.id !== n.id)); }}>
