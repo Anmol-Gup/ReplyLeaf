@@ -31,8 +31,12 @@ const ITEMS: { href: string; label: string; icon: IconName }[] = [
 const badgeFor = (href: string, c: LiveCounts) => (href === "/dashboard/conversations" ? c.unreadChats : href === "/dashboard/handoff" ? c.waiting : 0);
 
 function Help({ email }: { email: string | null }) {
-  if (!email) return null;
-  return <p className="nav-help">Need help or have a question?<br /><a href={`mailto:${email}?subject=Replyleaf%20help`}>{email}</a></p>;
+  return (
+    <p className="nav-help">
+      <a href="/guide" target="_blank" rel="noopener">Setup guide</a>
+      {email && <><br />Need help or have a question?<br /><a href={`mailto:${email}?subject=Replyleaf%20help`}>{email}</a></>}
+    </p>
+  );
 }
 
 function Nav({ pathname, isAdmin, counts }: { pathname: string; isAdmin: boolean; counts: LiveCounts }) {
